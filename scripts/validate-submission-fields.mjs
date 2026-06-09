@@ -6,6 +6,7 @@ const evidencePath = resolve(process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || "
 const securityPolicyPath = resolve(process.env.EVENTCHAT_SECURITY_POLICY_PATH || "./SECURITY.md");
 const submissionPacketPath = resolve(process.env.EVENTCHAT_SUBMISSION_PACKET_PATH || "./OPENAI_SUBMISSION_PACKET.md");
 const submissionAuditPath = resolve(process.env.EVENTCHAT_SUBMISSION_AUDIT_PATH || "./SUBMISSION_AUDIT.md");
+const requireDeploymentMetadata = process.env.EVENTCHAT_REQUIRE_DEPLOYMENT_METADATA !== "false";
 
 async function main() {
   const fields = JSON.parse(await readFile(fieldsPath, "utf8"));
@@ -41,9 +42,13 @@ async function main() {
   assert(fields.logo_url === `${evidence.base_url}/logo-512.png`, "logo_url must match evidence base_url");
   assert(evidence.ok === true, "latest evidence must be ok");
   assert(evidence.checks?.tools?.count === 13, "latest evidence must show 13 tools");
-  assert(evidence.deployment?.ok === true, "latest evidence must include current deployment metadata");
-  assertNonEmpty(evidence.deployment?.id, "evidence.deployment.id");
-  assertNonEmpty(evidence.deployment?.image_digest, "evidence.deployment.image_digest");
+  if (requireDeploymentMetadata) {
+    assert(evidence.deployment?.ok === true, "latest evidence must include current deployment metadata");
+    assertNonEmpty(evidence.deployment?.id, "evidence.deployment.id");
+    assertNonEmpty(evidence.deployment?.image_digest, "evidence.deployment.image_digest");
+  } else {
+    assert(evidence.deployment?.skipped === true || evidence.deployment?.ok === true, "latest evidence must explicitly skip or include deployment metadata");
+  }
   assert(evidence.checks?.preference_memory?.note_feedback_learned === true, "latest evidence must show note-derived feedback learning");
 
   assertArray(fields.discovery_phrases, "discovery_phrases", 5);
@@ -89,7 +94,8 @@ async function main() {
     submission_audit_path: submissionAuditPath,
     app_name: fields.app_name,
     endpoint: fields.mcp_endpoint,
-    review_test_prompts: fields.review_test_prompts.length
+    review_test_prompts: fields.review_test_prompts.length,
+    deployment_metadata_required: requireDeploymentMetadata
   }, null, 2));
 }
 
