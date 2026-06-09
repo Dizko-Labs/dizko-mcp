@@ -1,0 +1,112 @@
+import { resolve4, resolve6, resolveCname } from "node:dns/promises";
+
+const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.urbanplayground.xyz";
+const expectedServerName = "eventchat-events";
+const endpointPath = "/mcp";
+
+async function main() {
+  const dns = await readDns(domain);
+  const health = await fetchJson(`https://${domain}/health`);
+  const metadata = await fetchJson(`https://${domain}/`);
+  const mcp = await callMcp(`https://${domain}${endpointPath}`, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list"
+  });
+
+  const checks = {
+    dns_not_vercel: !dns.a.some((value) => value.startsWith("216.150.")),
+    health_ok: health.ok && health.status === 200 && health.body?.ok === true,
+    metadata_ok: metadata.ok && metadata.status === 200 && metadata.body?.name === expectedServerName,
+    mcp_ok: mcp.ok && Array.isArray(mcp.body?.result?.tools) && mcp.body.result.tools.length === 13
+  };
+
+  const ok = Object.values(checks).every(Boolean);
+  const result = {
+    ok,
+    domain,
+    endpoint: `https://${domain}${endpointPath}`,
+    dns,
+    checks,
+    health_status: health.status,
+    metadata_status: metadata.status,
+    mcp_status: mcp.status,
+    mcp_tool_count: mcp.body?.result?.tools?.length || 0,
+    next_step: ok
+      ? "Custom domain is ready for MCP review traffic."
+      : "Keep using the Railway endpoint for review. Attach the domain in Railway and update DNS away from the current target, then rerun this check."
+  };
+
+  console.log(JSON.stringify(result, null, 2));
+  if (!ok) process.exitCode = 1;
+}
+
+async function readDns(hostname) {
+  const [a, aaaa, cname] = await Promise.all([
+    resolveMaybe(() => resolve4(hostname)),
+    resolveMaybe(() => resolve6(hostname)),
+    resolveMaybe(() => resolveCname(hostname))
+  ]);
+  return { a, aaaa, cname };
+}
+
+async function fetchJson(url) {
+  try {
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10000)
+    });
+    return {
+      ok: response.ok,
+      status: response.status,
+      content_type: response.headers.get("content-type"),
+      body: await readJson(response)
+    };
+  } catch (error) {
+    return { ok: false, status: 0, error: error.message };
+  }
+}
+
+async function callMcp(url, payload) {
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    });
+    return {
+      ok: response.ok,
+      status: response.status,
+      content_type: response.headers.get("content-type"),
+      body: await readJson(response)
+    };
+  } catch (error) {
+    return { ok: false, status: 0, error: error.message };
+  }
+}
+
+async function readJson(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text.slice(0, 500);
+  }
+}
+
+async function resolveMaybe(fn) {
+  try {
+    return await fn();
+  } catch {
+    return [];
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

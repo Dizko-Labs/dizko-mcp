@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UPlayground Events Connector User Guide</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; max-width: 780px; margin: 48px auto; padding: 0 20px; color: #132019; background: #fff; }
+    h1, h2 { line-height: 1.2; }
+    code { background: #eef4ef; padding: 2px 5px; border-radius: 4px; }
+    a { color: #146c43; }
+    .updated { color: #52645a; }
+  </style>
+</head>
+<body>
+  <h1>UPlayground Events Connector User Guide</h1>
+  <p class="updated">Last updated: June 9, 2026</p>
+
+  <p>UPlayground Events is UrbanPlayground's connector for helping ChatGPT, Claude, and other MCP-compatible assistants find current concerts, club nights, festivals, cultural events, and night-out options from live UPlayground event inventory.</p>
+
+  <h2>Connect</h2>
+  <p>Add this verified production MCP endpoint in ChatGPT Developer Mode, Claude custom connectors, or another remote-MCP compatible client:</p>
+  <p><code>https://eventchat-events-mcp-production.up.railway.app/mcp</code></p>
+  <p>Do not use <code>https://mcp.urbanplayground.xyz/mcp</code> yet. That branded domain is reserved for later and is not verified for review or public traffic.</p>
+
+  <h2>Useful Prompts</h2>
+  <ul>
+    <li>Find five techno events in Berlin this weekend.</li>
+    <li>Find something good tonight, but ask me what kind of event and vibe first.</li>
+    <li>Plan a night out in New York with a concert first and a late party fallback.</li>
+    <li>Ask what kind of events I generally like and remember my preferences if I consent.</li>
+    <li>I went to that event yesterday; I liked the music but not the crowd.</li>
+    <li>Delete my UPlayground saved event preferences and feedback history.</li>
+  </ul>
+
+  <h2>Preference Memory</h2>
+  <p>Preference memory is optional. The assistant should ask what kinds of events, genres, vibes, budgets, areas, venues, and avoidances you generally like. It should ask for consent before saving anything.</p>
+  <p>If you consent, the connector creates a private preference profile with a <code>profile_id</code> and one-time <code>profile_secret</code>. Future personalized recommendations, feedback, preference reads, updates, and deletion require both values. The service stores only a hash of the secret and cannot reveal the raw secret later.</p>
+
+  <h2>Learning From Feedback</h2>
+  <p>After an event, the assistant can ask whether you went, whether you liked it, what to remember, and an optional rating. Feedback is saved only when you provide a liked/disliked answer, rating, or notes. Positive feedback can improve matching for similar genres, vibes, event types, and venues. Notes such as "liked the music," "too crowded," "too expensive," or "too late" can become learned preference or avoid signals. Negative feedback can create avoid signals for future recommendations.</p>
+
+  <h2>Deleting Saved Preferences</h2>
+  <p>You can ask the assistant to delete your saved UPlayground connector preferences and feedback history. Deletion requires your <code>profile_id</code>, private <code>profile_secret</code>, and explicit confirmation that the deletion is scoped to UPlayground connector memory.</p>
+
+  <h2>Limits</h2>
+  <p>Event details can change. Confirm times, age restrictions, ticket availability, entry rules, prices, refunds, and venue policies with the linked event source, organizer, ticketing provider, or venue before making plans.</p>
+
+  <h2>Privacy, Terms, And Support</h2>
+  <p>Read the <a href="/privacy-policy.html">privacy policy</a> and <a href="/terms.html">connector terms</a>. For help, email <a href="mailto:support@urbanplayground.xyz?subject=UPlayground%20Events%20Connector%20Support">support@urbanplayground.xyz</a>.</p>
+</body>
+</html>

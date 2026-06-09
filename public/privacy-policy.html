@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - UPlayground Events Connector</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; max-width: 760px; margin: 0 auto; padding: 32px 20px; color: #111; }
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    h2 { margin-top: 28px; font-size: 19px; }
+    .date { color: #666; margin-top: 0; }
+    li { margin-bottom: 8px; }
+    a { color: #0b6b42; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="date">Effective: June 9, 2026</p>
+
+  <p>UPlayground Events is UrbanPlayground's connector for helping people find current events through ChatGPT, Claude, and other MCP-compatible assistants. This policy covers the UPlayground Events connector and MCP service.</p>
+
+  <h2>What We Collect</h2>
+  <ul>
+    <li><strong>Event search inputs</strong>, such as city or neighborhood, date range, genre, vibe, venue, artist, price, and other filters you ask the assistant to use. The connector does not request GPS coordinates, street addresses, or full chat transcripts.</li>
+    <li><strong>Preference profile data</strong> only when you agree to save it, including an opaque UPlayground profile identifier, a hashed profile secret used to protect access, event types, genres, vibes, venues, neighborhoods, budget, avoidances, and other event preferences.</li>
+    <li><strong>Post-event feedback</strong> only when you choose to provide it, including event IDs, liked/disliked signals, ratings, notes, timestamps, and derived taste signals such as learned genres, vibes, event types, venues, and avoid signals.</li>
+    <li><strong>Personalization summaries</strong> returned to the assistant during personalized recommendations, including saved preferences, learned preferences, current request context, applied ranking hints, and feedback count so the assistant can explain why events were recommended or penalized.</li>
+    <li><strong>Technical and service data</strong>, such as request metadata, diagnostics, and logs needed to operate, secure, debug, and improve the connector.</li>
+  </ul>
+
+  <h2>How We Use Data</h2>
+  <ul>
+    <li>To search live UPlayground event inventory and return relevant events.</li>
+    <li>To personalize recommendations after you consent to saved preferences.</li>
+    <li>To learn from post-event feedback you choose to provide, including steering away from disliked genres, vibes, event types, or venues.</li>
+    <li>To operate, secure, debug, and improve the connector.</li>
+  </ul>
+
+  <h2>Consent And Control</h2>
+  <p>The connector should ask what kinds of events you generally like and whether UPlayground may save those preferences before creating or updating a preference profile. When a profile is created, the connector receives a profile identifier and private profile secret. The raw secret is returned once to the assistant and only a hash is stored by the MCP service. You can decline preference saving and still use live event search. You can ask the assistant to delete saved event preferences and feedback, which calls the deletion tool for your connector profile.</p>
+
+  <h2>Sharing</h2>
+  <p>We do not sell connector data and do not use it for advertising. We use hosting and infrastructure providers, including Railway, to run the connector. Event results may include links to third-party ticketing or event sources such as Resident Advisor, Dice, Eventbrite, and local sources.</p>
+
+  <h2>Retention</h2>
+  <ul>
+    <li><strong>Saved preferences and feedback</strong> are kept until you delete the connector profile or until the profile has been inactive for 24 months, whichever comes first. Inactive profiles are automatically pruned after the configured retention window.</li>
+    <li><strong>Technical logs and diagnostics</strong> are normally kept for up to 30 days, unless a longer period is needed to investigate abuse, security, fraud, reliability, or support issues.</li>
+    <li><strong>Deletion requests</strong> remove saved connector preferences and feedback for the requested profile from active storage. Operational backups or derived diagnostic copies, if any, are scheduled to age out within 30 days.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions or deletion requests: <a href="mailto:privacy@urbanplayground.xyz?subject=UPlayground%20Events%20Connector%20Privacy">privacy@urbanplayground.xyz</a></p>
+</body>
+</html>

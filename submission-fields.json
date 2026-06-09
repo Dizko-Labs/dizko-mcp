@@ -1,0 +1,79 @@
+{
+  "app_name": "UPlayground Events",
+  "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.",
+  "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.",
+  "mcp_endpoint": "https://eventchat-events-mcp-production.up.railway.app/mcp",
+  "company_url": "https://urbanplayground.xyz",
+  "privacy_policy_url": "https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html",
+  "support_url": "https://eventchat-events-mcp-production.up.railway.app/support.html",
+  "terms_url": "https://eventchat-events-mcp-production.up.railway.app/terms.html",
+  "user_guide_url": "https://eventchat-events-mcp-production.up.railway.app/user-guide.html",
+  "logo_url": "https://eventchat-events-mcp-production.up.railway.app/logo-512.png",
+  "local_logo_file": "public/submission-assets/uplayground-events-logo-512.png",
+  "localization": {
+    "default_locale": "en-US",
+    "supported_locales": [
+      "en-US"
+    ],
+    "notes": "Submit English (United States) copy for the initial review. Event results may include venue, artist, or event names in their original language from the live inventory."
+  },
+  "authentication": {
+    "type": "noauth",
+    "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory."
+  },
+  "do_not_submit_urls": [
+    {
+      "url": "https://mcp.urbanplayground.xyz/mcp",
+      "reason": "Custom-domain DNS/Railway attachment is not verified yet; use the Railway endpoint for review."
+    }
+  ],
+  "discovery_phrases": [
+    "Find events this weekend in Berlin.",
+    "Use UrbanPlayground to find live events this weekend.",
+    "What techno events are happening tonight near me?",
+    "Plan a night out in New York with underground music.",
+    "Find free cultural events in Paris.",
+    "Show events at a specific venue.",
+    "Remember what kind of events I like and recommend something for this weekend.",
+    "I went to that event yesterday; I liked the music but not the crowd."
+  ],
+  "review_test_prompts": [
+    {
+      "prompt": "Find five techno events in Berlin this weekend.",
+      "expected_behavior": "Calls search_events or recommend_events and returns live events with event URLs and ticket/source links when available."
+    },
+    {
+      "prompt": "Find something good tonight in Berlin, but ask me what kind of event and vibe first.",
+      "expected_behavior": "Calls get_event_search_followups, asks concise current-context questions, then searches or recommends."
+    },
+    {
+      "prompt": "Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.",
+      "expected_behavior": "Calls get_preference_onboarding, creates or updates a preference profile only after consent, then calls recommend_events_for_user using saved and current-context preferences."
+    },
+    {
+      "prompt": "Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.",
+      "expected_behavior": "Calls get_event_feedback_prompt before record_event_feedback, records only liked/disliked, rating, or notes, then explains saved positive or negative learning signals."
+    },
+    {
+      "prompt": "Delete my UPlayground saved event preferences and feedback history.",
+      "expected_behavior": "Confirms the UPlayground-only deletion scope, then calls delete_event_preferences with confirm_delete true only for the user's UPlayground connector profile."
+    }
+  ],
+  "privacy_notes": [
+    "Basic event search does not require a personal account.",
+    "Search location is limited to user-provided city, neighborhood, venue, or event-area filters; the connector does not request GPS coordinates, street addresses, or full chat transcripts.",
+    "Preference learning is opt-in and requires explicit consent before create_event_preference_profile or save_event_preferences.",
+    "Profile access uses an opaque profile_id plus a private one-time profile_secret; the MCP service stores only a hash of the secret.",
+    "Stored connector data can include saved event preferences, event feedback, ratings, notes, event ids, timestamps, derived taste signals, learned avoid signals, and personalization summaries.",
+    "Saved preference profiles are retained until user deletion or 24 months of inactivity; technical logs are normally retained for up to 30 days.",
+    "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the UPlayground-only deletion scope."
+  ],
+  "submission_checklist": [
+    "Use the Railway MCP endpoint, not the unresolved custom domain.",
+    "Run npm run preflight:submission immediately before submitting.",
+    "Run npm run submission:status and confirm ready_for_openai_dashboard_submission is true.",
+    "Use submission-evidence/latest-summary.md while filling dashboard fields.",
+    "Capture ChatGPT Developer Mode screenshots on web and mobile.",
+    "Complete OpenAI publisher verification if required."
+  ]
+}
