@@ -1,5 +1,7 @@
-import { getEvent, searchEvents } from "./api.js";
+import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
+import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
+import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, recommendEvents } from "./planner.js";
 import {
   FilePreferenceStore,
@@ -8,6 +10,12 @@ import {
   publicProfile,
   verifyProfileSecret
 } from "./preferences.js";
+import {
+  TICKET_PURCHASE_POLICY,
+  buildTicketOffers,
+  purchaseTicketOrder,
+  quoteTicketOrder
+} from "./tickets.js";
 
 const rawTools = [
   {
@@ -249,6 +257,87 @@ const rawTools = [
       required: ["id"]
     },
     outputSchema: withError(eventSummarySchema())
+  },
+  {
+    name: "get_ticket_purchase_policy",
+    title: "Get Ticket Purchase Policy",
+    description: "Use this when a user asks whether agents can buy tickets autonomously or what purchase modes UPlayground, Hermes, OpenClaw, or other providers can support.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: {
+      type: "object",
+      properties: {}
+    },
+    outputSchema: ticketPolicyOutputSchema()
+  },
+  {
+    name: "get_ticket_offers",
+    title: "Get Ticket Offers",
+    description: "Use this when a user wants ticket options for a specific UPlayground event before quoting or buying.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        event_id: { type: "string", description: "Event id returned by search, recommendations, plan_night, or get_event." }
+      },
+      required: ["event_id"]
+    },
+    outputSchema: ticketOffersOutputSchema()
+  },
+  {
+    name: "quote_ticket_order",
+    title: "Quote Ticket Order",
+    description: "Use this when a user has chosen an event and wants a locked ticket quote with quantity, max price, ticket type, and stop conditions before any purchase attempt.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false
+    },
+    inputSchema: ticketQuoteInputSchema(),
+    outputSchema: ticketQuoteOutputSchema()
+  },
+  {
+    name: "purchase_ticket_order",
+    title: "Purchase Ticket Order",
+    description: "Use this when the user has given explicit written confirmation for a locked ticket quote and the agent should either execute an integrated provider purchase or return the required external checkout handoff.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    },
+    inputSchema: ticketPurchaseInputSchema(),
+    outputSchema: ticketPurchaseOutputSchema()
+  },
+  {
+    name: "create_event_calendar_file",
+    title: "Create Event Calendar File",
+    description: "Use this when a user wants to add a UPlayground event to their calendar after choosing or buying tickets.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        event_id: { type: "string", description: "Event id returned by search, recommendations, plan_night, get_event, or a ticket quote." },
+        status: { type: "string", description: "Calendar status, for example CONFIRMED or TENTATIVE." }
+      },
+      required: ["event_id"]
+    },
+    outputSchema: calendarEventOutputSchema()
   }
 ];
 
@@ -265,7 +354,12 @@ const toolInvocationStatus = {
   recommend_events: ["Ranking live events", "Event recommendations ready"],
   recommend_events_for_user: ["Personalizing live events", "Personalized events ready"],
   plan_night: ["Planning the night", "Night plan ready"],
-  get_event: ["Loading event details", "Event details loaded"]
+  get_event: ["Loading event details", "Event details loaded"],
+  get_ticket_purchase_policy: ["Loading purchase policy", "Purchase policy ready"],
+  get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
+  quote_ticket_order: ["Preparing ticket quote", "Ticket quote ready"],
+  purchase_ticket_order: ["Processing ticket order", "Ticket order processed"],
+  create_event_calendar_file: ["Creating calendar file", "Calendar file ready"]
 };
 
 export const tools = rawTools.map(withNoAuthSecurity);
@@ -434,16 +528,47 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson(await planNight(input, options));
     case "get_event":
       return toolJson(summarizeEvent(await getEvent(input.id, options)));
+    case "get_ticket_purchase_policy":
+      return toolJson({
+        ...TICKET_PURCHASE_POLICY,
+        assistant_instruction: "Explain that autonomous ticket purchase requires a locked quote, explicit written confirmation, and an integrated purchase provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment. Third-party-only links become checkout handoff."
+      });
+    case "get_ticket_offers": {
+      const event = await getEvent(input.event_id, options);
+      return toolJson(buildTicketOffers(event, options));
+    }
+    case "quote_ticket_order": {
+      const event = await getEvent(input.event_id, options);
+      return toolJson(quoteTicketOrder(event, input, options));
+    }
+    case "purchase_ticket_order":
+      return toolJson(await purchaseTicketOrder(input, options));
+    case "create_event_calendar_file": {
+      const event = await getEvent(input.event_id, options);
+      return toolJson({
+        calendar_event: buildCalendarEvent(event, { ...options, status: input.status || "CONFIRMED" }),
+        assistant_instruction: "Return the .ics content or attach it as a calendar file when the client supports files. The user can import it into Apple Calendar, Google Calendar, Outlook, or another calendar app."
+      });
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
+    const described = describeNetworkError(error, error.url);
+    const retryable = error.retryable ?? (error.status != null ? isRetryableStatus(error.status) : described.retryable);
     return toolJson({
-      error: error.message,
+      error: error instanceof EventChatAPIError ? error.message : described.message,
       type: error.name || "Error",
-      status: error.status || null,
-      retryable: error.status === 504 || error.name === "EventChatAPIError",
-      assistant_instruction: "Tell the user UPlayground's live event inventory was temporarily unavailable or slow, then offer to retry with narrower filters such as city, date, event type, vibe, or limit."
+      code: error.code ?? described.code ?? null,
+      status: error.status ?? null,
+      hostname: error.hostname ?? described.hostname ?? null,
+      url: error.url ?? null,
+      classification: error.classification ?? described.classification ?? null,
+      cause: described.cause ?? null,
+      retryable,
+      assistant_instruction: retryable
+        ? "This was a temporary network or upstream failure, not bad input. Retry the same call once or twice before changing anything; if it keeps failing, tell the user UPlayground's live event inventory is temporarily unreachable."
+        : "Tell the user UPlayground's live event inventory was unavailable for this request, then offer to retry with narrower filters such as city, date, event type, vibe, or limit."
     }, true);
   }
 }
@@ -580,7 +705,7 @@ function eventSearchSchema() {
     type: "object",
     properties: {
       city: { type: "string", description: "City name, for example berlin or new york." },
-      when: { type: "string", description: "Date preset: today, tonight, tomorrow, weekend, week, any, or YYYY-MM-DD." },
+      when: { type: "string", description: "Date preset: today, tonight, tomorrow, weekend, week, this week, any, or YYYY-MM-DD." },
       date_from: { type: "string", description: "Inclusive start date in YYYY-MM-DD format." },
       date_to: { type: "string", description: "Inclusive end date in YYYY-MM-DD format." },
       query: { type: "string", description: "Keyword search." },
@@ -775,6 +900,141 @@ function planOutputSchema() {
   });
 }
 
+function ticketPolicyOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      autonomous_purchase_available: { type: "boolean" },
+      supported_modes: stringArray(),
+      provider_contract: { type: "string" },
+      hard_rules: stringArray(),
+      current_default_behavior: { type: "string" },
+      assistant_instruction: { type: "string" }
+    },
+    required: ["autonomous_purchase_available", "supported_modes", "hard_rules", "current_default_behavior"]
+  });
+}
+
+function ticketOffersOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      event: eventSummarySchema(),
+      count: { type: "number" },
+      offers: {
+        type: "array",
+        items: ticketOfferSchema()
+      },
+      policy: ticketPolicyShape(),
+      assistant_instruction: { type: "string" }
+    },
+    required: ["event", "count", "offers", "policy"]
+  });
+}
+
+function ticketQuoteInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      event_id: { type: "string", description: "Event id returned by search, recommendations, plan_night, or get_event." },
+      offer_id: { type: "string", description: "Optional offer_id returned by get_ticket_offers." },
+      quantity: { type: "number", minimum: 1, maximum: 12, default: 1 },
+      ticket_type: { type: "string", description: "Requested ticket type, for example GA, balcony, seated, VIP, or best available." },
+      max_total: { type: "number", description: "Maximum all-in total the user authorizes before the agent must stop and ask again." },
+      currency: { type: "string", description: "Preferred currency for max_total, for example USD." },
+      refund_terms: { type: "string", description: "Minimum refund/transfer terms the user accepts." }
+    },
+    required: ["event_id"]
+  };
+}
+
+function ticketQuoteOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      quoted: { type: "boolean" },
+      quote: ticketQuoteSchema(),
+      quote_token: { type: "string" },
+      confirmation_required: { type: "boolean" },
+      confirmation_prompt: { type: "string" },
+      assistant_instruction: { type: "string" },
+      error: { type: "string" },
+      event: eventSummarySchema(),
+      policy: ticketPolicyShape()
+    },
+    required: ["quoted"]
+  });
+}
+
+function ticketPurchaseInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      quote_token: { type: "string", description: "Opaque quote token returned by quote_ticket_order." },
+      confirmation_text: { type: "string", description: "User's explicit written confirmation, including buy/purchase, quantity, and max_total when present." },
+      user_payment_profile_id: { type: "string", description: "Provider-specific saved payment profile id, when an integrated provider supports autonomous purchase." },
+      idempotency_key: { type: "string", description: "Optional idempotency key for integrated purchase providers." }
+    },
+    required: ["quote_token", "confirmation_text"]
+  };
+}
+
+function ticketPurchaseOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      purchased: { type: "boolean" },
+      status: { type: "string" },
+      error: { type: "string" },
+      order_id: nullableString(),
+      receipt_url: nullableString(),
+      ticket_delivery_status: nullableString(),
+      checkout_url: nullableString(),
+      quote: ticketQuoteSchema(),
+      confirmation_prompt: { type: "string" },
+      assistant_instruction: { type: "string" },
+      delivery_email: nullableString(),
+      calendar_event: calendarEventSchema(),
+      provider_response: {
+        type: ["object", "null"],
+        additionalProperties: true
+      }
+    },
+    required: ["purchased", "status"]
+  });
+}
+
+function calendarEventSchema() {
+  return {
+    type: ["object", "null"],
+    properties: {
+      uid: { type: "string" },
+      title: nullableString(),
+      starts_at: nullableString(),
+      ends_at: nullableString(),
+      venue: nullableString(),
+      city: nullableString(),
+      event_url: nullableString(),
+      ticket_url: nullableString(),
+      status: { type: "string" },
+      ics_filename: { type: "string" },
+      ics_content: { type: "string" }
+    },
+    required: ["uid", "ics_filename", "ics_content"]
+  };
+}
+
+function calendarEventOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      calendar_event: calendarEventSchema(),
+      assistant_instruction: { type: "string" }
+    },
+    required: ["calendar_event"]
+  });
+}
+
 function profileOutputSchema() {
   return {
     type: "object",
@@ -856,6 +1116,66 @@ function eventSummarySchema() {
   };
 }
 
+function ticketPolicyShape() {
+  return {
+    type: "object",
+    properties: {
+      autonomous_purchase_available: { type: "boolean" },
+      supported_modes: stringArray(),
+      provider_contract: { type: "string" },
+      hard_rules: stringArray(),
+      current_default_behavior: { type: "string" }
+    }
+  };
+}
+
+function ticketOfferSchema() {
+  return {
+    type: "object",
+    properties: {
+      offer_id: { type: "string" },
+      event: eventSummarySchema(),
+      provider: nullableString(),
+      purchase_mode: { type: "string" },
+      autonomous_purchase_supported: { type: "boolean" },
+      availability_status: { type: "string" },
+      ticket_url: nullableString(),
+      estimated_price: nullableString(),
+      currency: nullableString(),
+      price_guaranteed: { type: "boolean" },
+      fees_included: { type: "boolean" },
+      notes: stringArray()
+    },
+    required: ["offer_id", "event", "purchase_mode", "autonomous_purchase_supported", "availability_status"]
+  };
+}
+
+function ticketQuoteSchema() {
+  return {
+    type: ["object", "null"],
+    properties: {
+      quote_id: { type: "string" },
+      event: eventSummarySchema(),
+      offer_id: { type: "string" },
+      provider: nullableString(),
+      purchase_mode: { type: "string" },
+      autonomous_purchase_supported: { type: "boolean" },
+      availability_status: { type: "string" },
+      checkout_url: nullableString(),
+      quantity: { type: "number" },
+      ticket_type: { type: "string" },
+      max_total: nullableNumber(),
+      currency: nullableString(),
+      estimated_price: nullableString(),
+      price_guaranteed: { type: "boolean" },
+      fees_included: { type: "boolean" },
+      refund_terms: { type: "string" },
+      expires_at: { type: "string" },
+      stop_conditions: stringArray()
+    }
+  };
+}
+
 function withError(successSchema) {
   return {
     anyOf: [
@@ -865,7 +1185,12 @@ function withError(successSchema) {
         properties: {
           error: { type: "string" },
           type: { type: "string" },
+          code: nullableString(),
           status: nullableNumber(),
+          hostname: nullableString(),
+          url: nullableString(),
+          classification: nullableString(),
+          cause: nullableString(),
           retryable: { type: "boolean" },
           assistant_instruction: { type: "string" }
         },

@@ -86,10 +86,19 @@ The MCP service stores only a hash of the `profile_secret`. The raw secret is re
 
 ## What The MCP Cannot Do
 
-- It cannot buy tickets or pay for events.
+- It cannot autonomously buy tickets from arbitrary third-party checkout pages.
+- It can prepare ticket offers and locked quotes, then either return third-party checkout handoff or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.
 - It cannot guarantee event availability after returning a link.
 - It should not save unrelated personal data such as home address, phone number, or non-event notes.
 - It should not answer weather, news, travel, or restaurant requests unless the user also asks for events.
+
+## Ticket Purchase Safety
+
+- Ask for ticket options with an event id.
+- Ask for a locked quote with quantity, ticket type, max total, and refund constraints.
+- Give explicit written confirmation only if the event, venue, date, quantity, ticket type, and max total are correct.
+- If the tool returns `requires_external_checkout`, complete payment directly with the linked provider.
+- If an integrated provider is available, the agent can purchase only inside the confirmed quote limits.
 
 ## Support, Privacy, And Security
 

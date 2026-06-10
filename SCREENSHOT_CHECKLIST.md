@@ -22,7 +22,7 @@ https://mcp.urbanplayground.xyz/mcp
 
 2. `02-tool-list.png`
    - Show tool list or tool-call details.
-   - It should be clear that UPlayground Events exposes 13 tools.
+   - It should be clear that UPlayground Events exposes 18 tools.
 
 3. `03-live-event-search.png`
    - Prompt:

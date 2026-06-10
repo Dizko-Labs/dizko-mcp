@@ -2,7 +2,7 @@
 
 ## Scope
 
-This policy covers the UPlayground Events MCP package, hosted MCP endpoint, preference-memory tools, profile-secret access, public privacy/support pages, and event-search/recommendation tools in this directory.
+This policy covers the UPlayground Events MCP package, hosted MCP endpoint, preference-memory tools, profile-secret access, public privacy/support pages, event-search/recommendation tools, and ticket quote/purchase handoff tools in this directory.
 
 Production MCP endpoint:
 
@@ -33,6 +33,7 @@ Do not include another person's profile secret, private notes, or personal data 
 - Preference profiles require explicit consent before creation or updates.
 - Profile access requires both `profile_id` and private `profile_secret`; the service stores only a hash of the secret.
 - Deletion is exposed through the destructive `delete_event_preferences` tool and removes saved connector preferences and feedback for the profile only when `confirm_delete: true` is supplied after user confirmation.
+- Ticket purchase is exposed through the destructive/open-world `purchase_ticket_order` boundary. It requires a locked quote and explicit written confirmation; third-party-only checkout links must not be represented as completed purchases.
 - Public MCP traffic is rate-limited and emits `X-RateLimit-*` headers.
 - The hosted endpoint serves restrictive CSP, referrer-policy, and content-type headers.
 - Submission verification should be run before public review:

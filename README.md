@@ -5,6 +5,7 @@ This package exposes UrbanPlayground's UPlayground live event inventory to agent
 - `eventchat-events`: a CLI for quick searches, ranked recommendations, and night plans.
 - `eventchat-events-mcp`: a stdio MCP server for local developer clients.
 - `eventchat-events-http`: an HTTP MCP server for hosted connectors/apps.
+- Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/UPlayground purchase adapters.
 
 ## Why This Beats Normal Chat
 
@@ -17,29 +18,61 @@ General chat can describe likely events, but it does not reliably know current i
 - A planning tool that returns primary options plus fallbacks in a compact machine-readable shape.
 - Consent-based preference learning: onboarding questions, saved taste profiles, post-event feedback, note-derived signals, and learned ranking signals.
 - Negative feedback becomes learned avoid signals, so future recommendations can steer away from disliked genres, vibes, event types, or venues.
+- Ticket purchase safety rails: agents can quote and prepare ticket orders, but autonomous purchase requires a locked quote, explicit written confirmation, and an integrated purchase provider.
 
 The agent can still write conversational prose, but its event facts come from the tool.
 
 ## CLI
+
+Run without installing:
+
+```bash
+npm exec --yes --package uplayground-events -- uplayground-events search --city "Los Angeles" --when week --limit 5
+npm exec --yes --package uplayground-events -- uplayground-events recommend --city "New York" --when tonight --vibe underground,intimate --max-price 30
+```
+
+Or install the early-access developer package:
+
+```bash
+npm install -g uplayground-events
+eventchat-events search --city berlin --when weekend --genres techno --limit 5
+```
+
+From this repository:
 
 ```bash
 node ./bin/eventchat-events.js search --city berlin --when weekend --genres techno --limit 5
 node ./bin/eventchat-events.js recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
 node ./bin/eventchat-events.js plan --city london --when weekend --event-types party --avoid mainstream
 node ./bin/eventchat-events.js cities
+node ./bin/eventchat-events.js doctor
 ```
 
-Environment:
+`doctor` checks DNS resolution, the API health endpoint, the hosted MCP endpoint (health, metadata, tools/list), and one small live search, reporting the underlying cause of any failure. Run it first whenever a search fails.
+
+Environment (all surfaces — CLI, stdio MCP, hosted MCP, smoke test, and monitor — resolve endpoints through the same `src/config.js`):
 
 ```bash
 EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
 EVENTCHAT_WEB_BASE_URL=https://urbanplayground.xyz
+EVENTCHAT_MCP_URL=https://eventchat-events-mcp-production.up.railway.app/mcp
+EVENTCHAT_API_TIMEOUT_MS=8000
+EVENTCHAT_API_RETRIES=2                  # transient network/5xx failures retry with backoff + jitter
+EVENTCHAT_API_RETRY_BASE_DELAY_MS=250
 EVENTCHAT_MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://claude.ai
 ```
 
+Transient network failures (`EAI_AGAIN`, `ETIMEDOUT`, `ECONNRESET`, `ENOTFOUND`, temporary 5xx) are retried automatically and reported as `retryable: true` with the underlying cause, code, hostname, and target URL when they persist.
+
 ## MCP For Local Developer Clients
 
-Run the server:
+Run the stdio MCP server from npm:
+
+```bash
+npm exec --yes --package uplayground-events -- eventchat-events-mcp
+```
+
+Or from this repository:
 
 ```bash
 node ./bin/eventchat-events-mcp.js
@@ -53,6 +86,22 @@ Example MCP client config:
     "eventchat-events": {
       "command": "node",
       "args": ["/Users/zakkrevitt/EventChat/ios/EventChat/agent-tools/eventchat-events/bin/eventchat-events-mcp.js"],
+      "env": {
+        "EVENTCHAT_API_BASE_URL": "https://backend-production-958d.up.railway.app"
+      }
+    }
+  }
+}
+```
+
+Example MCP client config using npm:
+
+```json
+{
+  "mcpServers": {
+    "uplayground-events": {
+      "command": "npm",
+      "args": ["exec", "--yes", "--package", "uplayground-events", "--", "eventchat-events-mcp"],
       "env": {
         "EVENTCHAT_API_BASE_URL": "https://backend-production-958d.up.railway.app"
       }
@@ -76,8 +125,14 @@ Tools:
 - `recommend_events_for_user`: live recommendations using saved preferences and learned feedback with profile-secret access.
 - `plan_night`: compact plan with fallbacks.
 - `get_event`: detail lookup by event id.
+- `get_ticket_purchase_policy`: explains current purchase modes, hard safety rules, and provider requirements.
+- `get_ticket_offers`: returns ticket options for an event, including checkout URL and whether autonomous purchase is supported.
+- `quote_ticket_order`: creates a locked quote with quantity, max total, ticket type, expiration, and stop conditions.
+- `purchase_ticket_order`: accepts explicit written confirmation and either executes an integrated provider purchase or returns the required external checkout handoff.
 
-Annotation note: all current tools set `openWorldHint: false`. Search and recommendation tools read live event data, and preference tools write only private connector memory protected by `profile_id` plus `profile_secret`; no tool publishes content, buys tickets, messages third parties, or changes publicly visible internet state.
+Annotation note: search and recommendation tools read live event data, and preference tools write only private connector memory protected by `profile_id` plus `profile_secret`. Only `purchase_ticket_order` is marked destructive/open-world because it is the bounded action point for ticket purchases or checkout handoff.
+
+Ticket note: `purchase_ticket_order` is intentionally marked destructive and open-world because it is the future action boundary for autonomous ticket purchase. In the default npm/hosted build, third-party ticket links return `requires_external_checkout`; the tool does not scrape checkout pages, bypass CAPTCHAs, or charge cards. True autonomous purchase requires a provider adapter such as Hermes, OpenClaw, UPlayground Checkout, a partner ticketing API, or an approved delegated-payment flow.
 
 Auth note: the public hosted connector submits as `noauth` for basic event discovery. Saved preference, feedback, personalized recommendation, read, update, and deletion tools still require the user's opaque `profile_id` plus private `profile_secret`. Tool descriptors include `securitySchemes: [{ "type": "noauth" }]` and mirror it in `_meta.securitySchemes` for ChatGPT compatibility.
 
@@ -176,6 +231,45 @@ Personalization flow:
 7. For tonight/week/weekend searches, assistant calls `get_event_search_followups`, asks lightweight current-context questions, then calls `recommend_events_for_user`.
 8. After the event, assistant calls `get_event_feedback_prompt`, asks whether the user went and liked it, then calls `record_event_feedback` only after the user provides liked/disliked, rating, or notes.
 
+Ticket purchase flow:
+
+1. User asks to buy or reserve tickets for an event.
+2. Assistant calls `get_ticket_offers` with the event id.
+3. Assistant explains whether the offer supports autonomous purchase or only external checkout.
+4. Assistant calls `quote_ticket_order` with quantity, ticket type, max total, currency, and refund constraints.
+5. Assistant asks for explicit written confirmation, for example: `Yes, buy 2 ticket(s) for Ostbahnhof XL, max total USD240. Stop if price, date, venue, ticket type, quantity, or refund terms change.`
+6. Assistant calls `purchase_ticket_order` only after that confirmation.
+7. If the quote uses `external_checkout`, the tool returns `requires_external_checkout` and a checkout URL. The assistant must not claim it purchased the ticket.
+8. If Hermes, OpenClaw, UPlayground Checkout, or another integrated provider is configured, the provider can execute the bounded purchase and return order/receipt/ticket delivery status.
+
+Provider adapter contract:
+
+```js
+{
+  canPurchase(event, summary) {
+    return true;
+  },
+  async purchase({ quote, confirmation_text, user_payment_profile_id, idempotency_key }) {
+    return {
+      purchased: true,
+      status: "purchased",
+      order_id: "...",
+      receipt_url: "...",
+      ticket_delivery_status: "pending_delivery",
+      provider_response: {}
+    };
+  }
+}
+```
+
 ## Distribution Notes
 
-The production user surface is the hosted MCP endpoint, not an npm install. The npm package remains marked `UNLICENSED` because it is an internal/proprietary deployment artifact. If the code package itself is later published for third-party reuse, choose a public license and rerun `npm pack --dry-run --json` before publishing.
+The public ChatGPT user surface is the hosted MCP endpoint plus OpenAI app submission. The npm package is a day-zero developer distribution path for local agents, Claude Desktop-style MCP clients, Cursor/Windsurf setups, and technical testers who can run a command. It remains marked `UNLICENSED` because this is a proprietary early-access package, not an open-source release.
+
+Before publishing a new npm version:
+
+```bash
+npm test
+npm pack --dry-run --json
+npm publish --access public
+```

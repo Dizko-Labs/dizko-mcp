@@ -41,7 +41,7 @@ async function main() {
   assert(evidence.checks?.public_pages?.user_guide?.ok === true, "latest evidence must show user guide page ok");
   assert(fields.logo_url === `${evidence.base_url}/logo-512.png`, "logo_url must match evidence base_url");
   assert(evidence.ok === true, "latest evidence must be ok");
-  assert(evidence.checks?.tools?.count === 13, "latest evidence must show 13 tools");
+  assert(evidence.checks?.tools?.count === 18, "latest evidence must show 18 tools");
   if (requireDeploymentMetadata) {
     assert(evidence.deployment?.ok === true, "latest evidence must include current deployment metadata");
     assertNonEmpty(evidence.deployment?.id, "evidence.deployment.id");
@@ -140,7 +140,7 @@ function assertPacketMatches(packet, fields, evidence) {
     "feedback learning",
     "empty feedback",
     "preference deletion",
-    "13 tool descriptors"
+    "18 tool descriptors"
   ]) {
     assert(packet.includes(phrase), `OPENAI_SUBMISSION_PACKET.md must mention ${phrase}`);
   }
@@ -171,6 +171,9 @@ function assertAuditMatches(audit, fields, evidence) {
     "record_event_feedback",
     "get_event_feedback_prompt",
     "delete_event_preferences",
+    "get_ticket_offers",
+    "quote_ticket_order",
+    "purchase_ticket_order",
     "Server-level MCP instructions",
     "Retention timelines",
     "automatically prunes inactive profiles",

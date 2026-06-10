@@ -1,5 +1,6 @@
 import { getConfig, SUPPORTED_CITIES } from "./config.js";
-import { getEvent, searchEvents } from "./api.js";
+import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
+import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatEventList, summarizeEvent } from "./format.js";
 import { planNight, recommendEvents } from "./planner.js";
 
@@ -35,7 +36,14 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
       case "cities":
         io.stdout.write(SUPPORTED_CITIES.join("\n") + "\n");
         break;
+      case "doctor": {
+        const report = await runDoctor();
+        io.stdout.write(options.json ? JSON.stringify(report, null, 2) + "\n" : formatDoctorReport(report) + "\n");
+        return report.ok ? 0 : 1;
+      }
       case "help":
+      case "--help":
+      case "-h":
       case undefined:
         io.stdout.write(helpText());
         break;
@@ -43,11 +51,24 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
         throw new Error(`Unknown command: ${command}\n\n${helpText()}`);
     }
   } catch (error) {
-    io.stderr.write(`${error.message}\n`);
+    io.stderr.write(formatCliError(error) + "\n");
     return 1;
   }
 
   return 0;
+}
+
+export function formatCliError(error) {
+  const lines = [error.message];
+  if (error.code) lines.push(`  code: ${error.code}`);
+  if (error.status != null) lines.push(`  status: HTTP ${error.status}`);
+  if (error.hostname) lines.push(`  host: ${error.hostname}`);
+  if (error.url) lines.push(`  url: ${error.url}`);
+  if (error.retryable) lines.push("  retryable: yes — this is usually temporary, try again shortly");
+  if (error instanceof EventChatAPIError) {
+    lines.push("  hint: run `uplayground-events doctor` to diagnose connectivity");
+  }
+  return lines.join("\n");
 }
 
 export function parseArgs(args) {
@@ -75,7 +96,7 @@ export function parseArgs(args) {
 }
 
 export function helpText() {
-  return `eventchat-events
+  return `uplayground-events (also installed as eventchat-events)
 
 Commands:
   search       Print live matching events.
@@ -83,15 +104,22 @@ Commands:
   plan         Return a compact night plan with fallbacks.
   get <id>     Fetch one event.
   cities       List supported cities.
+  doctor       Diagnose connectivity (DNS, health, MCP endpoint, live search). Add --json for machine-readable output.
+  help         Show this help (also --help / -h).
 
 Examples:
-  eventchat-events search --city berlin --when weekend --genres techno --limit 5
-  eventchat-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
-  eventchat-events plan --city london --when weekend --event-types party --avoid mainstream
+  uplayground-events search --city "los angeles" --when "this week" --limit 5
+  uplayground-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
+  uplayground-events plan --city london --when weekend --event-types party --avoid mainstream
+  uplayground-events doctor
 
 Environment:
-  EVENTCHAT_API_BASE_URL overrides the API base URL.
-  EVENTCHAT_WEB_BASE_URL overrides public event links.
+  EVENTCHAT_API_BASE_URL            overrides the events API base URL.
+  EVENTCHAT_WEB_BASE_URL            overrides public event links.
+  EVENTCHAT_MCP_URL                 overrides the hosted MCP endpoint (doctor, smoke, monitor).
+  EVENTCHAT_API_TIMEOUT_MS          per-request timeout (default 8000).
+  EVENTCHAT_API_RETRIES             retries for transient network/5xx failures (default 2).
+  EVENTCHAT_API_RETRY_BASE_DELAY_MS backoff base delay (default 250).
 `;
 }
 

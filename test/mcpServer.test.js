@@ -19,6 +19,9 @@ test("MCP initialize exposes server instructions for cross-tool workflows", asyn
   assert.match(response.instructions, /profile_id and profile_secret/);
   assert.match(response.instructions, /get_event_search_followups/);
   assert.match(response.instructions, /record_event_feedback/);
+  assert.match(response.instructions, /get_ticket_offers/);
+  assert.match(response.instructions, /purchase_ticket_order/);
+  assert.match(response.instructions, /Hermes, OpenClaw/);
 });
 
 test("MCP lists event tools", async () => {
@@ -36,7 +39,12 @@ test("MCP lists event tools", async () => {
     "recommend_events",
     "recommend_events_for_user",
     "plan_night",
-    "get_event"
+    "get_event",
+    "get_ticket_purchase_policy",
+    "get_ticket_offers",
+    "quote_ticket_order",
+    "purchase_ticket_order",
+    "create_event_calendar_file"
   ]);
 });
 
@@ -56,6 +64,11 @@ test("MCP tool annotations describe read, write, and destructive behavior", asyn
   assert.equal(tools.delete_event_preferences.annotations.destructiveHint, true);
   assert.equal(tools.delete_event_preferences.annotations.readOnlyHint, false);
   assert.equal(tools.delete_event_preferences.annotations.openWorldHint, false);
+  assert.equal(tools.get_ticket_offers.annotations.readOnlyHint, true);
+  assert.equal(tools.quote_ticket_order.annotations.readOnlyHint, true);
+  assert.equal(tools.purchase_ticket_order.annotations.readOnlyHint, false);
+  assert.equal(tools.purchase_ticket_order.annotations.destructiveHint, true);
+  assert.equal(tools.purchase_ticket_order.annotations.openWorldHint, true);
 });
 
 test("MCP tool metadata is review-friendly", async () => {
@@ -94,6 +107,11 @@ test("MCP output schemas expose reusable structured fields", async () => {
   assert.equal(tools.delete_event_preferences.inputSchema.properties.confirm_delete.type, "boolean");
   assert.ok(tools.delete_event_preferences.inputSchema.required.includes("confirm_delete"));
   assert.equal(tools.delete_event_preferences.outputSchema.anyOf[0].properties.deleted.type, "boolean");
+  assert.equal(tools.get_ticket_purchase_policy.outputSchema.anyOf[0].properties.supported_modes.items.type, "string");
+  assert.equal(tools.get_ticket_offers.outputSchema.anyOf[0].properties.offers.items.properties.purchase_mode.type, "string");
+  assert.equal(tools.quote_ticket_order.outputSchema.anyOf[0].properties.quote_token.type, "string");
+  assert.ok(tools.purchase_ticket_order.inputSchema.required.includes("confirmation_text"));
+  assert.equal(tools.purchase_ticket_order.outputSchema.anyOf[0].properties.purchased.type, "boolean");
 });
 
 test("MCP get_event_search_followups asks for missing event type and vibe", async () => {
@@ -176,6 +194,110 @@ test("MCP search_events returns structured tool errors for slow upstream calls",
   assert.match(response.content[0].text, /timed out/);
 });
 
+test("MCP ticket tools quote and hand off third-party checkout after written confirmation", async () => {
+  const options = {
+    fetch: async () => Response.json({
+      id: "event-1",
+      title: "Ostbahnhof XL",
+      start_time: "2026-06-13T13:00:00Z",
+      end_time: "2026-06-14T02:00:00Z",
+      venue_name: "Psstudio",
+      venue_city: "los angeles",
+      price_min: 100,
+      price_max: 100,
+      currency: "USD",
+      source: "resident_advisor",
+      source_display: "resident_advisor",
+      ticket_url: "https://ra.co/events/2339406",
+      genres: ["techno"],
+      vibe: ["warehouse"],
+      event_types: ["party"],
+      lineup: []
+    }),
+    now: new Date("2026-06-10T12:00:00Z")
+  };
+
+  const offers = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_ticket_offers", arguments: { event_id: "event-1" } }
+  }, options);
+
+  assert.equal(offers.structuredContent.count, 1);
+  assert.equal(offers.structuredContent.offers[0].provider, "resident_advisor");
+  assert.equal(offers.structuredContent.offers[0].purchase_mode, "external_checkout");
+  assert.equal(offers.structuredContent.offers[0].autonomous_purchase_supported, false);
+
+  const quote = await handleMcpRequest({
+    method: "tools/call",
+    params: {
+      name: "quote_ticket_order",
+      arguments: {
+        event_id: "event-1",
+        quantity: 2,
+        ticket_type: "GA",
+        max_total: 240,
+        currency: "USD"
+      }
+    }
+  }, options);
+
+  assert.equal(quote.structuredContent.quoted, true);
+  assert.equal(quote.structuredContent.quote.quantity, 2);
+  assert.equal(quote.structuredContent.quote.max_total, 240);
+  assert.match(quote.structuredContent.confirmation_prompt, /Yes, buy 2 ticket/);
+
+  const purchase = await handleMcpRequest({
+    method: "tools/call",
+    params: {
+      name: "purchase_ticket_order",
+      arguments: {
+        quote_token: quote.structuredContent.quote_token,
+        confirmation_text: "Yes, buy 2 tickets for Ostbahnhof XL, max total USD240. Stop if price, date, venue, ticket type, quantity, or refund terms change."
+      }
+    }
+  }, options);
+
+  assert.equal(purchase.structuredContent.purchased, false);
+  assert.equal(purchase.structuredContent.status, "requires_external_checkout");
+  assert.equal(purchase.structuredContent.checkout_url, "https://ra.co/events/2339406");
+  assert.match(purchase.structuredContent.assistant_instruction, /do not claim the agent bought/);
+});
+
+test("MCP purchase_ticket_order rejects vague confirmation", async () => {
+  const options = {
+    fetch: async () => Response.json({
+      id: "event-1",
+      title: "Club Night",
+      ticket_url: "https://tickets.example.test/event-1",
+      source: "hermes",
+      genres: [],
+      vibe: [],
+      event_types: [],
+      lineup: []
+    }),
+    now: new Date("2026-06-10T12:00:00Z")
+  };
+  const quote = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "quote_ticket_order", arguments: { event_id: "event-1", quantity: 2, max_total: 80 } }
+  }, options);
+
+  const purchase = await handleMcpRequest({
+    method: "tools/call",
+    params: {
+      name: "purchase_ticket_order",
+      arguments: {
+        quote_token: quote.structuredContent.quote_token,
+        confirmation_text: "sounds good"
+      }
+    }
+  }, options);
+
+  assert.equal(purchase.structuredContent.purchased, false);
+  assert.equal(purchase.structuredContent.status, "confirmation_required");
+  assert.match(purchase.structuredContent.error, /buy or purchase/);
+});
+
 test("MCP stdio framing reads and writes Content-Length messages", () => {
   const payload = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" });
   const framed = `Content-Length: ${Buffer.byteLength(payload, "utf8")}\r\n\r\n${payload}extra`;
@@ -187,4 +309,53 @@ test("MCP stdio framing reads and writes Content-Length messages", () => {
   let written = "";
   writeMcpMessage({ write: (chunk) => { written += chunk; } }, { jsonrpc: "2.0", id: 1, result: {} });
   assert.match(written, /^Content-Length: \d+\r\n\r\n\{/);
+});
+
+test("MCP search_events reports DNS failures as retryable with cause, code, hostname, and url", async () => {
+  const dnsError = new TypeError("fetch failed");
+  dnsError.cause = Object.assign(new Error("getaddrinfo EAI_AGAIN backend.example.test"), {
+    code: "EAI_AGAIN",
+    syscall: "getaddrinfo",
+    hostname: "backend.example.test"
+  });
+
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "los angeles", when: "week", limit: 1 } }
+  }, {
+    config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
+    retries: 1,
+    sleep: async () => {},
+    fetch: async () => { throw dnsError; }
+  });
+
+  assert.equal(response.isError, true);
+  const body = response.structuredContent;
+  assert.equal(body.retryable, true, "EAI_AGAIN must be reported as retryable");
+  assert.equal(body.code, "EAI_AGAIN");
+  assert.equal(body.classification, "dns");
+  assert.equal(body.type, "EventChatNetworkError");
+  assert.equal(body.status, null);
+  assert.equal(body.hostname, "backend.example.test");
+  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
+  assert.match(body.error, /DNS lookup for backend\.example\.test failed \(EAI_AGAIN\)/);
+  assert.match(body.cause, /getaddrinfo EAI_AGAIN/);
+  assert.match(body.assistant_instruction, /Retry the same call/);
+});
+
+test("MCP search_events reports retryable HTTP 5xx errors with status", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
+  }, {
+    config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
+    retries: 0,
+    fetch: async () => new Response("upstream exploded", { status: 503 })
+  });
+
+  assert.equal(response.isError, true);
+  const body = response.structuredContent;
+  assert.equal(body.status, 503);
+  assert.equal(body.retryable, true);
+  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
 });

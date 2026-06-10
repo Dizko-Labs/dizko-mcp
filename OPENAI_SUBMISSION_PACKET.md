@@ -122,9 +122,9 @@ Submission auth type:
 noauth
 ```
 
-Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector `profile_id` plus the private `profile_secret` returned when the user opts in to preference memory.
+Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector `profile_id` plus the private `profile_secret` returned when the user opts in to preference memory. Ticket purchase tools require an event-specific locked quote and explicit written confirmation; third-party-only offers return external checkout handoff unless an integrated provider is configured.
 
-All 13 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
+All 18 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
 
 Tool descriptors also include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`, with verifier-enforced strings under the 64-character limit.
 
@@ -171,7 +171,8 @@ Use these in ChatGPT Developer Mode on web and mobile and capture screenshots.
 2. Find something good tonight in Berlin, but ask me what kind of event and vibe first.
 3. Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.
 4. Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.
-5. Delete my UPlayground saved event preferences and feedback history.
+5. Show ticket options for a returned event, quote 2 tickets with a max total, and ask me for written confirmation before purchase.
+6. Delete my UPlayground saved event preferences and feedback history.
 
 Expected behavior:
 
@@ -180,6 +181,7 @@ Expected behavior:
 - Preference creation uses consent-first onboarding.
 - Personalized recommendations use saved preferences plus learned feedback.
 - Post-event learning uses `get_event_feedback_prompt` before `record_event_feedback`; empty feedback is rejected.
+- Ticket-purchase prompts use `get_ticket_offers`, `quote_ticket_order`, and written confirmation before `purchase_ticket_order`; third-party-only offers return checkout handoff rather than a false purchase claim.
 - Deletion calls `delete_event_preferences` only after explicit confirmation and explains the UPlayground-only deletion scope.
 
 ## Screenshot Checklist
@@ -187,7 +189,7 @@ Expected behavior:
 Capture these from the actual ChatGPT connector flow:
 
 - Connector setup screen showing the Railway MCP endpoint connected.
-- Tool list or tool-call details showing 13 UPlayground Events tools.
+- Tool list or tool-call details showing 17 UPlayground Events tools.
 - Live event search result with at least one event URL.
 - Current-context follow-up questions before a broad tonight/week/weekend search.
 - Consent-first preference onboarding.
@@ -229,7 +231,7 @@ Latest preflight passed with:
 - support page
 - logo asset
 - security.txt
-- 13 tool descriptors
+- 18 tool descriptors
 - tool annotations
 - output schemas
 - rate-limit headers

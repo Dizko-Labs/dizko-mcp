@@ -25,7 +25,11 @@ const requiredTools = [
   "recommend_events",
   "recommend_events_for_user",
   "plan_night",
-  "get_event"
+  "get_event",
+  "get_ticket_purchase_policy",
+  "get_ticket_offers",
+  "quote_ticket_order",
+  "purchase_ticket_order"
 ];
 
 const requiredAnnotations = {
@@ -36,7 +40,10 @@ const requiredAnnotations = {
   record_event_feedback: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   get_event_feedback_prompt: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   get_event_search_followups: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  delete_event_preferences: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }
+  delete_event_preferences: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  get_ticket_offers: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  quote_ticket_order: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  purchase_ticket_order: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
 };
 
 async function main() {
@@ -316,6 +323,11 @@ async function checkTools() {
   assert(toolsByName.delete_event_preferences.inputSchema?.properties?.confirm_delete?.type === "boolean", "delete_event_preferences inputSchema missing confirm_delete");
   assert(toolsByName.delete_event_preferences.inputSchema?.required?.includes("confirm_delete"), "delete_event_preferences inputSchema must require confirm_delete");
   assert(toolsByName.delete_event_preferences.outputSchema?.anyOf?.[0]?.properties?.deleted?.type === "boolean", "delete_event_preferences outputSchema missing deleted");
+  assert(toolsByName.get_ticket_purchase_policy.outputSchema?.anyOf?.[0]?.properties?.supported_modes?.items?.type === "string", "get_ticket_purchase_policy outputSchema missing supported_modes");
+  assert(toolsByName.get_ticket_offers.outputSchema?.anyOf?.[0]?.properties?.offers?.items?.properties?.purchase_mode?.type === "string", "get_ticket_offers outputSchema missing purchase_mode");
+  assert(toolsByName.quote_ticket_order.outputSchema?.anyOf?.[0]?.properties?.quote_token?.type === "string", "quote_ticket_order outputSchema missing quote_token");
+  assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("confirmation_text"), "purchase_ticket_order inputSchema must require confirmation_text");
+  assert(toolsByName.purchase_ticket_order.outputSchema?.anyOf?.[0]?.properties?.purchased?.type === "boolean", "purchase_ticket_order outputSchema missing purchased");
 
   for (const [toolName, annotations] of Object.entries(requiredAnnotations)) {
     const tool = toolsByName[toolName];

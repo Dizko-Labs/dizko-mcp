@@ -1,7 +1,7 @@
 {
   "app_name": "UPlayground Events",
   "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.",
-  "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.",
+  "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.",
   "mcp_endpoint": "https://eventchat-events-mcp-production.up.railway.app/mcp",
   "company_url": "https://urbanplayground.xyz",
   "privacy_policy_url": "https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html",
@@ -19,7 +19,7 @@
   },
   "authentication": {
     "type": "noauth",
-    "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory."
+    "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory. Ticket purchase requires a locked event quote and explicit written confirmation; third-party-only links return checkout handoff unless an integrated purchase provider is configured."
   },
   "do_not_submit_urls": [
     {
@@ -53,6 +53,10 @@
     {
       "prompt": "Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.",
       "expected_behavior": "Calls get_event_feedback_prompt before record_event_feedback, records only liked/disliked, rating, or notes, then explains saved positive or negative learning signals."
+    },
+    {
+      "prompt": "Show ticket options for a returned event, quote 2 tickets with a max total, and ask me for written confirmation before purchase.",
+      "expected_behavior": "Calls get_ticket_offers and quote_ticket_order, asks for explicit written confirmation, then calls purchase_ticket_order only after confirmation. Third-party-only offers return checkout handoff instead of claiming autonomous purchase."
     },
     {
       "prompt": "Delete my UPlayground saved event preferences and feedback history.",

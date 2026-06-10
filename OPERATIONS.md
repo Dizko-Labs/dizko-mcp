@@ -45,8 +45,8 @@ npm run smoke:live
 Expected:
 
 - `/health` returns `{"ok":true,"name":"eventchat-events"}`.
-- `npm run monitor:live` reports `ok: true`, health and metadata success, 13 tools, and at least one live read-only search result. This command does not create preference profiles or write feedback.
-- `npm run smoke:live` reports `ok: true`, 13 tools, a live sample event, search follow-up questions, and feedback-prompt questions.
+- `npm run monitor:live` reports `ok: true`, health and metadata success, 18 tools, and at least one live read-only search result. This command does not create preference profiles, write feedback, or attempt ticket purchases.
+- `npm run smoke:live` reports `ok: true`, 18 tools, a live sample event, search follow-up questions, and feedback-prompt questions.
 
 For hosted uptime monitoring, run `npm run monitor:live` on a 5 to 15 minute interval and alert on any non-zero exit. Keep `npm run smoke:live` as a daily or pre-release check because it also exercises temporary preference profile creation and deletion.
 

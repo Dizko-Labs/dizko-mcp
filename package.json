@@ -1,12 +1,35 @@
 {
-  "name": "@uplayground/eventchat-events",
-  "version": "0.1.0",
+  "name": "uplayground-events",
+  "version": "0.2.1",
   "description": "CLI and MCP server for live UPlayground event discovery.",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "events",
+    "event-discovery",
+    "chatgpt",
+    "claude",
+    "uplayground",
+    "urbanplayground"
+  ],
+  "homepage": "https://urbanplayground.xyz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZakKrevitt/EventChat.git",
+    "directory": "ios/EventChat/agent-tools/eventchat-events"
+  },
+  "bugs": {
+    "url": "https://github.com/ZakKrevitt/EventChat/issues"
+  },
   "bin": {
-    "eventchat-events": "./bin/eventchat-events.js",
-    "eventchat-events-http": "./bin/eventchat-events-http.js",
-    "eventchat-events-mcp": "./bin/eventchat-events-mcp.js"
+    "uplayground-events": "bin/eventchat-events.js",
+    "eventchat-events": "bin/eventchat-events.js",
+    "eventchat-events-http": "bin/eventchat-events-http.js",
+    "eventchat-events-mcp": "bin/eventchat-events-mcp.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "bin/",

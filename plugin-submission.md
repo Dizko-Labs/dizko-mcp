@@ -29,6 +29,7 @@ Find current concerts, parties, nightlife, festivals, and cultural events from U
 ## Long Description
 
 UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.
+Ticket tools can show ticket offers, create locked quotes, require explicit written confirmation, and hand off third-party checkout. Autonomous purchase is only available when a bounded provider adapter such as Hermes, OpenClaw, UPlayground Checkout, a partner ticketing API, or delegated payment is configured.
 
 ## Discovery Phrases
 
@@ -120,6 +121,10 @@ http://127.0.0.1:8787/mcp
 - `recommend_events_for_user`: Recommend events using saved preferences, learned feedback signals, profile-secret access, and the current night/week request.
 - `plan_night`: Build a compact event plan with a primary option and fallbacks.
 - `get_event`: Fetch detail for a specific UPlayground event id.
+- `get_ticket_purchase_policy`: Explain purchase modes, safety rules, and provider requirements.
+- `get_ticket_offers`: Return ticket options and whether autonomous purchase is supported for a specific event.
+- `quote_ticket_order`: Create a locked quote with quantity, max total, ticket type, expiration, and stop conditions.
+- `purchase_ticket_order`: Require explicit written confirmation, then either execute an integrated provider purchase or return external checkout handoff.
 
 ## Privacy Notes
 
@@ -148,7 +153,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 - Tool list and descriptions are final.
 - Tool annotations correctly label read-only, write, destructive, and open-world behavior.
 - Tool descriptors include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`.
-- All current tools use `openWorldHint: false` because they read live event data or mutate private connector preference memory, but do not publish content, purchase tickets, message third parties, or change publicly visible internet state.
+- Search and preference tools use `openWorldHint: false`; `purchase_ticket_order` is destructive/open-world because it is the bounded action point for ticket purchase or checkout handoff.
 - Tool descriptors include `outputSchema` for structured event, recommendation, profile, feedback, deletion, and error responses.
 - Tonight/week/weekend discovery includes a dedicated current-context follow-up prompt tool before searching.
 - Post-event learning includes a dedicated follow-up prompt tool before saving feedback.
@@ -169,7 +174,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 Capture these from the actual ChatGPT connector flow before submitting:
 
 - Connector setup screen showing the Railway MCP endpoint connected.
-- Tool list or tool-call details showing UPlayground Events exposes 13 tools.
+- Tool list or tool-call details showing UPlayground Events exposes 18 tools.
 - Live search result for a current event prompt, including at least one event URL.
 - Current-context follow-up flow before a tonight/week/weekend search.
 - Consent-first preference onboarding before saving preferences.

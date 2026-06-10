@@ -8,12 +8,13 @@ export function resolveDateRange(preset, now = new Date()) {
   const local = new Date(now);
   const today = new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
 
-  switch ((preset || "").toLowerCase()) {
+  switch ((preset || "").toLowerCase().trim()) {
     case "":
     case "any":
       return {};
     case "today":
     case "tonight":
+    case "this evening":
       return { date_from: isoDate(today), date_to: isoDate(today) };
     case "tomorrow": {
       const tomorrow = new Date(today.getTime() + ONE_DAY_MS);
@@ -27,6 +28,7 @@ export function resolveDateRange(preset, now = new Date()) {
       return { date_from: isoDate(friday), date_to: isoDate(sunday) };
     }
     case "week":
+    case "this week":
     case "this-week": {
       const end = new Date(today.getTime() + 6 * ONE_DAY_MS);
       return { date_from: isoDate(today), date_to: isoDate(end) };
