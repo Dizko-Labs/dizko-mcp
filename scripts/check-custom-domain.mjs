@@ -1,6 +1,6 @@
 import { resolve4, resolve6, resolveCname } from "node:dns/promises";
 
-const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.urbanplayground.xyz";
+const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.uplayground.com";
 const expectedServerName = "eventchat-events";
 const endpointPath = "/mcp";
 

@@ -1,8 +1,11 @@
 import http from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { getEvent } from "./api.js";
+import { buildCalendarEvent } from "./calendar.js";
+import { eventLinkTargets } from "./format.js";
 import { createSdkMcpServer } from "./sdkServer.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -38,6 +41,7 @@ export function createHttpMcpServer(options = {}) {
           transport: "mcp-http",
           endpoint: "/mcp",
           health: "/health",
+          install: "/install",
           privacy: "/privacy-policy.html",
           support: "/support.html",
           terms: "/terms.html",
@@ -48,8 +52,35 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      if (request.method === "GET" && ["/privacy-policy.html", "/support.html", "/terms.html", "/user-guide.html"].includes(url.pathname)) {
+      if (request.method === "GET" && ["/privacy-policy.html", "/support.html", "/terms.html", "/user-guide.html", "/install.html"].includes(url.pathname)) {
         await sendStaticHtml(response, url.pathname.slice(1), corsHeaders(request, settings));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/install") {
+        await sendStaticHtml(response, "install.html", corsHeaders(request, settings));
+        return;
+      }
+
+      const shortLink = request.method === "GET" && url.pathname.match(/^\/e\/([^/]+)\/(cal|map|ics)$/);
+      if (shortLink) {
+        // Short links trigger upstream event lookups, so they share the
+        // /mcp rate limiter — random-id scans must not hammer the backend.
+        const rateLimit = rateLimiter.check(clientIp(request));
+        if (!rateLimit.allowed) {
+          sendJson(response, 429, { error: "Rate limit exceeded. Please retry shortly." }, {
+            ...corsHeaders(request, settings),
+            ...rateLimitHeadersFor(rateLimit),
+            "Retry-After": String(rateLimit.retryAfterSeconds)
+          });
+          return;
+        }
+        await handleEventShortLink(response, decodeURIComponent(shortLink[1]), shortLink[2], corsHeaders(request, settings), options);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/download/uplayground-events.mcpb") {
+        await sendMcpbBundle(response, corsHeaders(request, settings));
         return;
       }
 
@@ -138,6 +169,77 @@ export function runHttpMcpServer(env = process.env) {
     process.stderr.write(`eventchat-events MCP listening on http://${host}:${port}/mcp\n`);
   });
   return server;
+}
+
+// /e/<id>/cal -> 302 Google Calendar template, /e/<id>/map -> 302 Google
+// Maps directions, /e/<id>/ics -> downloadable calendar file. Short links
+// keep MCP tool payloads small; the full URLs are rebuilt on click.
+async function handleEventShortLink(response, eventId, kind, headers, options = {}) {
+  let event;
+  try {
+    event = await getEvent(eventId, options);
+  } catch (error) {
+    const status = error.status === 404 ? 404 : 502;
+    sendJson(response, status, {
+      error: status === 404
+        ? "Event not found — it may have ended or been removed."
+        : "Event lookup failed upstream. Try again shortly."
+    }, headers);
+    return;
+  }
+
+  if (kind === "ics") {
+    const calendarEvent = buildCalendarEvent(event, options);
+    response.writeHead(200, {
+      "Content-Type": "text/calendar; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${calendarEvent.ics_filename}"`,
+      "Cache-Control": "public, max-age=300",
+      ...securityHeaders(),
+      ...headers
+    });
+    response.end(calendarEvent.ics_content);
+    return;
+  }
+
+  const target = eventLinkTargets(event, options)[kind];
+  if (!target) {
+    sendJson(response, 404, {
+      error: kind === "cal"
+        ? "This event has no start time, so a calendar link is not available."
+        : "This event has no mappable location, so directions are not available."
+    }, headers);
+    return;
+  }
+
+  response.writeHead(302, {
+    Location: target,
+    "Cache-Control": "public, max-age=300",
+    ...headers
+  });
+  response.end();
+}
+
+async function sendMcpbBundle(response, headers = {}) {
+  let bundleFile = null;
+  try {
+    const files = await readdir(join(packageRoot, "dist"));
+    bundleFile = files.filter((file) => file.endsWith(".mcpb")).sort().pop() || null;
+  } catch {
+    bundleFile = null;
+  }
+  if (!bundleFile) {
+    sendJson(response, 404, { error: "Bundle not built on this deployment. Run `npm run build:mcpb` or install via /install instead." }, headers);
+    return;
+  }
+  const body = await readFile(join(packageRoot, "dist", bundleFile));
+  response.writeHead(200, {
+    "Content-Type": "application/zip",
+    "Content-Disposition": `attachment; filename="${bundleFile}"`,
+    "Cache-Control": "public, max-age=3600",
+    ...securityHeaders(),
+    ...headers
+  });
+  response.end(body);
 }
 
 async function readJson(request, maxBodyBytes) {

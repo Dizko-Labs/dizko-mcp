@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import { extractMessage, handleMcpRequest, writeMcpMessage } from "../src/mcpServer.js";
+import { clearEventCache } from "../src/api.js";
+
+beforeEach(() => clearEventCache());
 
 test("MCP initialize exposes server instructions for cross-tool workflows", async () => {
   const response = await handleMcpRequest({

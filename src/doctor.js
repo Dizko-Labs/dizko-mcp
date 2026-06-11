@@ -14,15 +14,17 @@ export async function runDoctor(options = {}) {
   const apiHost = hostnameFromUrl(config.apiBaseUrl);
   const mcpHost = hostnameFromUrl(config.mcpUrl);
 
-  const checks = [
-    await dnsCheck("api_dns", apiHost, lookup),
-    await dnsCheck("mcp_dns", mcpHost, lookup),
-    await httpCheck("api_health", `${config.apiBaseUrl}/health`, fetchImpl, timeoutMs),
-    await httpCheck("mcp_health", `${mcpBase}/health`, fetchImpl, timeoutMs),
-    await httpCheck("mcp_metadata", `${mcpBase}/`, fetchImpl, timeoutMs, (body) => body?.endpoint === "/mcp"),
-    await mcpToolsCheck(config.mcpUrl, fetchImpl, timeoutMs),
-    await liveSearchCheck(config, { ...options, fetch: options.fetch, timeoutMs })
-  ];
+  // All checks are independent — run them concurrently so doctor answers
+  // in one round-trip time instead of seven.
+  const checks = await Promise.all([
+    dnsCheck("api_dns", apiHost, lookup),
+    dnsCheck("mcp_dns", mcpHost, lookup),
+    httpCheck("api_health", `${config.apiBaseUrl}/health`, fetchImpl, timeoutMs),
+    httpCheck("mcp_health", `${mcpBase}/health`, fetchImpl, timeoutMs),
+    httpCheck("mcp_metadata", `${mcpBase}/`, fetchImpl, timeoutMs, (body) => body?.endpoint === "/mcp"),
+    mcpToolsCheck(config.mcpUrl, fetchImpl, timeoutMs),
+    liveSearchCheck(config, { ...options, fetch: options.fetch, timeoutMs })
+  ]);
 
   return {
     ok: checks.every((check) => check.ok),

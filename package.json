@@ -1,6 +1,7 @@
 {
   "name": "uplayground-events",
-  "version": "0.2.1",
+  "version": "0.3.0",
+  "mcpName": "xyz.urbanplayground/events",
   "description": "CLI and MCP server for live UPlayground event discovery.",
   "type": "module",
   "keywords": [
@@ -34,21 +35,12 @@
   "files": [
     "bin/",
     "src/",
-    "public/",
     "scripts/",
+    "public/*.html",
+    "public/logo-512.png",
     "README.md",
     "USER_GUIDE.md",
-    "DEPLOYMENT.md",
-    "OPERATIONS.md",
-    "OPENAI_SUBMISSION_PACKET.md",
-    "SCREENSHOT_CHECKLIST.md",
-    "SUBMISSION_AUDIT.md",
-    "SECURITY.md",
-    "plugin-submission.md",
-    "golden-prompts.md",
-    "submission-fields.json",
-    "Dockerfile",
-    "railway.json"
+    "SECURITY.md"
   ],
   "scripts": {
     "start": "node ./bin/eventchat-events-http.js",
@@ -63,6 +55,7 @@
     "preferences:delete": "node ./scripts/delete-preference-profile.mjs",
     "domain:check": "node ./scripts/check-custom-domain.mjs",
     "monitor:live": "node ./scripts/monitor-live.mjs",
+    "build:mcpb": "node ./scripts/build-mcpb.mjs",
     "preflight:submission": "npm test && npm run smoke:live && npm run verify:submission:bundle && npm run verify:submission:fields",
     "test": "node --test"
   },

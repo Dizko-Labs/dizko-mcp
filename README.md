@@ -1,10 +1,36 @@
 # EventChat Events CLI and MCP
 
+## Quick Start
+
+**Easiest — add the hosted endpoint to any MCP client (claude.ai, Claude Desktop, ChatGPT dev mode, Cursor). No install, no auth:**
+
+```text
+https://eventchat-events-mcp-production.up.railway.app/mcp
+```
+
+Step-by-step per client: **https://eventchat-events-mcp-production.up.railway.app/install**
+
+One-line client setup from a terminal (writes the config for you):
+
+```bash
+npx -y uplayground-events install claude-desktop   # or: cursor | claude-code | claude-ai | chatgpt
+```
+
+Local stdio server snippet for any MCP client config:
+
+```json
+{ "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }
+```
+
+Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/uplayground-events-<version>.mcpb` — double-click to install.
+
+---
+
 This package exposes UrbanPlayground's UPlayground live event inventory to agents and humans:
 
-- `eventchat-events`: a CLI for quick searches, ranked recommendations, and night plans.
-- `eventchat-events-mcp`: a stdio MCP server for local developer clients.
-- `eventchat-events-http`: an HTTP MCP server for hosted connectors/apps.
+- `uplayground-events` (alias `eventchat-events`): a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
+- `uplayground-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
+- `uplayground-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
 - Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/UPlayground purchase adapters.
 
 ## Why This Beats Normal Chat

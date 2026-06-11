@@ -2,6 +2,8 @@ import { getConfig, SUPPORTED_CITIES } from "./config.js";
 import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatEventList, summarizeEvent } from "./format.js";
+import { runInstall } from "./installer.js";
+import { runMcpServer } from "./mcpServer.js";
 import { planNight, recommendEvents } from "./planner.js";
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
@@ -40,6 +42,19 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
         const report = await runDoctor();
         io.stdout.write(options.json ? JSON.stringify(report, null, 2) + "\n" : formatDoctorReport(report) + "\n");
         return report.ok ? 0 : 1;
+      }
+      case "mcp":
+        await runMcpServer();
+        break;
+      case "serve": {
+        const { runHttpMcpServer } = await import("./httpServer.js");
+        await runHttpMcpServer();
+        break;
+      }
+      case "install": {
+        const target = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+        await runInstall(target, { write: (text) => io.stdout.write(text + "\n") });
+        break;
       }
       case "help":
       case "--help":
@@ -104,6 +119,9 @@ Commands:
   plan         Return a compact night plan with fallbacks.
   get <id>     Fetch one event.
   cities       List supported cities.
+  install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.
+  mcp          Run the local stdio MCP server (use in MCP client configs: npx -y uplayground-events mcp).
+  serve        Run the HTTP MCP server (same as the hosted endpoint).
   doctor       Diagnose connectivity (DNS, health, MCP endpoint, live search). Add --json for machine-readable output.
   help         Show this help (also --help / -h).
 
@@ -111,6 +129,7 @@ Examples:
   uplayground-events search --city "los angeles" --when "this week" --limit 5
   uplayground-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
   uplayground-events plan --city london --when weekend --event-types party --avoid mainstream
+  uplayground-events install claude-desktop
   uplayground-events doctor
 
 Environment:

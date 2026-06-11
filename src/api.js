@@ -49,7 +49,9 @@ export function buildEventQuery(input = {}, now = new Date()) {
     q: input.query,
     featuring: input.featuring,
     venue: input.venue,
-    limit: input.limit ?? 25,
+    // 12 by default: models rarely render more, the response carries the
+    // total count, and callers page with limit/offset when they want more.
+    limit: input.limit ?? 12,
     offset: input.offset ?? 0
   };
 
@@ -68,35 +70,78 @@ export async function searchEvents(input = {}, options = {}) {
   const config = options.config || getConfig(options.env);
   const url = new URL("/events", config.apiBaseUrl);
   url.search = buildEventQuery(input, options.now).toString();
-
-  const response = await fetchApi(url, config, options, "Event search");
-
-  if (!response.ok) {
-    throw new EventChatAPIError(`Event search failed with HTTP ${response.status}`, {
-      status: response.status,
-      body: await safeText(response),
-      url: String(url)
-    });
-  }
-
-  return response.json();
+  return fetchJsonCached(url, config, options, "Event search");
 }
 
 export async function getEvent(id, options = {}) {
   const config = options.config || getConfig(options.env);
   const url = new URL(`/events/${encodeURIComponent(id)}`, config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "Event lookup");
+}
 
-  const response = await fetchApi(url, config, options, "Event lookup");
+// In-memory response cache. Fresh entries short-circuit the network;
+// expired entries are kept for a stale window and served only when the
+// upstream fails with a retryable (network/5xx) error, so a backend blip
+// degrades to slightly-old results instead of an error. Concurrent
+// identical requests share one in-flight fetch instead of stampeding.
+const responseCache = new Map();
+const inFlight = new Map();
+const CACHE_MAX_ENTRIES = 200;
 
-  if (!response.ok) {
-    throw new EventChatAPIError(`Event lookup failed with HTTP ${response.status}`, {
-      status: response.status,
-      body: await safeText(response),
-      url: String(url)
-    });
+export function clearEventCache() {
+  responseCache.clear();
+  inFlight.clear();
+}
+
+async function fetchJsonCached(url, config, options, label) {
+  const key = String(url);
+  const ttlMs = options.cacheTtlMs ?? config.apiCacheTtlMs ?? 300_000;
+  const staleMs = options.cacheStaleMs ?? config.apiCacheStaleMs ?? 3_600_000;
+  const clock = options.clock || Date.now;
+  const now = clock();
+  const entry = ttlMs > 0 ? responseCache.get(key) : undefined;
+
+  if (entry && now - entry.storedAt < ttlMs) {
+    return structuredClone(entry.body);
   }
 
-  return response.json();
+  try {
+    if (ttlMs > 0 && inFlight.has(key)) {
+      return structuredClone(await inFlight.get(key));
+    }
+
+    const request = (async () => {
+      const response = await fetchApi(url, config, options, label);
+      if (!response.ok) {
+        throw new EventChatAPIError(`${label} failed with HTTP ${response.status}`, {
+          status: response.status,
+          body: await safeText(response),
+          url: key
+        });
+      }
+      return response.json();
+    })();
+
+    if (ttlMs > 0) inFlight.set(key, request);
+    try {
+      const body = await request;
+      if (ttlMs > 0) {
+        responseCache.delete(key);
+        responseCache.set(key, { body: structuredClone(body), storedAt: now });
+        if (responseCache.size > CACHE_MAX_ENTRIES) {
+          responseCache.delete(responseCache.keys().next().value);
+        }
+      }
+      return body;
+    } finally {
+      if (ttlMs > 0) inFlight.delete(key);
+    }
+  } catch (error) {
+    if (entry && error.retryable === true && now - entry.storedAt < staleMs) {
+      return structuredClone(entry.body);
+    }
+    throw error;
+  }
 }
 
 // GET with a conservative bounded retry: transient network failures

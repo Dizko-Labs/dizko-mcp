@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import { buildEventQuery, EventChatAPIError, getEvent, searchEvents } from "../src/api.js";
+import { clearEventCache } from "../src/api.js";
+
+beforeEach(() => clearEventCache());
 
 test("buildEventQuery maps structured filters to API params", () => {
   const params = buildEventQuery({

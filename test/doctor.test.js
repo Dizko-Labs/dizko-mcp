@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import { TOOL_VERSION } from "../src/config.js";
 import { formatDoctorReport, runDoctor } from "../src/doctor.js";
+import { clearEventCache } from "../src/api.js";
+
+beforeEach(() => clearEventCache());
 
 const ENV = {
   EVENTCHAT_API_BASE_URL: "https://api.example.test",

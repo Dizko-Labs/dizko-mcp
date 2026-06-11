@@ -62,3 +62,19 @@ test("formatCliError keeps plain errors to a single line", () => {
   const text = formatCliError(new Error("Usage: eventchat-events get <event-id>"));
   assert.equal(text, "Usage: eventchat-events get <event-id>");
 });
+
+test("help text documents the mcp, serve, and install commands", () => {
+  const text = helpText();
+  assert.match(text, /\binstall\b/);
+  assert.match(text, /\bmcp\b/);
+  assert.match(text, /\bserve\b/);
+  assert.match(text, /npx -y uplayground-events mcp/);
+});
+
+test("install with an unknown target exits 1 with the overview", async () => {
+  const io = fakeIo();
+  const code = await runCli(["install", "emacs"], io);
+  assert.equal(code, 1);
+  assert.match(io.stderrText(), /Unknown install target: emacs/);
+  assert.match(io.stderrText(), /claude-desktop/);
+});
