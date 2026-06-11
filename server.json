@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "xyz.urbanplayground/events",
+  "description": "Live event discovery: concerts, club nights, art, comedy, and festivals across 14 cities. No account or API key required.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/ZakKrevitt/EventChat",
+    "source": "github",
+    "subfolder": "ios/EventChat/agent-tools/eventchat-events"
+  },
+  "version": "0.3.0",
+  "websiteUrl": "https://urbanplayground.xyz",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://eventchat-events-mcp-production.up.railway.app/mcp"
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "uplayground-events",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "mcp",
+          "description": "Runs the stdio MCP server."
+        }
+      ]
+    }
+  ]
+}

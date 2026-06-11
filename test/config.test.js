@@ -65,3 +65,13 @@ test("getConfig falls back to defaults for invalid numeric env values", () => {
 test("getConfig allows zero retries", () => {
   assert.equal(getConfig({ EVENTCHAT_API_RETRIES: "0" }).apiRetries, 0);
 });
+
+test("getConfig exposes cache TTL and stale-window settings with env overrides", () => {
+  const defaults = getConfig({});
+  assert.equal(defaults.apiCacheTtlMs, 300_000);
+  assert.equal(defaults.apiCacheStaleMs, 3_600_000);
+
+  const overridden = getConfig({ EVENTCHAT_API_CACHE_TTL_MS: "0", EVENTCHAT_API_CACHE_STALE_MS: "60000" });
+  assert.equal(overridden.apiCacheTtlMs, 0, "0 must be honored to disable caching");
+  assert.equal(overridden.apiCacheStaleMs, 60_000);
+});

@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import { FilePreferenceStore } from "../src/preferences.js";
 import { callTool } from "../src/tools.js";
+import { clearEventCache } from "../src/api.js";
+
+beforeEach(() => clearEventCache());
 
 test("preference tools require consent and persist saved preferences", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));

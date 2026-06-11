@@ -10,6 +10,9 @@ COPY src ./src
 COPY public ./public
 COPY scripts ./scripts
 
+# Build the Claude Desktop one-click bundle, served at /download/uplayground-events.mcpb
+RUN apk add --no-cache zip && node ./scripts/build-mcpb.mjs && apk del zip
+
 ENV NODE_ENV=production
 ENV EVENTCHAT_MCP_HOST=0.0.0.0
 ENV EVENTCHAT_MCP_PORT=8787

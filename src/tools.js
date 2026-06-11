@@ -17,6 +17,16 @@ import {
   quoteTicketOrder
 } from "./tickets.js";
 
+export const EVENT_LINKS_INSTRUCTION = [
+  "Render events as a markdown list with one block per event and each fact on its own line, using this template:",
+  "**[<title>](<event_url>)**",
+  "- When: <weekday, date, start time> · [Add to calendar](<calendar_url>)",
+  "- Where: <venue>, <city> · [Get directions](<directions_url>)",
+  "- What: <description, or genres/vibe tags if no description>",
+  "- Price: <price> · [Tickets](<ticket_url>)",
+  "Always link the event title to event_url (the UPlayground event page), never to ticket_url. Make every link clickable markdown. Omit any line whose data is missing. Do not merge facts onto one line."
+].join("\n");
+
 const rawTools = [
   {
     name: "get_preference_onboarding",
@@ -256,7 +266,13 @@ const rawTools = [
       },
       required: ["id"]
     },
-    outputSchema: withError(eventSummarySchema())
+    outputSchema: withError({
+      ...eventSummarySchema(),
+      properties: {
+        ...eventSummarySchema().properties,
+        assistant_instruction: { type: "string" }
+      }
+    })
   },
   {
     name: "get_ticket_purchase_policy",
@@ -489,11 +505,15 @@ export async function callTool(name, input = {}, options = {}) {
       const response = await searchEvents(input, options);
       return toolJson({
         count: response.count ?? response.events?.length ?? 0,
-        events: (response.events || []).map((event) => summarizeEvent(event))
+        events: (response.events || []).map((event) => summarizeEvent(event)),
+        assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
     case "recommend_events":
-      return toolJson(await recommendEvents(input, options));
+      return toolJson({
+        ...await recommendEvents(input, options),
+        assistant_instruction: EVENT_LINKS_INSTRUCTION
+      });
     case "recommend_events_for_user": {
       const access = await requireProfileAccess(store, input);
       if (access.error) return access.error;
@@ -521,13 +541,20 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson({
         profile: publicProfile(profile),
         personalization: personalizationSummary(profile, input, preferences),
-        ...response
+        ...response,
+        assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
     case "plan_night":
-      return toolJson(await planNight(input, options));
+      return toolJson({
+        ...await planNight(input, options),
+        assistant_instruction: EVENT_LINKS_INSTRUCTION
+      });
     case "get_event":
-      return toolJson(summarizeEvent(await getEvent(input.id, options)));
+      return toolJson({
+        ...summarizeEvent(await getEvent(input.id, options)),
+        assistant_instruction: EVENT_LINKS_INSTRUCTION
+      });
     case "get_ticket_purchase_policy":
       return toolJson({
         ...TICKET_PURCHASE_POLICY,
@@ -579,7 +606,10 @@ export function toolJson(value, isError = false) {
     content: [
       {
         type: "text",
-        text: JSON.stringify(value, null, 2)
+        // Minified on purpose: this text duplicates structuredContent for
+        // clients that only read content, and pretty-printing a 25-event
+        // result costs the model thousands of wasted tokens.
+        text: JSON.stringify(value)
       }
     ],
     isError
@@ -721,7 +751,8 @@ function eventSearchSchema() {
       featuring: { type: "string", description: "Artist or performer name." },
       venue: { type: "string" },
       avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in recommendations." },
-      limit: { type: "number", default: 25 },
+      limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events — raise limit or use offset to page through more." },
+      offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
     }
   };
@@ -846,7 +877,8 @@ function eventsOutputSchema() {
       events: {
         type: "array",
         items: eventSummarySchema()
-      }
+      },
+      assistant_instruction: { type: "string" }
     },
     required: ["count", "events"]
   });
@@ -860,7 +892,8 @@ function rankedEventsOutputSchema() {
       events: {
         type: "array",
         items: rankedEventSchema()
-      }
+      },
+      assistant_instruction: { type: "string" }
     },
     required: ["count", "events"]
   });
@@ -879,7 +912,8 @@ function userRecommendationsOutputSchema() {
       },
       onboarding_needed: { type: "boolean" },
       questions: stringArray(),
-      message: { type: "string" }
+      message: { type: "string" },
+      assistant_instruction: { type: "string" }
     }
   });
 }
@@ -894,7 +928,8 @@ function planOutputSchema() {
       events: {
         type: "array",
         items: rankedEventSchema()
-      }
+      },
+      assistant_instruction: { type: "string" }
     },
     required: ["city", "when", "strategy", "events"]
   });
@@ -1109,8 +1144,11 @@ function eventSummarySchema() {
       lineup: stringArray(),
       attendance_count: nullableNumber(),
       source: nullableString(),
+      description: { ...nullableString(), description: "Short one-line event description for display." },
       ticket_url: nullableString(),
-      event_url: { type: "string" }
+      event_url: { type: "string" },
+      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link — offer as 'Add to calendar'." },
+      directions_url: { ...nullableString(), description: "Google Maps directions link — offer as 'Get directions'." }
     },
     required: ["id", "title", "event_url"]
   };
