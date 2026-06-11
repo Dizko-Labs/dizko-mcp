@@ -73,7 +73,9 @@ export async function runInstall(target, options = {}) {
         `${result.alreadyInstalled ? "Updated" : "Added"} "${SERVER_NAME}" in ${result.path}`,
         result.backupPath ? `Previous config backed up to ${result.backupPath}` : "Created a new config file.",
         "Fully quit and reopen Claude Desktop to load it (requires Node via npx on first run).",
-        "Tip: claude.ai paid plans can skip this entirely — Settings -> Connectors -> Add custom connector:",
+        "Note: this runs the server locally, so Claude warns it can access your computer — true of any local extension.",
+        "Prefer no local access? On a paid Claude plan, skip this and add the hosted connector instead:",
+        "  Settings -> Connectors -> Add custom connector ->",
         `  ${config.mcpUrl}`
       ].join("\n"));
       return { ok: true, ...result };
@@ -122,17 +124,20 @@ export function installOverview(config) {
   return [
     "uplayground-events install <target>",
     "",
-    "Targets:",
-    "  claude-desktop   Write the local MCP server into claude_desktop_config.json",
-    "  cursor           Write the hosted endpoint into ~/.cursor/mcp.json",
-    "  claude-code      Print the one-line `claude mcp add` command",
-    "  claude-ai        Show claude.ai connector steps (no install needed)",
-    "  chatgpt          Show ChatGPT developer-mode connector steps",
-    "",
-    "Hosted MCP endpoint (works in any remote-MCP client, no auth):",
+    "Easiest + safest: add the hosted connector (runs on our servers, no local",
+    "access, no scary install warning). Paste this URL into your client's",
+    "Settings -> Connectors -> Add custom connector:",
     `  ${config.mcpUrl}`,
     "",
-    "Local stdio server snippet for any MCP client config:",
+    "Targets:",
+    "  claude-ai        Show claude.ai/ChatGPT hosted-connector steps (recommended, no install)",
+    "  claude-code      Print the one-line `claude mcp add` command (hosted)",
+    "  cursor           Write the hosted endpoint into ~/.cursor/mcp.json",
+    "  claude-desktop   Write the LOCAL MCP server into claude_desktop_config.json (advanced)",
+    "  chatgpt          Show ChatGPT developer-mode connector steps",
+    "",
+    "Advanced — local stdio server snippet (runs on your machine; Claude warns",
+    "it can access your computer, as with any local extension):",
     `  { "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }`
   ].join("\n");
 }
