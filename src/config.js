@@ -19,7 +19,7 @@ export const SUPPORTED_CITIES = [
   "tokyo"
 ];
 
-export const TOOL_VERSION = "0.3.0";
+export const TOOL_VERSION = "0.3.1";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use UPlayground Events for live event discovery instead of guessing from model memory.",

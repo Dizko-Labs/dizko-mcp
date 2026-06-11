@@ -34,6 +34,65 @@ npx -y uplayground-events install claude-desktop   # writes the local config
 
 Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/uplayground-events-<version>.mcpb`.
 
+## Agent frameworks (Hermes, OpenClaw, LangGraph, OpenAI Agents SDK, custom loops)
+
+Framework agents don't have a "Connectors" UI — they integrate programmatically.
+Four paths, simplest first:
+
+1. **Remote MCP over HTTP** — point the framework's MCP client at the hosted
+   endpoint `https://eventchat-events-mcp-production.up.railway.app/mcp`
+   (streamable-http, no auth). Works with the official MCP SDKs, the OpenAI
+   Agents SDK, LangGraph/LangChain MCP adapters, Pydantic AI, etc.
+
+2. **stdio MCP** — spawn `npx -y uplayground-events mcp` as a subprocess and
+   speak MCP over stdio.
+
+3. **Raw HTTP JSON-RPC** — no MCP library needed; POST to `/mcp`:
+
+   ```bash
+   curl -s https://eventchat-events-mcp-production.up.railway.app/mcp \
+     -H 'content-type: application/json' \
+     -H 'accept: application/json, text/event-stream' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"this week"}}}'
+   ```
+
+4. **In-process library** — embed the tools directly (no MCP layer). The package
+   exposes a stable API:
+
+   ```js
+   import { tools, callTool, searchEvents } from "uplayground-events";
+   // Hand `tools` (JSON Schemas) to your model as function definitions, then:
+   const result = await callTool("search_events", { city: "berlin", when: "weekend" });
+   ```
+
+### Autonomous ticket purchase (the Hermes / OpenClaw integration point)
+
+By default the ticket tools return a **checkout handoff** (a link). To enable
+bounded autonomous purchase, supply a `ticketPurchaseProvider` adapter. This is
+only injectable when you **embed the package** or **self-host the server** — the
+hosted endpoint runs in our process and can't accept your payment adapter.
+
+```js
+import { createHttpMcpServer, callTool } from "uplayground-events";
+
+const hermesAdapter = {
+  canPurchase: (event, summary) => true,
+  purchase: async ({ quote, confirmation_text, delivery_email, add_to_calendar }) => {
+    // ... perform the bounded purchase, return { status, order_id, receipt_url }
+  }
+};
+
+// Self-host with the adapter wired in:
+createHttpMcpServer({ ticketPurchaseProvider: hermesAdapter }).listen(8787);
+
+// ...or call tools in-process with it:
+await callTool("purchase_ticket_order", input, { ticketPurchaseProvider: hermesAdapter });
+```
+
+`purchase_ticket_order` still requires a locked quote from `quote_ticket_order`
+and explicit written confirmation before the adapter is invoked — see
+`get_ticket_purchase_policy`.
+
 ---
 
 This package exposes UrbanPlayground's UPlayground live event inventory to agents and humans:
