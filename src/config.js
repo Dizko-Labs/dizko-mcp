@@ -6,6 +6,7 @@ export const SUPPORTED_CITIES = [
   "amsterdam",
   "barcelona",
   "berlin",
+  "denver",
   "istanbul",
   "lisbon",
   "london",
