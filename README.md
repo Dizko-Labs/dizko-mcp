@@ -2,27 +2,37 @@
 
 ## Quick Start
 
-**Easiest — add the hosted endpoint to any MCP client (claude.ai, Claude Desktop, ChatGPT dev mode, Cursor). No install, no auth:**
+**Recommended — add the hosted connector. It runs on our servers, so it never
+gets access to your computer (no scary local-install warning), needs no install
+and no auth:**
 
 ```text
 https://eventchat-events-mcp-production.up.railway.app/mcp
 ```
 
-Step-by-step per client: **https://eventchat-events-mcp-production.up.railway.app/install**
+Paste that into your client's **Settings → Connectors → Add custom connector**
+(claude.ai, Claude Desktop, ChatGPT developer mode, Cursor). Step-by-step per
+client: **https://eventchat-events-mcp-production.up.railway.app/install**
 
-One-line client setup from a terminal (writes the config for you):
+For Claude Code:
 
 ```bash
-npx -y uplayground-events install claude-desktop   # or: cursor | claude-code | claude-ai | chatgpt
+claude mcp add --transport http uplayground-events https://eventchat-events-mcp-production.up.railway.app/mcp
 ```
 
-Local stdio server snippet for any MCP client config:
+**Advanced — run the server locally** (only if you can't use the hosted
+connector, e.g. a free Claude plan or a client that only supports local
+servers). A local server runs as you, so Claude Desktop warns it "can access
+everything on your computer" — that's inherent to *any* local MCP extension,
+not something this package over-requests. The hosted connector above avoids it.
 
-```json
+```bash
+npx -y uplayground-events install claude-desktop   # writes the local config
+# or the raw stdio snippet for any client:
 { "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }
 ```
 
-Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/uplayground-events-<version>.mcpb` — double-click to install.
+Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/uplayground-events-<version>.mcpb`.
 
 ---
 

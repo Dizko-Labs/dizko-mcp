@@ -84,6 +84,25 @@ test("runInstall with no target prints an overview with all targets", async () =
   assert.match(text, /npx -y uplayground-events mcp|"uplayground-events", "mcp"/);
 });
 
+test("install overview leads with the hosted connector and flags local access", async () => {
+  const output = [];
+  await runInstall(undefined, { write: (text) => output.push(text) });
+  const text = output.join("\n");
+  assert.match(text, /Easiest \+ safest: add the hosted connector/);
+  assert.ok(text.indexOf("hosted connector") < text.indexOf("LOCAL MCP server"), "hosted path must come before the local one");
+  assert.match(text, /can access your computer/);
+});
+
+test("claude-desktop install warns about local access and points to the hosted connector", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "upg-install-"));
+  const output = [];
+  await runInstall("claude-desktop", { configPath: join(dir, "claude_desktop_config.json"), write: (text) => output.push(text) });
+  const text = output.join("\n");
+  assert.match(text, /can access your computer/);
+  assert.match(text, /hosted connector/);
+  assert.match(text, /eventchat-events-mcp-production\.up\.railway\.app\/mcp/);
+});
+
 test("runInstall rejects unknown targets with the overview", async () => {
   await assert.rejects(runInstall("vim", { write: () => {} }), /Unknown install target: vim/);
 });

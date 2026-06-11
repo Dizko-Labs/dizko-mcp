@@ -14,37 +14,37 @@
     .endpoint { font-weight: 600; }
     .hint { color: #555; font-size: 14px; }
     ol li { margin-bottom: 6px; }
+    .recommended { border: 1px solid #b7e0c6; background: #f1faf4; border-radius: 10px; padding: 4px 18px 14px; margin-top: 16px; }
+    .badge { display: inline-block; background: #0b6b42; color: #fff; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; vertical-align: middle; }
+    .safe { color: #0b6b42; font-weight: 600; }
+    details { margin-top: 32px; border-top: 1px solid #eee; padding-top: 8px; }
+    summary { cursor: pointer; font-size: 17px; font-weight: 600; }
+    details h3 { font-size: 16px; margin: 18px 0 4px; }
   </style>
 </head>
 <body>
   <h1>Install UPlayground Events</h1>
   <p>Live event discovery (concerts, club nights, art, comedy, festivals) for any AI assistant that speaks MCP. No account, no API key.</p>
-  <p>The hosted endpoint — click a code block to select it, then copy:</p>
-  <pre class="endpoint">https://eventchat-events-mcp-production.up.railway.app/mcp</pre>
 
-  <h2>Claude (claude.ai or Claude Desktop) — recommended</h2>
-  <ol>
-    <li>Open <strong>Settings &rarr; Connectors</strong> (web: click your initials, bottom-left).</li>
-    <li>Click <strong>Add custom connector</strong>.</li>
-    <li>Name it <code>UPlayground Events</code> and paste the endpoint URL above. No auth needed.</li>
-    <li>In any chat, open the tools menu and make sure the connector is enabled, then ask: <em>&ldquo;What&rsquo;s happening in Los Angeles this weekend?&rdquo;</em></li>
-  </ol>
-  <p class="hint">Custom connectors require a paid Claude plan. When the tool-permission prompt appears, choose &ldquo;Always allow&rdquo; — you will only be asked once per tool.</p>
-
-  <h2>Claude Desktop — one-click bundle</h2>
-  <p><a href="/download/uplayground-events.mcpb"><strong>Download the .mcpb extension</strong></a>, then double-click it (or drag it into Claude Desktop &rarr; Settings &rarr; Extensions). No terminal, no config files, no Node install — Claude Desktop runs it with its built-in runtime.</p>
+  <div class="recommended">
+    <h2>Recommended: add the hosted connector <span class="badge">no install</span></h2>
+    <p class="safe">&check; Runs on our servers &mdash; it never gets access to your computer or files, so you won&rsquo;t see a scary local-install warning.</p>
+    <p>Copy the endpoint (click to select):</p>
+    <pre class="endpoint">https://eventchat-events-mcp-production.up.railway.app/mcp</pre>
+    <ol>
+      <li>In Claude (claude.ai or Claude Desktop), open <strong>Settings &rarr; Connectors</strong> (web: click your initials, bottom-left).</li>
+      <li>Click <strong>Add custom connector</strong>.</li>
+      <li>Name it <code>UPlayground Events</code> and paste the endpoint URL. No auth needed.</li>
+      <li>In any chat, enable it from the tools menu and ask: <em>&ldquo;What&rsquo;s happening in Los Angeles this weekend?&rdquo;</em></li>
+    </ol>
+    <p class="hint">Custom connectors require a paid Claude plan. When the tool-permission prompt appears, choose &ldquo;Always allow&rdquo; &mdash; you&rsquo;re only asked once per tool. (ChatGPT: Settings &rarr; Apps &amp; Connectors &rarr; Advanced &rarr; Developer mode &rarr; add the same URL.)</p>
+  </div>
 
   <h2>Claude Code</h2>
   <pre>claude mcp add --transport http uplayground-events https://eventchat-events-mcp-production.up.railway.app/mcp</pre>
 
-  <h2>ChatGPT (developer mode)</h2>
-  <ol>
-    <li>Open <strong>Settings &rarr; Apps &amp; Connectors &rarr; Advanced &rarr; Developer mode</strong>.</li>
-    <li>Add a connector with the endpoint URL above (no authentication).</li>
-  </ol>
-
   <h2>Cursor</h2>
-  <p>Add to <code>~/.cursor/mcp.json</code> (or use the one-line installer below):</p>
+  <p>Add the hosted endpoint to <code>~/.cursor/mcp.json</code>:</p>
   <pre>{
   "mcpServers": {
     "uplayground-events": {
@@ -53,9 +53,16 @@
   }
 }</pre>
 
-  <h2>Any other MCP client (local stdio server)</h2>
-  <p>Requires Node 20+. Add to your client&rsquo;s MCP config:</p>
-  <pre>{
+  <details>
+    <summary>Advanced: run the server locally</summary>
+    <p class="hint">Only needed if you can&rsquo;t use the hosted connector (e.g. a free Claude plan, or a client that only supports local servers). A local server runs on <em>your</em> machine, so Claude Desktop shows a warning that the extension &ldquo;can access everything on your computer.&rdquo; That&rsquo;s true of <strong>any</strong> local MCP extension &mdash; there&rsquo;s no narrower permission to grant; the program runs as you. The hosted connector above avoids this entirely because nothing runs locally. The code is open source and the server only ever calls the UPlayground events API.</p>
+
+    <h3>Claude Desktop one-click bundle</h3>
+    <p><a href="/download/uplayground-events.mcpb">Download the .mcpb extension</a> and double-click it (or drag it into Claude Desktop &rarr; Settings &rarr; Extensions). No terminal; Claude Desktop runs it with its built-in runtime.</p>
+
+    <h3>Any MCP client (stdio config)</h3>
+    <p>Requires Node 20+:</p>
+    <pre>{
   "mcpServers": {
     "uplayground-events": {
       "command": "npx",
@@ -64,9 +71,10 @@
   }
 }</pre>
 
-  <h2>One-line installer (terminal)</h2>
-  <p>Writes the config for you — supports <code>claude-desktop</code>, <code>cursor</code>, <code>claude-code</code>:</p>
-  <pre>npx -y uplayground-events install claude-desktop</pre>
+    <h3>One-line installer</h3>
+    <p>Writes the config for you &mdash; <code>claude-desktop</code>, <code>cursor</code>, or <code>claude-code</code>:</p>
+    <pre>npx -y uplayground-events install claude-desktop</pre>
+  </details>
 
   <h2>Try it from a terminal (no MCP client needed)</h2>
   <pre>npx -y uplayground-events search --city "los angeles" --when "this week"</pre>
