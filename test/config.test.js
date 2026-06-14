@@ -4,6 +4,7 @@ import {
   DEFAULT_API_BASE_URL,
   DEFAULT_MCP_URL,
   DEFAULT_WEB_BASE_URL,
+  SUPPORTED_CITIES,
   TOOL_VERSION,
   getConfig
 } from "../src/config.js";
@@ -64,6 +65,56 @@ test("getConfig falls back to defaults for invalid numeric env values", () => {
 
 test("getConfig allows zero retries", () => {
   assert.equal(getConfig({ EVENTCHAT_API_RETRIES: "0" }).apiRetries, 0);
+});
+
+test("SUPPORTED_CITIES includes the live EventChat city catalog", () => {
+  assert.deepEqual(SUPPORTED_CITIES, [
+    "amsterdam",
+    "atlanta",
+    "athens",
+    "austin",
+    "bangkok",
+    "barcelona",
+    "berlin",
+    "bogota",
+    "budapest",
+    "buenos aires",
+    "chicago",
+    "copenhagen",
+    "denver",
+    "detroit",
+    "dublin",
+    "dubai",
+    "hong kong",
+    "istanbul",
+    "lagos",
+    "lisbon",
+    "london",
+    "los angeles",
+    "madrid",
+    "medellin",
+    "mexico city",
+    "milan",
+    "miami",
+    "montreal",
+    "nashville",
+    "new york",
+    "new orleans",
+    "osaka",
+    "paris",
+    "prague",
+    "rio de janeiro",
+    "rome",
+    "san francisco",
+    "sao paulo",
+    "seoul",
+    "singapore",
+    "stockholm",
+    "tokyo",
+    "toronto",
+    "vienna",
+    "warsaw"
+  ]);
 });
 
 test("getConfig exposes cache TTL and stale-window settings with env overrides", () => {
