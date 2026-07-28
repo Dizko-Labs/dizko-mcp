@@ -1,4 +1,5 @@
 import { resolve4, resolve6, resolveCname } from "node:dns/promises";
+import { expectedToolCount } from "../src/liveChecks.js";
 
 const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.dizko.app";
 const expectedServerName = "eventchat-events";
@@ -18,7 +19,9 @@ async function main() {
     dns_resolves: dns.a.length > 0 || dns.aaaa.length > 0 || dns.cname.length > 0,
     health_ok: health.ok && health.status === 200 && health.body?.ok === true,
     metadata_ok: metadata.ok && metadata.status === 200 && metadata.body?.name === expectedServerName,
-    mcp_ok: mcp.ok && Array.isArray(mcp.body?.result?.tools) && mcp.body.result.tools.length === 13
+    mcp_ok: mcp.ok
+      && Array.isArray(mcp.body?.result?.tools)
+      && mcp.body.result.tools.length === expectedToolCount()
   };
 
   const ok = Object.values(checks).every(Boolean);
