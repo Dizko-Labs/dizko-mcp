@@ -67,7 +67,7 @@ async function main() {
     assert(promptText.includes(phrase), `review_test_prompts must cover ${phrase}`);
   }
   const discoveryText = fields.discovery_phrases.join(" ").toLowerCase();
-  assert(discoveryText.includes("urbanplayground"), "discovery_phrases must include Dizko brand alias");
+  assert(discoveryText.includes("dizko"), "discovery_phrases must include Dizko brand alias");
   for (const phrase of ["liked/disliked", "rating", "notes"]) {
     assert(promptText.includes(phrase), `review_test_prompts must cover feedback signal ${phrase}`);
   }
