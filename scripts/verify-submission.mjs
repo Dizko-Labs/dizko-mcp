@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const endpoint = process.env.EVENTCHAT_MCP_URL || "https://eventchat-events-mcp-production.up.railway.app/mcp";
+const endpoint = process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
 const baseUrl = endpoint.replace(/\/mcp\/?$/, "");
 const companyUrl = process.env.EVENTCHAT_COMPANY_URL || "https://www.dizko.app";
 const requestTimeoutMs = Number(process.env.EVENTCHAT_VERIFY_TIMEOUT_MS || 15000);
@@ -241,7 +241,7 @@ async function checkPublicPages() {
     ["privacy", "/privacy-policy.html", ["UrbanPlayground", "hashed profile secret", "Personalization summaries", "learned genres, vibes, event types, venues, and avoid signals", "24 months", "automatically pruned", "30 days", "Deletion requests"]],
     ["support", "/support.html", ["support@urbanplayground.xyz", "feedback history", "security@urbanplayground.xyz", "vulnerability"]],
     ["terms", "/terms.html", ["UPlayground Events Connector Terms", "Third-Party Links", "Preference Memory", "explicit confirmation", "Acceptable Use"]],
-    ["user_guide", "/user-guide.html", ["UPlayground Events Connector User Guide", "UrbanPlayground", "Connect", "ChatGPT Developer Mode", "Claude custom connectors", "https://eventchat-events-mcp-production.up.railway.app/mcp", "https://mcp.urbanplayground.xyz/mcp", "Useful Prompts", "Preference Memory", "Learning From Feedback", "too crowded", "too expensive", "too late", "Deleting Saved Preferences"]]
+    ["user_guide", "/user-guide.html", ["UPlayground Events Connector User Guide", "UrbanPlayground", "Connect", "ChatGPT Developer Mode", "Claude custom connectors", "https://mcp.dizko.app/mcp", "https://mcp.urbanplayground.xyz/mcp", "Useful Prompts", "Preference Memory", "Learning From Feedback", "too crowded", "too expensive", "too late", "Deleting Saved Preferences"]]
   ]) {
     const response = await fetchWithTimeout(`${baseUrl}${path}`);
     const body = await response.text();
@@ -275,7 +275,7 @@ async function checkPublicPages() {
   const securityBody = await securityTxt.text();
   assert(securityTxt.ok, `security.txt returned HTTP ${securityTxt.status}`);
   assert((securityTxt.headers.get("content-type") || "").includes("text/plain"), "security.txt was not served as text/plain");
-  for (const requiredText of ["Contact: mailto:security@urbanplayground.xyz", "Policy: https://eventchat-events-mcp-production.up.railway.app/support.html", "Expires:"]) {
+  for (const requiredText of ["Contact: mailto:security@urbanplayground.xyz", "Policy: https://mcp.dizko.app/support.html", "Expires:"]) {
     assert(securityBody.includes(requiredText), `security.txt missing expected text: ${requiredText}`);
   }
   pages.security_txt = {

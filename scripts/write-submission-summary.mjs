@@ -82,7 +82,7 @@ async function main() {
     "- Add the MCP endpoint in ChatGPT Developer Mode.",
     "- Run the review prompts on ChatGPT web and mobile and capture screenshots.",
     "- Complete individual or business verification in the OpenAI Platform Dashboard if needed.",
-    "- Submit through the OpenAI dashboard using the Railway MCP endpoint, not the unresolved custom domain.",
+    "- Submit through the OpenAI dashboard using the hosted MCP endpoint, not the unresolved custom domain.",
     ""
   ].join("\n");
 

@@ -3,12 +3,12 @@
 Use these assets when submitting the MCP app through the OpenAI Platform Dashboard.
 
 - Logo file: `uplayground-events-logo-512.png`
-- Public logo URL: `https://eventchat-events-mcp-production.up.railway.app/logo-512.png`
-- MCP URL: `https://eventchat-events-mcp-production.up.railway.app/mcp`
-- Privacy URL: `https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html`
-- Terms URL: `https://eventchat-events-mcp-production.up.railway.app/terms.html`
-- User guide URL: `https://eventchat-events-mcp-production.up.railway.app/user-guide.html`
-- Support URL: `https://eventchat-events-mcp-production.up.railway.app/support.html`
+- Public logo URL: `https://mcp.dizko.app/logo-512.png`
+- MCP URL: `https://mcp.dizko.app/mcp`
+- Privacy URL: `https://mcp.dizko.app/privacy-policy.html`
+- Terms URL: `https://mcp.dizko.app/terms.html`
+- User guide URL: `https://mcp.dizko.app/user-guide.html`
+- Support URL: `https://mcp.dizko.app/support.html`
 
 Screenshots must be captured from the actual ChatGPT connector test flow after adding the MCP URL in Developer Mode. Recommended screenshots:
 

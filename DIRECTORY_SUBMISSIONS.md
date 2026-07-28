@@ -6,7 +6,7 @@ bottom — update it as submissions land.
 
 The two URLs every directory wants:
 
-- Hosted MCP endpoint: `https://eventchat-events-mcp-production.up.railway.app/mcp`
+- Hosted MCP endpoint: `https://mcp.dizko.app/mcp`
 - npm package: `uplayground-events` (stdio command: `npx -y uplayground-events mcp`)
 
 ## 1. Official MCP Registry (registry.modelcontextprotocol.io)

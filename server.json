@@ -13,7 +13,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://eventchat-events-mcp-production.up.railway.app/mcp"
+      "url": "https://mcp.dizko.app/mcp"
     }
   ],
   "packages": [

@@ -5,7 +5,7 @@ Capture these screenshots from the actual ChatGPT Developer Mode connector flow 
 Use the production MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Do not use:
@@ -18,7 +18,7 @@ https://mcp.urbanplayground.xyz/mcp
 
 1. `01-connector-connected.png`
    - Show the connector setup screen with UPlayground Events connected.
-   - The Railway MCP endpoint should be visible if the UI exposes it.
+   - The hosted MCP endpoint should be visible if the UI exposes it.
 
 2. `02-tool-list.png`
    - Show tool list or tool-call details.

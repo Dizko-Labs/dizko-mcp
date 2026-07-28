@@ -1,6 +1,6 @@
 import { resolve4, resolve6, resolveCname } from "node:dns/promises";
 
-const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.uplayground.com";
+const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.dizko.app";
 const expectedServerName = "eventchat-events";
 const endpointPath = "/mcp";
 
@@ -15,7 +15,7 @@ async function main() {
   });
 
   const checks = {
-    dns_not_vercel: !dns.a.some((value) => value.startsWith("216.150.")),
+    dns_resolves: dns.a.length > 0 || dns.aaaa.length > 0 || dns.cname.length > 0,
     health_ok: health.ok && health.status === 200 && health.body?.ok === true,
     metadata_ok: metadata.ok && metadata.status === 200 && metadata.body?.name === expectedServerName,
     mcp_ok: mcp.ok && Array.isArray(mcp.body?.result?.tools) && mcp.body.result.tools.length === 13
@@ -34,7 +34,7 @@ async function main() {
     mcp_tool_count: mcp.body?.result?.tools?.length || 0,
     next_step: ok
       ? "Custom domain is ready for MCP review traffic."
-      : "Keep using the Railway endpoint for review. Attach the domain in Railway and update DNS away from the current target, then rerun this check."
+      : "Verify the Vercel proxy route and DNS, then rerun this check."
   };
 
   console.log(JSON.stringify(result, null, 2));

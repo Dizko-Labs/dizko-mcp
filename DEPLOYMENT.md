@@ -3,7 +3,7 @@
 This service is deployed as a public HTTPS remote MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Do not use this preferred custom domain until DNS/Railway domain attachment is resolved:
@@ -12,7 +12,7 @@ Do not use this preferred custom domain until DNS/Railway domain attachment is r
 https://mcp.urbanplayground.xyz/mcp
 ```
 
-Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified Railway endpoint for review until `npm run domain:check` reports `ok: true`.
+Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified hosted endpoint for review until `npm run domain:check` reports `ok: true`.
 
 Check the current custom-domain state:
 
@@ -20,7 +20,7 @@ Check the current custom-domain state:
 npm run domain:check
 ```
 
-Expected before cutover: this command exits non-zero and explains that the Railway endpoint should remain the review endpoint.
+Expected before cutover: this command exits non-zero and explains that the hosted endpoint should remain the review endpoint.
 
 ## Required Environment
 
@@ -92,9 +92,9 @@ npm run domain:check
 11. Verify:
 
 ```bash
-curl https://eventchat-events-mcp-production.up.railway.app/health
-curl https://eventchat-events-mcp-production.up.railway.app/.well-known/security.txt
-curl https://eventchat-events-mcp-production.up.railway.app/mcp \
+curl https://mcp.dizko.app/health
+curl https://mcp.dizko.app/.well-known/security.txt
+curl https://mcp.dizko.app/mcp \
   -H 'Accept: application/json, text/event-stream' \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
@@ -118,7 +118,7 @@ docker run --rm -p 8787:8787 \
 Submit the public MCP URL in the OpenAI dashboard:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Use `plugin-submission.md` for the app name, descriptions, tool list, test prompts, and checklist.
@@ -132,7 +132,7 @@ Because this app saves preferences and post-event feedback, confirm the submitte
 Use the same URL:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Claude reaches remote MCP servers from Anthropic cloud infrastructure, so localhost URLs will not work.

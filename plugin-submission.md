@@ -47,43 +47,43 @@ Ticket tools can show ticket offers, create locked quotes, require explicit writ
 Production:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Privacy policy:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html
+https://mcp.dizko.app/privacy-policy.html
 ```
 
 Support:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/support.html
+https://mcp.dizko.app/support.html
 ```
 
 Terms:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/terms.html
+https://mcp.dizko.app/terms.html
 ```
 
 User guide:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/user-guide.html
+https://mcp.dizko.app/user-guide.html
 ```
 
 Security contact metadata:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/.well-known/security.txt
+https://mcp.dizko.app/.well-known/security.txt
 ```
 
 Logo:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/logo-512.png
+https://mcp.dizko.app/logo-512.png
 ```
 
 Local logo file:
@@ -98,7 +98,7 @@ Do not submit this branded endpoint until Railway custom-domain attachment and D
 https://mcp.urbanplayground.xyz/mcp
 ```
 
-Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified Railway endpoint for review until `npm run domain:check` reports `ok: true`.
+Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified hosted endpoint for review until `npm run domain:check` reports `ok: true`.
 
 Local development:
 
@@ -173,7 +173,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 
 Capture these from the actual ChatGPT connector flow before submitting:
 
-- Connector setup screen showing the Railway MCP endpoint connected.
+- Connector setup screen showing the hosted MCP endpoint connected.
 - Tool list or tool-call details showing UPlayground Events exposes 18 tools.
 - Live search result for a current event prompt, including at least one event URL.
 - Current-context follow-up flow before a tonight/week/weekend search.

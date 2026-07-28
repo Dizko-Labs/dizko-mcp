@@ -26,8 +26,8 @@ const manifest = {
     url: "https://www.dizko.app"
   },
   homepage: "https://www.dizko.app",
-  documentation: "https://eventchat-events-mcp-production.up.railway.app/user-guide.html",
-  support: "https://eventchat-events-mcp-production.up.railway.app/support.html",
+  documentation: "https://mcp.dizko.app/user-guide.html",
+  support: "https://mcp.dizko.app/support.html",
   icon: "icon.png",
   server: {
     type: "node",

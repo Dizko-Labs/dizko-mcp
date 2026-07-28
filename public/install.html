@@ -30,7 +30,7 @@
     <h2>Recommended: add the hosted connector <span class="badge">no install</span></h2>
     <p class="safe">&check; Runs on our servers &mdash; it never gets access to your computer or files, so you won&rsquo;t see a scary local-install warning.</p>
     <p>Copy the endpoint (click to select):</p>
-    <pre class="endpoint">https://eventchat-events-mcp-production.up.railway.app/mcp</pre>
+    <pre class="endpoint">https://mcp.dizko.app/mcp</pre>
     <ol>
       <li>In Claude (claude.ai or Claude Desktop), open <strong>Settings &rarr; Connectors</strong> (web: click your initials, bottom-left).</li>
       <li>Click <strong>Add custom connector</strong>.</li>
@@ -41,14 +41,14 @@
   </div>
 
   <h2>Claude Code</h2>
-  <pre>claude mcp add --transport http uplayground-events https://eventchat-events-mcp-production.up.railway.app/mcp</pre>
+  <pre>claude mcp add --transport http uplayground-events https://mcp.dizko.app/mcp</pre>
 
   <h2>Cursor</h2>
   <p>Add the hosted endpoint to <code>~/.cursor/mcp.json</code>:</p>
   <pre>{
   "mcpServers": {
     "uplayground-events": {
-      "url": "https://eventchat-events-mcp-production.up.railway.app/mcp"
+      "url": "https://mcp.dizko.app/mcp"
     }
   }
 }</pre>

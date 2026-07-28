@@ -2,13 +2,13 @@
   "app_name": "UPlayground Events",
   "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.",
   "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.",
-  "mcp_endpoint": "https://eventchat-events-mcp-production.up.railway.app/mcp",
+  "mcp_endpoint": "https://mcp.dizko.app/mcp",
   "company_url": "https://www.dizko.app",
-  "privacy_policy_url": "https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html",
-  "support_url": "https://eventchat-events-mcp-production.up.railway.app/support.html",
-  "terms_url": "https://eventchat-events-mcp-production.up.railway.app/terms.html",
-  "user_guide_url": "https://eventchat-events-mcp-production.up.railway.app/user-guide.html",
-  "logo_url": "https://eventchat-events-mcp-production.up.railway.app/logo-512.png",
+  "privacy_policy_url": "https://mcp.dizko.app/privacy-policy.html",
+  "support_url": "https://mcp.dizko.app/support.html",
+  "terms_url": "https://mcp.dizko.app/terms.html",
+  "user_guide_url": "https://mcp.dizko.app/user-guide.html",
+  "logo_url": "https://mcp.dizko.app/logo-512.png",
   "local_logo_file": "public/submission-assets/uplayground-events-logo-512.png",
   "localization": {
     "default_locale": "en-US",
@@ -24,7 +24,7 @@
   "do_not_submit_urls": [
     {
       "url": "https://mcp.urbanplayground.xyz/mcp",
-      "reason": "Custom-domain DNS/Railway attachment is not verified yet; use the Railway endpoint for review."
+      "reason": "Custom-domain DNS/Railway attachment is not verified yet; use the hosted endpoint for review."
     }
   ],
   "discovery_phrases": [
@@ -73,7 +73,7 @@
     "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the UPlayground-only deletion scope."
   ],
   "submission_checklist": [
-    "Use the Railway MCP endpoint, not the unresolved custom domain.",
+    "Use the hosted MCP endpoint, not the unresolved custom domain.",
     "Run npm run preflight:submission immediately before submitting.",
     "Run npm run submission:status and confirm ready_for_openai_dashboard_submission is true.",
     "Use submission-evidence/latest-summary.md while filling dashboard fields.",

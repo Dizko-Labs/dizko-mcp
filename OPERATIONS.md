@@ -7,7 +7,7 @@ Use this runbook after deployment, before OpenAI submission, and during public o
 MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Railway project:
@@ -37,7 +37,7 @@ As of June 9, 2026, `mcp.urbanplayground.xyz` resolves away from the Railway MCP
 Run:
 
 ```bash
-curl https://eventchat-events-mcp-production.up.railway.app/health
+curl https://mcp.dizko.app/health
 npm run monitor:live
 npm run smoke:live
 ```
@@ -61,12 +61,12 @@ npm run submission:status
 Expected:
 
 - `ready_for_openai_dashboard_submission` is `true`.
-- `submit_endpoint` is the Railway MCP endpoint.
+- `submit_endpoint` is the hosted MCP endpoint.
 - `code_readiness.latest_evidence`, `code_readiness.live_monitor`, and `code_readiness.dashboard_fields` are all `ok: true`.
 - `code_readiness.branded_domain.ok` may be `false` until `mcp.urbanplayground.xyz` is attached to Railway and DNS is updated.
 - `external_gates_remaining` lists only dashboard, screenshot, and publisher-verification tasks.
 
-This command intentionally treats the branded custom domain as informational. A failing custom-domain check should block switching review traffic to `mcp.urbanplayground.xyz`, but it should not block OpenAI submission with the verified Railway endpoint.
+This command intentionally treats the branded custom domain as informational. A failing custom-domain check should block switching review traffic to `mcp.urbanplayground.xyz`, but it should not block OpenAI submission with the verified hosted endpoint.
 
 ## Submission Preflight
 

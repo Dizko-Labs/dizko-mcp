@@ -7,7 +7,7 @@ This guide is for ChatGPT, Claude, and other MCP-compatible clients that can con
 Use the verified production MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Do not use this custom domain yet:
@@ -105,17 +105,17 @@ The MCP service stores only a hash of the `profile_secret`. The raw secret is re
 Privacy policy:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html
+https://mcp.dizko.app/privacy-policy.html
 ```
 
 Support:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/support.html
+https://mcp.dizko.app/support.html
 ```
 
 Security contact metadata:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/.well-known/security.txt
+https://mcp.dizko.app/.well-known/security.txt
 ```

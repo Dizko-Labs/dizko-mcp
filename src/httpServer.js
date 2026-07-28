@@ -292,7 +292,7 @@ function sendSecurityTxt(response, headers = {}) {
   const body = [
     "Contact: mailto:security@urbanplayground.xyz",
     "Contact: mailto:support@urbanplayground.xyz",
-    "Policy: https://eventchat-events-mcp-production.up.railway.app/support.html",
+    "Policy: https://mcp.dizko.app/support.html",
     "Preferred-Languages: en",
     `Expires: ${expires}`,
     ""

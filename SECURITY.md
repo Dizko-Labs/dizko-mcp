@@ -7,7 +7,7 @@ This policy covers the UPlayground Events MCP package, hosted MCP endpoint, pref
 Production MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 ## Reporting A Vulnerability

@@ -7,17 +7,17 @@ gets access to your computer (no scary local-install warning), needs no install
 and no auth:**
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Paste that into your client's **Settings → Connectors → Add custom connector**
 (claude.ai, Claude Desktop, ChatGPT developer mode, Cursor). Step-by-step per
-client: **https://eventchat-events-mcp-production.up.railway.app/install**
+client: **https://mcp.dizko.app/install**
 
 For Claude Code:
 
 ```bash
-claude mcp add --transport http uplayground-events https://eventchat-events-mcp-production.up.railway.app/mcp
+claude mcp add --transport http uplayground-events https://mcp.dizko.app/mcp
 ```
 
 **Advanced — run the server locally** (only if you can't use the hosted
@@ -40,7 +40,7 @@ Framework agents don't have a "Connectors" UI — they integrate programmaticall
 Four paths, simplest first:
 
 1. **Remote MCP over HTTP** — point the framework's MCP client at the hosted
-   endpoint `https://eventchat-events-mcp-production.up.railway.app/mcp`
+   endpoint `https://mcp.dizko.app/mcp`
    (streamable-http, no auth). Works with the official MCP SDKs, the OpenAI
    Agents SDK, LangGraph/LangChain MCP adapters, Pydantic AI, etc.
 
@@ -50,7 +50,7 @@ Four paths, simplest first:
 3. **Raw HTTP JSON-RPC** — no MCP library needed; POST to `/mcp`:
 
    ```bash
-   curl -s https://eventchat-events-mcp-production.up.railway.app/mcp \
+   curl -s https://mcp.dizko.app/mcp \
      -H 'content-type: application/json' \
      -H 'accept: application/json, text/event-stream' \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"this week"}}}'
@@ -150,7 +150,7 @@ Environment (all surfaces — CLI, stdio MCP, hosted MCP, smoke test, and monito
 ```bash
 EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
 EVENTCHAT_WEB_BASE_URL=https://www.dizko.app
-EVENTCHAT_MCP_URL=https://eventchat-events-mcp-production.up.railway.app/mcp
+EVENTCHAT_MCP_URL=https://mcp.dizko.app/mcp
 EVENTCHAT_API_TIMEOUT_MS=8000
 EVENTCHAT_API_RETRIES=2                  # transient network/5xx failures retry with backoff + jitter
 EVENTCHAT_API_RETRY_BASE_DELAY_MS=250
@@ -258,7 +258,7 @@ Endpoints:
 Current deployed endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 To become a ChatGPT app/plugin:
@@ -304,7 +304,7 @@ npm run preflight:submission
 The bundle command saves `submission-evidence/latest.json` and `submission-evidence/latest-summary.md` for dashboard review prep while keeping generated evidence out of git. The evidence includes the verified endpoint, current Railway deployment id, image digest, public-page checks, tool metadata, live search, and preference-memory flow.
 The fields command validates `submission-fields.json`, the stable dashboard-copy artifact, against the latest live evidence, including deployment metadata.
 The preflight command runs local tests, live smoke, live submission evidence generation, and dashboard-field validation in one pass.
-The status command gives a final go/no-go for OpenAI dashboard submission, names the endpoint to submit, and keeps unresolved custom-domain status separate from Railway endpoint readiness.
+The status command gives a final go/no-go for OpenAI dashboard submission, names the endpoint to submit, and keeps unresolved custom-domain status separate from hosted endpoint readiness.
 The review-demo command writes a sanitized `submission-evidence/review-demo.md` transcript from live MCP calls for dashboard prompt/response prep.
 
 Support deletion utility:

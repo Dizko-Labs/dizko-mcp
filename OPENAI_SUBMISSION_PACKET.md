@@ -7,31 +7,31 @@ Use this file as the final handoff when submitting UPlayground Events through th
 MCP endpoint:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 Privacy policy:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html
+https://mcp.dizko.app/privacy-policy.html
 ```
 
 Support:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/support.html
+https://mcp.dizko.app/support.html
 ```
 
 Terms:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/terms.html
+https://mcp.dizko.app/terms.html
 ```
 
 User guide:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/user-guide.html
+https://mcp.dizko.app/user-guide.html
 ```
 
 Company:
@@ -43,13 +43,13 @@ https://www.dizko.app
 Logo:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/logo-512.png
+https://mcp.dizko.app/logo-512.png
 ```
 
 Security contact metadata:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/.well-known/security.txt
+https://mcp.dizko.app/.well-known/security.txt
 ```
 
 Do not submit this URL yet:
@@ -188,7 +188,7 @@ Expected behavior:
 
 Capture these from the actual ChatGPT connector flow:
 
-- Connector setup screen showing the Railway MCP endpoint connected.
+- Connector setup screen showing the hosted MCP endpoint connected.
 - Tool list or tool-call details showing 17 UPlayground Events tools.
 - Live event search result with at least one event URL.
 - Current-context follow-up questions before a broad tonight/week/weekend search.
@@ -267,7 +267,7 @@ npm run preflight:submission
 npm run submission:status
 ```
 
-Confirm both commands report `ok: true`. In `submission:status`, confirm `ready_for_openai_dashboard_submission` is `true` and `submit_endpoint` is the Railway MCP endpoint.
+Confirm both commands report `ok: true`. In `submission:status`, confirm `ready_for_openai_dashboard_submission` is `true` and `submit_endpoint` is the hosted MCP endpoint.
 
 Then complete these external-only steps:
 
@@ -275,4 +275,4 @@ Then complete these external-only steps:
 - Run the review prompts on ChatGPT web and mobile.
 - Capture screenshots from the actual ChatGPT UI.
 - Complete individual or business publisher verification if the OpenAI dashboard requires it.
-- Submit using the Railway MCP endpoint, not the unresolved custom domain.
+- Submit using the hosted MCP endpoint, not the unresolved custom domain.

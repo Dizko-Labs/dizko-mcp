@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 
 const evidencePath = new URL("../submission-evidence/latest.json", import.meta.url);
 const requiredExternalGates = [
-  "Add the Railway MCP endpoint in ChatGPT Developer Mode.",
+  "Add the hosted MCP endpoint in ChatGPT Developer Mode.",
   "Run the review prompts in ChatGPT web and mobile.",
   "Capture screenshots from the actual ChatGPT UI.",
   "Complete OpenAI individual or business publisher verification if required.",
@@ -21,20 +21,20 @@ async function main() {
   const latestEvidenceOk = evidence.ok === true && evidence.body?.ok === true;
   const monitorOk = monitor.ok === true && monitor.body?.ok === true;
   const fieldValidationOk = fieldValidation.ok === true && fieldValidation.body?.ok === true;
-  const railwayEndpoint = evidence.body?.endpoint || process.env.EVENTCHAT_MCP_URL || "https://eventchat-events-mcp-production.up.railway.app/mcp";
+  const hostedEndpoint = evidence.body?.endpoint || process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
   const brandedDomainReady = domain.ok === true && domain.body?.ok === true;
 
   const readyForOpenAiSubmission =
     latestEvidenceOk &&
     monitorOk &&
     fieldValidationOk &&
-    railwayEndpoint.includes("eventchat-events-mcp-production.up.railway.app/mcp");
+    hostedEndpoint.includes("mcp.dizko.app/mcp");
 
   const result = {
     ok: readyForOpenAiSubmission,
     checked_at: new Date().toISOString(),
     ready_for_openai_dashboard_submission: readyForOpenAiSubmission,
-    submit_endpoint: railwayEndpoint,
+    submit_endpoint: hostedEndpoint,
     do_not_submit_endpoint: brandedDomainReady ? null : domain.body?.endpoint || "https://mcp.urbanplayground.xyz/mcp",
     code_readiness: {
       latest_evidence: statusFrom(latestEvidenceOk, evidence),
@@ -44,14 +44,14 @@ async function main() {
         ok: brandedDomainReady,
         note: brandedDomainReady
           ? "Custom domain is ready, but confirm docs before switching review traffic."
-          : "Custom domain is not ready; use the Railway endpoint for review.",
+          : "Custom domain is not ready; use the hosted endpoint for review.",
         details: domain.body || domain.error
       }
     },
     latest_verified_deployment: evidence.body?.deployment || null,
     external_gates_remaining: requiredExternalGates,
     next_step: readyForOpenAiSubmission
-      ? "Use OPENAI_SUBMISSION_PACKET.md and submit the Railway endpoint after completing the external gates."
+      ? "Use OPENAI_SUBMISSION_PACKET.md and submit the hosted endpoint after completing the external gates."
       : "Run npm run preflight:submission, fix failed checks, then rerun npm run submission:status."
   };
 

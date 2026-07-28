@@ -100,7 +100,7 @@ test("claude-desktop install warns about local access and points to the hosted c
   const text = output.join("\n");
   assert.match(text, /can access your computer/);
   assert.match(text, /hosted connector/);
-  assert.match(text, /eventchat-events-mcp-production\.up\.railway\.app\/mcp/);
+  assert.match(text, /mcp\.dizko\.app\/mcp/);
 });
 
 test("runInstall rejects unknown targets with the overview", async () => {

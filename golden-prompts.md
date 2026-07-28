@@ -11,7 +11,7 @@ npm run verify:submission
 Then exercise these prompts in ChatGPT Developer Mode after connecting:
 
 ```text
-https://eventchat-events-mcp-production.up.railway.app/mcp
+https://mcp.dizko.app/mcp
 ```
 
 ## Direct Prompts
