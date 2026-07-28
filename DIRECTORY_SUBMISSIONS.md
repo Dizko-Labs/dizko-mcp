@@ -2,7 +2,7 @@
 
 Getting listed turns installation into "search Dizko, click add" and is the
 only route to claude.ai users who can't add custom connectors. Status table at the
-bottom — update it as submissions land.
+bottom - update it as submissions land.
 
 The two URLs every directory wants:
 
@@ -22,7 +22,7 @@ mcp-publisher login dns --domain urbanplayground.xyz
 mcp-publisher publish
 ```
 
-Also requires the npm package to embed the registry name — the `mcpName` field is
+Also requires the npm package to embed the registry name - the `mcpName` field is
 already in `package.json`. Re-publish to npm before `mcp-publisher publish` if you
 changed it.
 
@@ -47,7 +47,7 @@ endpoint, and description, or use the submit form on the site.
 ## 5. Anthropic connector directory (claude.ai)
 
 Highest-value listing; removes the paid-plan custom-connector barrier. Submission
-is via Anthropic's partner form (https://www.anthropic.com/partners — "List your
+is via Anthropic's partner form (https://www.anthropic.com/partners - "List your
 connector"). Requirements largely overlap with the OpenAI submission packet
 already prepared in this repo: privacy policy, support page, security contact
 (all live on the hosted service), plus the endpoint. Reuse
@@ -55,7 +55,7 @@ already prepared in this repo: privacy policy, support page, security contact
 
 ## 6. OpenAI ChatGPT apps
 
-Already in progress — see `OPENAI_SUBMISSION_PACKET.md` and `submission-fields.json`.
+Already in progress - see `OPENAI_SUBMISSION_PACKET.md` and `submission-fields.json`.
 
 ## Status
 

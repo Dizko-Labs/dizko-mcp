@@ -3,7 +3,8 @@ import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { getConfig } from "./config.js";
 
-export const SERVER_NAME = "uplayground-events";
+export const SERVER_NAME = "dizko-events";
+export const LEGACY_SERVER_NAME = "uplayground-events";
 
 // One canonical stdio snippet everywhere: `npx -y uplayground-events mcp`.
 export function stdioServerEntry() {
@@ -43,11 +44,12 @@ export async function installIntoJsonConfig(path, serverEntry, { fs = { readFile
   }
 
   const servers = config.mcpServers && typeof config.mcpServers === "object" ? config.mcpServers : {};
-  const alreadyInstalled = Boolean(servers[SERVER_NAME]);
+  const alreadyInstalled = Boolean(servers[SERVER_NAME] || servers[LEGACY_SERVER_NAME]);
+  const { [LEGACY_SERVER_NAME]: _legacyServer, ...currentServers } = servers;
   const updated = {
     ...config,
     mcpServers: {
-      ...servers,
+      ...currentServers,
       [SERVER_NAME]: serverEntry
     }
   };
@@ -73,7 +75,7 @@ export async function runInstall(target, options = {}) {
         `${result.alreadyInstalled ? "Updated" : "Added"} "${SERVER_NAME}" in ${result.path}`,
         result.backupPath ? `Previous config backed up to ${result.backupPath}` : "Created a new config file.",
         "Fully quit and reopen Claude Desktop to load it (requires Node via npx on first run).",
-        "Note: this runs the server locally, so Claude warns it can access your computer — true of any local extension.",
+        "Note: this runs the server locally, so Claude warns it can access your computer - true of any local extension.",
         "Prefer no local access? On a paid Claude plan, skip this and add the hosted connector instead:",
         "  Settings -> Connectors -> Add custom connector ->",
         `  ${config.mcpUrl}`
@@ -101,7 +103,7 @@ export async function runInstall(target, options = {}) {
     case "claude-ai":
     case "chatgpt": {
       write([
-        "No install needed — add the hosted endpoint as a connector:",
+        "No install needed - add the hosted endpoint as a connector:",
         "",
         `  ${config.mcpUrl}`,
         "",
@@ -122,7 +124,7 @@ export async function runInstall(target, options = {}) {
 
 export function installOverview(config) {
   return [
-    "uplayground-events install <target>",
+    "dizko-events install <target>",
     "",
     "Easiest + safest: add the hosted connector (runs on our servers, no local",
     "access, no scary install warning). Paste this URL into your client's",
@@ -136,7 +138,7 @@ export function installOverview(config) {
     "  claude-desktop   Write the LOCAL MCP server into claude_desktop_config.json (advanced)",
     "  chatgpt          Show ChatGPT developer-mode connector steps",
     "",
-    "Advanced — local stdio server snippet (runs on your machine; Claude warns",
+    "Advanced - local stdio server snippet (runs on your machine; Claude warns",
     "it can access your computer, as with any local extension):",
     `  { "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }`
   ].join("\n");

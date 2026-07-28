@@ -10,7 +10,7 @@ COPY src ./src
 COPY public ./public
 COPY scripts ./scripts
 
-# Build the Claude Desktop one-click bundle, served at /download/uplayground-events.mcpb
+# Build the Claude Desktop one-click bundle, served at /download/dizko-events.mcpb
 RUN apk add --no-cache zip && node ./scripts/build-mcpb.mjs && apk del zip
 
 ENV NODE_ENV=production

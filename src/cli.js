@@ -79,9 +79,9 @@ export function formatCliError(error) {
   if (error.status != null) lines.push(`  status: HTTP ${error.status}`);
   if (error.hostname) lines.push(`  host: ${error.hostname}`);
   if (error.url) lines.push(`  url: ${error.url}`);
-  if (error.retryable) lines.push("  retryable: yes — this is usually temporary, try again shortly");
+  if (error.retryable) lines.push("  retryable: yes - this is usually temporary, try again shortly");
   if (error instanceof EventChatAPIError) {
-    lines.push("  hint: run `uplayground-events doctor` to diagnose connectivity");
+    lines.push("  hint: run `dizko-events doctor` to diagnose connectivity");
   }
   return lines.join("\n");
 }
@@ -111,7 +111,7 @@ export function parseArgs(args) {
 }
 
 export function helpText() {
-  return `uplayground-events (also installed as eventchat-events)
+  return `dizko-events (compatibility aliases: uplayground-events, eventchat-events)
 
 Commands:
   search       Print live matching events.
@@ -120,25 +120,25 @@ Commands:
   get <id>     Fetch one event.
   cities       List supported cities.
   install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.
-  mcp          Run the local stdio MCP server (use in MCP client configs: npx -y uplayground-events mcp).
+  mcp          Run the local stdio MCP server (package command: npx -y uplayground-events mcp).
   serve        Run the HTTP MCP server (same as the hosted endpoint).
   doctor       Diagnose connectivity (DNS, health, MCP endpoint, live search). Add --json for machine-readable output.
   help         Show this help (also --help / -h).
 
 Examples:
-  uplayground-events search --city "los angeles" --when "this week" --limit 5
-  uplayground-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
-  uplayground-events plan --city london --when weekend --event-types party --avoid mainstream
-  uplayground-events install claude-desktop
-  uplayground-events doctor
+  dizko-events search --city "los angeles" --when "this week" --limit 5
+  dizko-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
+  dizko-events plan --city london --when weekend --event-types party --avoid mainstream
+  dizko-events install claude-desktop
+  dizko-events doctor
 
 Environment:
-  EVENTCHAT_API_BASE_URL            overrides the events API base URL.
-  EVENTCHAT_WEB_BASE_URL            overrides public event links.
-  EVENTCHAT_MCP_URL                 overrides the hosted MCP endpoint (doctor, smoke, monitor).
-  EVENTCHAT_API_TIMEOUT_MS          per-request timeout (default 8000).
-  EVENTCHAT_API_RETRIES             retries for transient network/5xx failures (default 2).
-  EVENTCHAT_API_RETRY_BASE_DELAY_MS backoff base delay (default 250).
+  DIZKO_API_BASE_URL            overrides the events API base URL.
+  DIZKO_WEB_BASE_URL            overrides public event links.
+  DIZKO_MCP_URL                 overrides the hosted MCP endpoint.
+  DIZKO_API_TIMEOUT_MS          per-request timeout (default 8000).
+  DIZKO_API_RETRIES             retries for transient network/5xx failures (default 2).
+  DIZKO_API_RETRY_BASE_DELAY_MS backoff base delay (default 250).
 `;
 }
 

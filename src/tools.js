@@ -751,7 +751,7 @@ function eventSearchSchema() {
       featuring: { type: "string", description: "Artist or performer name." },
       venue: { type: "string" },
       avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in recommendations." },
-      limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events — raise limit or use offset to page through more." },
+      limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events - raise limit or use offset to page through more." },
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
     }
@@ -1147,8 +1147,8 @@ function eventSummarySchema() {
       description: { ...nullableString(), description: "Short one-line event description for display." },
       ticket_url: nullableString(),
       event_url: { type: "string" },
-      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link — offer as 'Add to calendar'." },
-      directions_url: { ...nullableString(), description: "Google Maps directions link — offer as 'Get directions'." }
+      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link - offer as 'Add to calendar'." },
+      directions_url: { ...nullableString(), description: "Google Maps directions link - offer as 'Get directions'." }
     },
     required: ["id", "title", "event_url"]
   };

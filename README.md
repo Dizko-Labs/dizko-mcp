@@ -1,8 +1,8 @@
-# EventChat Events CLI and MCP
+# Dizko Events CLI and MCP
 
 ## Quick Start
 
-**Recommended — add the hosted connector. It runs on our servers, so it never
+**Recommended: add the hosted connector. It runs on our servers, so it never
 gets access to your computer (no scary local-install warning), needs no install
 and no auth:**
 
@@ -17,13 +17,13 @@ client: **https://mcp.dizko.app/install**
 For Claude Code:
 
 ```bash
-claude mcp add --transport http uplayground-events https://mcp.dizko.app/mcp
+claude mcp add --transport http dizko-events https://mcp.dizko.app/mcp
 ```
 
-**Advanced — run the server locally** (only if you can't use the hosted
+**Advanced: run the server locally** (only if you can't use the hosted
 connector, e.g. a free Claude plan or a client that only supports local
 servers). A local server runs as you, so Claude Desktop warns it "can access
-everything on your computer" — that's inherent to *any* local MCP extension,
+everything on your computer". That is inherent to *any* local MCP extension,
 not something this package over-requests. The hosted connector above avoids it.
 
 ```bash
@@ -32,22 +32,22 @@ npx -y uplayground-events install claude-desktop   # writes the local config
 { "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }
 ```
 
-Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/uplayground-events-<version>.mcpb`.
+Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/dizko-events-<version>.mcpb`.
 
 ## Agent frameworks (Hermes, OpenClaw, LangGraph, OpenAI Agents SDK, custom loops)
 
-Framework agents don't have a "Connectors" UI — they integrate programmatically.
+Framework agents don't have a "Connectors" UI, so they integrate programmatically.
 Four paths, simplest first:
 
-1. **Remote MCP over HTTP** — point the framework's MCP client at the hosted
+1. **Remote MCP over HTTP**: point the framework's MCP client at the hosted
    endpoint `https://mcp.dizko.app/mcp`
    (streamable-http, no auth). Works with the official MCP SDKs, the OpenAI
    Agents SDK, LangGraph/LangChain MCP adapters, Pydantic AI, etc.
 
-2. **stdio MCP** — spawn `npx -y uplayground-events mcp` as a subprocess and
+2. **stdio MCP**: spawn `npx -y uplayground-events mcp` as a subprocess and
    speak MCP over stdio.
 
-3. **Raw HTTP JSON-RPC** — no MCP library needed; POST to `/mcp`:
+3. **Raw HTTP JSON-RPC**: no MCP library needed; POST to `/mcp`:
 
    ```bash
    curl -s https://mcp.dizko.app/mcp \
@@ -56,7 +56,7 @@ Four paths, simplest first:
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"this week"}}}'
    ```
 
-4. **In-process library** — embed the tools directly (no MCP layer). The package
+4. **In-process library**: embed the tools directly (no MCP layer). The package
    exposes a stable API:
 
    ```js
@@ -69,8 +69,8 @@ Four paths, simplest first:
 
 By default the ticket tools return a **checkout handoff** (a link). To enable
 bounded autonomous purchase, supply a `ticketPurchaseProvider` adapter. This is
-only injectable when you **embed the package** or **self-host the server** — the
-hosted endpoint runs in our process and can't accept your payment adapter.
+only injectable when you **embed the package** or **self-host the server** - the
+hosted endpoint runs in our process and cannot accept your payment adapter.
 
 ```js
 import { createHttpMcpServer, callTool } from "uplayground-events";
@@ -90,14 +90,14 @@ await callTool("purchase_ticket_order", input, { ticketPurchaseProvider: hermesA
 ```
 
 `purchase_ticket_order` still requires a locked quote from `quote_ticket_order`
-and explicit written confirmation before the adapter is invoked — see
+and explicit written confirmation before the adapter is invoked. See
 `get_ticket_purchase_policy`.
 
 ---
 
 This package exposes Dizko's live event inventory to agents and humans:
 
-- `uplayground-events` (alias `eventchat-events`): a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
+- `dizko-events` (compatibility aliases `uplayground-events` and `eventchat-events`): a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
 - `uplayground-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
 - `uplayground-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
 - Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/Dizko purchase adapters.
@@ -145,15 +145,15 @@ node ./bin/eventchat-events.js doctor
 
 `doctor` checks DNS resolution, the API health endpoint, the hosted MCP endpoint (health, metadata, tools/list), and one small live search, reporting the underlying cause of any failure. Run it first whenever a search fails.
 
-Environment (all surfaces — CLI, stdio MCP, hosted MCP, smoke test, and monitor — resolve endpoints through the same `src/config.js`):
+Environment (all surfaces - CLI, stdio MCP, hosted MCP, smoke test, and monitor - resolve endpoints through the same `src/config.js`):
 
 ```bash
-EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
-EVENTCHAT_WEB_BASE_URL=https://www.dizko.app
-EVENTCHAT_MCP_URL=https://mcp.dizko.app/mcp
-EVENTCHAT_API_TIMEOUT_MS=8000
-EVENTCHAT_API_RETRIES=2                  # transient network/5xx failures retry with backoff + jitter
-EVENTCHAT_API_RETRY_BASE_DELAY_MS=250
+DIZKO_API_BASE_URL=https://api.dizko.app
+DIZKO_WEB_BASE_URL=https://www.dizko.app
+DIZKO_MCP_URL=https://mcp.dizko.app/mcp
+DIZKO_API_TIMEOUT_MS=8000
+DIZKO_API_RETRIES=2                  # transient network/5xx failures retry with backoff + jitter
+DIZKO_API_RETRY_BASE_DELAY_MS=250
 EVENTCHAT_MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://claude.ai
 ```
 
@@ -182,7 +182,7 @@ Example MCP client config:
       "command": "node",
       "args": ["/Users/zakkrevitt/EventChat/ios/EventChat/agent-tools/eventchat-events/bin/eventchat-events-mcp.js"],
       "env": {
-        "EVENTCHAT_API_BASE_URL": "https://backend-production-958d.up.railway.app"
+        "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }
     }
   }
@@ -194,11 +194,11 @@ Example MCP client config using npm:
 ```json
 {
   "mcpServers": {
-    "uplayground-events": {
+    "dizko-events": {
       "command": "npm",
       "args": ["exec", "--yes", "--package", "uplayground-events", "--", "eventchat-events-mcp"],
       "env": {
-        "EVENTCHAT_API_BASE_URL": "https://backend-production-958d.up.railway.app"
+        "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }
     }
   }

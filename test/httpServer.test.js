@@ -10,7 +10,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
   try {
     const health = await fetch(`http://127.0.0.1:${port}/health`);
     assert.equal(health.status, 200);
-    assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/backend-production-958d\.up\.railway\.app https:\/\/www\.dizko\.app/);
+    assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/api\.dizko\.app https:\/\/www\.dizko\.app/);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
     assert.deepEqual(await health.json(), { ok: true, name: "eventchat-events" });
 
@@ -286,7 +286,7 @@ test("mcpb download serves the bundle when built, 404 with hint otherwise", asyn
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/download/uplayground-events.mcpb`);
+    const response = await fetch(`http://127.0.0.1:${port}/download/dizko-events.mcpb`);
     if (response.status === 200) {
       assert.match(response.headers.get("content-type"), /application\/zip/);
       assert.match(response.headers.get("content-disposition"), /\.mcpb"/);

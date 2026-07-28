@@ -65,7 +65,7 @@ export function createHttpMcpServer(options = {}) {
       const shortLink = request.method === "GET" && url.pathname.match(/^\/e\/([^/]+)\/(cal|map|ics)$/);
       if (shortLink) {
         // Short links trigger upstream event lookups, so they share the
-        // /mcp rate limiter — random-id scans must not hammer the backend.
+        // /mcp rate limiter - random-id scans must not hammer the backend.
         const rateLimit = rateLimiter.check(clientIp(request));
         if (!rateLimit.allowed) {
           sendJson(response, 429, { error: "Rate limit exceeded. Please retry shortly." }, {
@@ -79,7 +79,10 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      if (request.method === "GET" && url.pathname === "/download/uplayground-events.mcpb") {
+      if (
+        request.method === "GET"
+        && ["/download/dizko-events.mcpb", "/download/uplayground-events.mcpb"].includes(url.pathname)
+      ) {
         await sendMcpbBundle(response, corsHeaders(request, settings));
         return;
       }
@@ -182,7 +185,7 @@ async function handleEventShortLink(response, eventId, kind, headers, options = 
     const status = error.status === 404 ? 404 : 502;
     sendJson(response, status, {
       error: status === 404
-        ? "Event not found — it may have ended or been removed."
+        ? "Event not found - it may have ended or been removed."
         : "Event lookup failed upstream. Try again shortly."
     }, headers);
     return;
@@ -311,7 +314,7 @@ function securityHeaders() {
     "Content-Security-Policy": [
       "default-src 'none'",
       "base-uri 'none'",
-      "connect-src 'self' https://backend-production-958d.up.railway.app https://www.dizko.app",
+      "connect-src 'self' https://api.dizko.app https://www.dizko.app",
       "frame-ancestors https://chatgpt.com https://chat.openai.com",
       "img-src 'self' https://www.dizko.app data:",
       "style-src 'unsafe-inline'"

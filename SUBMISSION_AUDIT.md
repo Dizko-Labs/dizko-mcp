@@ -1,6 +1,6 @@
 # Submission Audit
 
-Last reviewed: June 9, 2026
+Last reviewed: July 28, 2026
 
 This audit maps the Dizko Events MCP submission requirements to current evidence. Use it with `OPENAI_SUBMISSION_PACKET.md` when doing the final ChatGPT dashboard handoff.
 
@@ -18,15 +18,13 @@ Official OpenAI guidance checked on June 9, 2026:
 https://mcp.dizko.app/mcp
 ```
 
-Do not use `https://mcp.urbanplayground.xyz/mcp` for review until DNS and Railway custom-domain attachment are verified.
-
 Custom-domain check:
 
 ```bash
 npm run domain:check
 ```
 
-Expected current state: non-zero exit because `mcp.urbanplayground.xyz` still resolves to Vercel and does not serve this MCP.
+Expected current state: success for `mcp.dizko.app`.
 
 ## Requirement Evidence
 
@@ -57,8 +55,8 @@ Expected current state: non-zero exit because `mcp.urbanplayground.xyz` still re
 | Review prompt transcript | `npm run review:demo` generates `submission-evidence/review-demo.md` from live MCP calls, redacts profile secrets, and deletes its temporary preference profile. |
 | Package contents | `npm pack --dry-run --json` confirms runtime, scripts, docs, logo, and submission files are included while generated evidence remains ignored. |
 | Public operation monitor | `npm run monitor:live` performs read-only health, metadata, tool-list, and live-search checks and exits non-zero on failure. |
-| Final launch readiness | `npm run submission:status` reads latest evidence, runs the live monitor and dashboard-field validation, reports the hosted endpoint to submit, and keeps the unresolved custom-domain state as an informational non-blocker. |
-| Branded custom domain | Not ready. `npm run domain:check` must report `ok: true` before any review or public docs switch to `mcp.urbanplayground.xyz`. |
+| Final launch readiness | `npm run submission:status` reads latest evidence, runs the live monitor and dashboard-field validation, and reports the Dizko endpoint to submit. |
+| Branded custom domain | `mcp.dizko.app`; `npm run domain:check` must report `ok: true` before review or release. |
 
 ## Verification Commands
 
@@ -73,7 +71,7 @@ npm pack --dry-run --json
 ```
 
 `npm run preflight:submission` runs local tests, live smoke checks, live submission evidence generation, summary generation, and dashboard-field validation.
-`npm run submission:status` is the final local go/no-go check for dashboard submission with the hosted endpoint.
+`npm run submission:status` is the final local go/no-go check for dashboard submission with the Dizko endpoint.
 `npm run monitor:live` is the lightweight read-only command for recurring uptime checks.
 `npm run review:demo` creates a sanitized dashboard companion transcript for the review prompts.
 

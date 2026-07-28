@@ -22,15 +22,13 @@ Railway service:
 eventchat-events-mcp
 ```
 
-Do not route review traffic to `https://mcp.urbanplayground.xyz/mcp` until DNS and Railway custom-domain attachment are verified.
-
 Custom-domain readiness check:
 
 ```bash
 npm run domain:check
 ```
 
-As of June 9, 2026, `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. The check should fail until Railway serves the MCP on that domain and DNS is updated.
+The production check must pass for `mcp.dizko.app` before release and before an OpenAI dashboard submission.
 
 ## Daily Health Check
 
@@ -63,10 +61,10 @@ Expected:
 - `ready_for_openai_dashboard_submission` is `true`.
 - `submit_endpoint` is the hosted MCP endpoint.
 - `code_readiness.latest_evidence`, `code_readiness.live_monitor`, and `code_readiness.dashboard_fields` are all `ok: true`.
-- `code_readiness.branded_domain.ok` may be `false` until `mcp.urbanplayground.xyz` is attached to Railway and DNS is updated.
+- `code_readiness.branded_domain.ok` is `true`.
 - `external_gates_remaining` lists only dashboard, screenshot, and publisher-verification tasks.
 
-This command intentionally treats the branded custom domain as informational. A failing custom-domain check should block switching review traffic to `mcp.urbanplayground.xyz`, but it should not block OpenAI submission with the verified hosted endpoint.
+A failing custom-domain check blocks release and OpenAI submission because the branded endpoint is the canonical public connector.
 
 ## Submission Preflight
 

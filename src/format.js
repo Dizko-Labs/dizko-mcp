@@ -5,10 +5,11 @@ export function eventUrl(event, webBaseUrl = DEFAULT_WEB_BASE_URL) {
 }
 
 // Base for the short /e/<id>/cal|map|ics redirect links served by the
-// hosted HTTP MCP service. Short links keep tool payloads small — a full
+// hosted HTTP MCP service. Short links keep tool payloads small - a full
 // Google Calendar URL is ~370 bytes per event.
 export function shortLinkBase(options = {}) {
   const mcpUrl = options.linkBaseUrl
+    || (options.env || process.env).DIZKO_MCP_URL
     || (options.env || process.env).EVENTCHAT_MCP_URL
     || (options.env || process.env).DIZKO_MCP_URL
     || DEFAULT_MCP_URL;
@@ -79,7 +80,7 @@ function compactSummary(summary) {
   return compact;
 }
 
-// Clickable "Add to calendar" link — opens a prefilled Google Calendar
+// Clickable "Add to calendar" link - opens a prefilled Google Calendar
 // event in the browser, no .ics download needed. The MCP tool
 // create_event_calendar_file still produces a real .ics for imports.
 export function googleCalendarUrl(summary) {
@@ -102,7 +103,7 @@ export function googleCalendarUrl(summary) {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-// Venue placeholders that can't be navigated to — no directions link.
+// Venue placeholders that can't be navigated to - no directions link.
 const UNMAPPABLE_VENUES = new Set(["tba", "tbd", "secret location", "various locations", "undisclosed location"]);
 
 // Clickable "Get directions" link. Prefers exact coordinates when the
@@ -122,7 +123,7 @@ export function directionsUrl(event, summary = {}) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
 }
 
-// One-line description for chat rendering — keeps tool payloads small
+// One-line description for chat rendering - keeps tool payloads small
 // while giving the assistant something better than a tag soup.
 function shortDescription(value, maxLength = 200) {
   if (!value || typeof value !== "string") return null;

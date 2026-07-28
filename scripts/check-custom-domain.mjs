@@ -1,7 +1,7 @@
 import { resolve4, resolve6, resolveCname } from "node:dns/promises";
 import { expectedToolCount } from "../src/liveChecks.js";
 
-const domain = process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.dizko.app";
+const domain = process.env.DIZKO_CUSTOM_DOMAIN || process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.dizko.app";
 const expectedServerName = "eventchat-events";
 const endpointPath = "/mcp";
 

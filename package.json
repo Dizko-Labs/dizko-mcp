@@ -1,6 +1,6 @@
 {
   "name": "uplayground-events",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "mcpName": "xyz.urbanplayground/events",
   "description": "CLI and MCP server for live Dizko event discovery.",
   "type": "module",
@@ -17,6 +17,7 @@
     "event-discovery",
     "chatgpt",
     "claude",
+    "dizko",
     "uplayground",
     "urbanplayground"
   ],
@@ -30,6 +31,7 @@
     "url": "https://github.com/ZakKrevitt/EventChat/issues"
   },
   "bin": {
+    "dizko-events": "bin/eventchat-events.js",
     "uplayground-events": "bin/eventchat-events.js",
     "eventchat-events": "bin/eventchat-events.js",
     "eventchat-events-http": "bin/eventchat-events-http.js",

@@ -1,4 +1,4 @@
-// Builds dist/uplayground-events.mcpb — a one-click Claude Desktop
+// Builds a Dizko Events one-click Claude Desktop extension bundle.
 // extension bundle (MCPB, formerly DXT). The stdio MCP server has zero
 // npm dependencies, so the bundle is just the manifest plus bin/ + src/
 // + package.json (required for "type": "module").
@@ -11,7 +11,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const distDir = join(root, "dist");
 const stageDir = join(distDir, "mcpb-stage");
-const outFile = join(distDir, `uplayground-events-${pkg.version}.mcpb`);
+const outFile = join(distDir, `dizko-events-${pkg.version}.mcpb`);
 
 const manifest = {
   manifest_version: "0.2",

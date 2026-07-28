@@ -21,21 +21,22 @@ async function main() {
   const latestEvidenceOk = evidence.ok === true && evidence.body?.ok === true;
   const monitorOk = monitor.ok === true && monitor.body?.ok === true;
   const fieldValidationOk = fieldValidation.ok === true && fieldValidation.body?.ok === true;
-  const hostedEndpoint = evidence.body?.endpoint || process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
+  const submitEndpoint = evidence.body?.endpoint || process.env.DIZKO_MCP_URL || process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
   const brandedDomainReady = domain.ok === true && domain.body?.ok === true;
 
   const readyForOpenAiSubmission =
     latestEvidenceOk &&
     monitorOk &&
     fieldValidationOk &&
-    hostedEndpoint.includes("mcp.dizko.app/mcp");
+    brandedDomainReady &&
+    submitEndpoint === "https://mcp.dizko.app/mcp";
 
   const result = {
     ok: readyForOpenAiSubmission,
     checked_at: new Date().toISOString(),
     ready_for_openai_dashboard_submission: readyForOpenAiSubmission,
-    submit_endpoint: hostedEndpoint,
-    do_not_submit_endpoint: brandedDomainReady ? null : domain.body?.endpoint || "https://mcp.urbanplayground.xyz/mcp",
+    submit_endpoint: submitEndpoint,
+    do_not_submit_endpoint: brandedDomainReady ? null : domain.body?.endpoint || "https://mcp.dizko.app/mcp",
     code_readiness: {
       latest_evidence: statusFrom(latestEvidenceOk, evidence),
       live_monitor: statusFrom(monitorOk, monitor),
@@ -43,15 +44,15 @@ async function main() {
       branded_domain: {
         ok: brandedDomainReady,
         note: brandedDomainReady
-          ? "Custom domain is ready, but confirm docs before switching review traffic."
-          : "Custom domain is not ready; use the hosted endpoint for review.",
+          ? "The Dizko custom domain is ready for review traffic."
+          : "The Dizko custom domain is not ready; keep review traffic paused.",
         details: domain.body || domain.error
       }
     },
     latest_verified_deployment: evidence.body?.deployment || null,
     external_gates_remaining: requiredExternalGates,
     next_step: readyForOpenAiSubmission
-      ? "Use OPENAI_SUBMISSION_PACKET.md and submit the hosted endpoint after completing the external gates."
+      ? "Use OPENAI_SUBMISSION_PACKET.md and submit the Dizko endpoint after completing the external gates."
       : "Run npm run preflight:submission, fix failed checks, then rerun npm run submission:status."
   };
 

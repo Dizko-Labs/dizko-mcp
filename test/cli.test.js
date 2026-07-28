@@ -28,9 +28,9 @@ test("help, --help, -h, and no command all print usage and exit 0", async () => 
 
 test("help text documents endpoint and retry environment variables", () => {
   const text = helpText();
-  assert.match(text, /EVENTCHAT_API_BASE_URL/);
-  assert.match(text, /EVENTCHAT_MCP_URL/);
-  assert.match(text, /EVENTCHAT_API_RETRIES/);
+  assert.match(text, /DIZKO_API_BASE_URL/);
+  assert.match(text, /DIZKO_MCP_URL/);
+  assert.match(text, /DIZKO_API_RETRIES/);
 });
 
 test("unknown commands exit 1 and include usage", async () => {
@@ -55,7 +55,7 @@ test("formatCliError includes code, host, url, retryability, and a doctor hint",
   assert.match(text, /host: backend\.example\.test/);
   assert.match(text, /url: https:\/\/backend\.example\.test\/events/);
   assert.match(text, /retryable: yes/);
-  assert.match(text, /uplayground-events doctor/);
+  assert.match(text, /dizko-events doctor/);
 });
 
 test("formatCliError keeps plain errors to a single line", () => {

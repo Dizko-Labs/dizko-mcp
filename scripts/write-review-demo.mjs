@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-const endpoint = process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
+const endpoint = process.env.DIZKO_MCP_URL || process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
 const outputPath = resolve(process.env.EVENTCHAT_REVIEW_DEMO_PATH || "./submission-evidence/review-demo.md");
 
 async function main() {

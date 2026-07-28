@@ -22,7 +22,7 @@ test("installIntoJsonConfig creates a fresh config file with our server", async 
   assert.equal(result.backupPath, null);
 
   const written = JSON.parse(await readFile(path, "utf8"));
-  assert.deepEqual(written.mcpServers["uplayground-events"], {
+  assert.deepEqual(written.mcpServers["dizko-events"], {
     command: "npx",
     args: ["-y", "uplayground-events", "mcp"]
   });
@@ -43,10 +43,24 @@ test("installIntoJsonConfig merges into an existing config and writes a backup",
   const written = JSON.parse(await readFile(path, "utf8"));
   assert.equal(written.theme, "dark", "unrelated settings must survive");
   assert.deepEqual(written.mcpServers.other, { command: "other-server" }, "other servers must survive");
-  assert.ok(written.mcpServers["uplayground-events"]);
+  assert.ok(written.mcpServers["dizko-events"]);
 
   const backup = JSON.parse(await readFile(`${path}.bak`, "utf8"));
   assert.equal(backup.mcpServers["uplayground-events"], undefined, "backup holds the pre-install state");
+});
+
+test("installIntoJsonConfig migrates the legacy public server name", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "upg-install-"));
+  const path = join(dir, "config.json");
+  await writeFile(path, JSON.stringify({
+    mcpServers: { "uplayground-events": { command: "old-command" } }
+  }));
+
+  const result = await installIntoJsonConfig(path, stdioServerEntry());
+  const written = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(result.alreadyInstalled, true);
+  assert.equal(written.mcpServers["uplayground-events"], undefined);
+  assert.deepEqual(written.mcpServers["dizko-events"], stdioServerEntry());
 });
 
 test("installIntoJsonConfig refuses to clobber invalid JSON", async () => {
@@ -64,14 +78,14 @@ test("runInstall cursor writes the hosted endpoint url", async () => {
   await runInstall("cursor", { configPath: path, write: (text) => output.push(text) });
 
   const written = JSON.parse(await readFile(path, "utf8"));
-  assert.deepEqual(written.mcpServers["uplayground-events"], { url: DEFAULT_MCP_URL });
+  assert.deepEqual(written.mcpServers["dizko-events"], { url: DEFAULT_MCP_URL });
   assert.match(output.join("\n"), /Restart Cursor/);
 });
 
 test("runInstall claude-code prints the one-line add command", async () => {
   const output = [];
   await runInstall("claude-code", { write: (text) => output.push(text) });
-  assert.match(output.join("\n"), /claude mcp add --transport http uplayground-events https:\/\//);
+  assert.match(output.join("\n"), /claude mcp add --transport http dizko-events https:\/\//);
 });
 
 test("runInstall with no target prints an overview with all targets", async () => {

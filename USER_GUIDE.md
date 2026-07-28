@@ -13,7 +13,7 @@ https://mcp.dizko.app/mcp
 Do not use this custom domain yet:
 
 ```text
-https://mcp.urbanplayground.xyz/mcp
+https://mcp.dizko.app/mcp
 ```
 
 That domain is reserved for later, but it is not verified for review traffic.

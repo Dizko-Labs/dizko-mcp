@@ -21,12 +21,7 @@
     "type": "noauth",
     "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory. Ticket purchase requires a locked event quote and explicit written confirmation; third-party-only links return checkout handoff unless an integrated purchase provider is configured."
   },
-  "do_not_submit_urls": [
-    {
-      "url": "https://mcp.urbanplayground.xyz/mcp",
-      "reason": "Custom-domain DNS/Railway attachment is not verified yet; use the hosted endpoint for review."
-    }
-  ],
+  "do_not_submit_urls": [],
   "discovery_phrases": [
     "Find events this weekend in Berlin.",
     "Use Dizko to find live events this weekend.",
@@ -73,7 +68,7 @@
     "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the Dizko-only deletion scope."
   ],
   "submission_checklist": [
-    "Use the hosted MCP endpoint, not the unresolved custom domain.",
+    "Use the verified branded MCP endpoint at https://mcp.dizko.app/mcp.",
     "Run npm run preflight:submission immediately before submitting.",
     "Run npm run submission:status and confirm ready_for_openai_dashboard_submission is true.",
     "Use submission-evidence/latest-summary.md while filling dashboard fields.",

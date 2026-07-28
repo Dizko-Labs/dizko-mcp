@@ -3,8 +3,8 @@ import { searchEvents } from "./api.js";
 import { getConfig, TOOL_VERSION } from "./config.js";
 import { describeNetworkError, hostnameFromUrl } from "./netError.js";
 
-// Connectivity diagnostics for `uplayground-events doctor`. Every check
-// reports a one-line detail with the underlying cause — no stack traces.
+// Connectivity diagnostics for `dizko-events doctor`. Every check
+// reports a one-line detail with the underlying cause - no stack traces.
 export async function runDoctor(options = {}) {
   const config = options.config || getConfig(options.env);
   const lookup = options.lookup || ((host) => dns.lookup(host));
@@ -14,7 +14,7 @@ export async function runDoctor(options = {}) {
   const apiHost = hostnameFromUrl(config.apiBaseUrl);
   const mcpHost = hostnameFromUrl(config.mcpUrl);
 
-  // All checks are independent — run them concurrently so doctor answers
+  // All checks are independent - run them concurrently so doctor answers
   // in one round-trip time instead of seven.
   const checks = await Promise.all([
     dnsCheck("api_dns", apiHost, lookup),
@@ -37,7 +37,7 @@ export async function runDoctor(options = {}) {
 
 export function formatDoctorReport(report) {
   const lines = [
-    `uplayground-events doctor`,
+    `dizko-events doctor`,
     `  package_version: ${report.package_version}`,
     `  api_base_url:    ${report.api_base_url}`,
     `  mcp_endpoint:    ${report.mcp_endpoint}`,

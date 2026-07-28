@@ -92,14 +92,6 @@ Local logo file:
 public/submission-assets/uplayground-events-logo-512.png
 ```
 
-Do not submit this branded endpoint until Railway custom-domain attachment and DNS are fixed:
-
-```text
-https://mcp.urbanplayground.xyz/mcp
-```
-
-Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified hosted endpoint for review until `npm run domain:check` reports `ok: true`.
-
 Local development:
 
 ```text
@@ -226,4 +218,4 @@ Security and vulnerability reporting are documented in `SECURITY.md` and on the 
 - Capture screenshots from ChatGPT Developer Mode after adding the MCP connector. These must come from the actual ChatGPT UI.
 - Complete individual or business verification in the OpenAI Platform Dashboard if the submitting account has not already done so.
 - Submit the app through the OpenAI dashboard review flow.
-- Optional: attach `mcp.urbanplayground.xyz` to the Railway service after Railway custom-domain authorization is available and DNS is repointed away from Vercel.
+- Keep `mcp.dizko.app` attached to the Railway service and verify it with `npm run domain:check` before submission.

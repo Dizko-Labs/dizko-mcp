@@ -17,7 +17,7 @@ test("getConfig returns shared defaults for every surface", () => {
   assert.equal(config.apiTimeoutMs, 8000);
   assert.equal(config.apiRetries, 2);
   assert.equal(config.apiRetryBaseDelayMs, 250);
-  assert.equal(config.userAgent, `EventChatEventsTool/${TOOL_VERSION}`);
+  assert.equal(config.userAgent, `DizkoEventsTool/${TOOL_VERSION}`);
 });
 
 test("getConfig honors EVENTCHAT_* env overrides and trims trailing slashes", () => {
@@ -50,6 +50,13 @@ test("getConfig accepts DIZKO_* aliases with EVENTCHAT_* taking precedence", () 
     DIZKO_API_BASE_URL: "https://alias-api.example.test"
   });
   assert.equal(both.apiBaseUrl, "https://canonical.example.test");
+
+  const preferred = getConfig({
+    DIZKO_API_BASE_URL: "https://dizko.example.test",
+    EVENTCHAT_API_BASE_URL: "https://canonical.example.test",
+    UPLAYGROUND_API_BASE_URL: "https://alias-api.example.test"
+  });
+  assert.equal(preferred.apiBaseUrl, "https://dizko.example.test");
 });
 
 test("getConfig falls back to defaults for invalid numeric env values", () => {

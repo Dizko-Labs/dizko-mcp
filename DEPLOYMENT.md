@@ -6,28 +6,21 @@ This service is deployed as a public HTTPS remote MCP endpoint:
 https://mcp.dizko.app/mcp
 ```
 
-Do not use this preferred custom domain until DNS/Railway domain attachment is resolved:
-
-```text
-https://mcp.urbanplayground.xyz/mcp
-```
-
-Current status on June 9, 2026: `mcp.urbanplayground.xyz` resolves away from the Railway MCP service and returns 404 for `/health`, `/`, and `/mcp`. Use the verified hosted endpoint for review until `npm run domain:check` reports `ok: true`.
-
 Check the current custom-domain state:
 
 ```bash
 npm run domain:check
 ```
 
-Expected before cutover: this command exits non-zero and explains that the hosted endpoint should remain the review endpoint.
+Expected in production: this command reports `ok: true` for `mcp.dizko.app`, HTTPS, metadata, and the MCP endpoint.
 
 ## Required Environment
 
 ```bash
-EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
-EVENTCHAT_API_TIMEOUT_MS=8000
-EVENTCHAT_WEB_BASE_URL=https://www.dizko.app
+DIZKO_API_BASE_URL=https://api.dizko.app
+DIZKO_API_TIMEOUT_MS=8000
+DIZKO_WEB_BASE_URL=https://www.dizko.app
+DIZKO_MCP_URL=https://mcp.dizko.app/mcp
 EVENTCHAT_MCP_HOST=0.0.0.0
 EVENTCHAT_PREFERENCES_PATH=/data/preferences.json
 PORT=8787
@@ -51,7 +44,7 @@ The public MCP endpoint rate-limits `/mcp` POST traffic by client IP and returns
 The HTTP server emits a restrictive `Content-Security-Policy` header on `/mcp`, `/health`, `/`, static public pages, and the logo asset. The current policy allows only these network/image origins:
 
 ```text
-connect-src 'self' https://backend-production-958d.up.railway.app https://www.dizko.app
+connect-src 'self' https://api.dizko.app https://www.dizko.app
 img-src 'self' https://www.dizko.app data:
 frame-ancestors https://chatgpt.com https://chat.openai.com
 ```
@@ -70,25 +63,25 @@ Preference profiles are automatically pruned after `EVENTCHAT_PREFERENCE_RETENTI
 4. Add a persistent volume mounted at `/data`.
 5. Deploy.
 6. Generate or verify the Railway domain.
-7. Attach the custom domain `mcp.urbanplayground.xyz` only when ready to move review/public traffic off the Railway-provided domain:
+7. Attach the custom domain `mcp.dizko.app`:
 
 ```bash
 railway login
-railway domain mcp.urbanplayground.xyz \
+railway domain mcp.dizko.app \
   --service eventchat-events-mcp \
   --environment production \
   --project cab5c6fa-26dd-44d3-af60-d2329ae65f56 \
   --json
 ```
 
-8. Update DNS away from the current Vercel target to the Railway-provided custom-domain target.
+8. Add the Railway-provided CNAME and ownership TXT records in DNS.
 9. Verify the custom domain:
 
 ```bash
 npm run domain:check
 ```
 
-10. Only after `npm run domain:check` reports `ok: true`, update `submission-fields.json`, `OPENAI_SUBMISSION_PACKET.md`, `SUBMISSION_AUDIT.md`, `README.md`, `USER_GUIDE.md`, and `OPERATIONS.md` to use the branded domain, then rerun `npm run preflight:submission`.
+10. Only after `npm run domain:check` reports `ok: true`, route review and public connector traffic to the branded domain, then rerun `npm run preflight:submission`.
 11. Verify:
 
 ```bash
@@ -107,7 +100,7 @@ npm run verify:submission
 ```bash
 docker build -t eventchat-events-mcp .
 docker run --rm -p 8787:8787 \
-  -e EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app \
+  -e DIZKO_API_BASE_URL=https://api.dizko.app \
   -e EVENTCHAT_WEB_BASE_URL=https://www.dizko.app \
   -v eventchat-preferences:/data \
   eventchat-events-mcp

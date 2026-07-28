@@ -41,13 +41,13 @@
   </div>
 
   <h2>Claude Code</h2>
-  <pre>claude mcp add --transport http uplayground-events https://mcp.dizko.app/mcp</pre>
+  <pre>claude mcp add --transport http dizko-events https://mcp.dizko.app/mcp</pre>
 
   <h2>Cursor</h2>
   <p>Add the hosted endpoint to <code>~/.cursor/mcp.json</code>:</p>
   <pre>{
   "mcpServers": {
-    "uplayground-events": {
+    "dizko-events": {
       "url": "https://mcp.dizko.app/mcp"
     }
   }
@@ -58,13 +58,13 @@
     <p class="hint">Only needed if you can&rsquo;t use the hosted connector (e.g. a free Claude plan, or a client that only supports local servers). A local server runs on <em>your</em> machine, so Claude Desktop shows a warning that the extension &ldquo;can access everything on your computer.&rdquo; That&rsquo;s true of <strong>any</strong> local MCP extension &mdash; there&rsquo;s no narrower permission to grant; the program runs as you. The hosted connector above avoids this entirely because nothing runs locally. The code is open source and the server only ever calls the Dizko events API.</p>
 
     <h3>Claude Desktop one-click bundle</h3>
-    <p><a href="/download/uplayground-events.mcpb">Download the .mcpb extension</a> and double-click it (or drag it into Claude Desktop &rarr; Settings &rarr; Extensions). No terminal; Claude Desktop runs it with its built-in runtime.</p>
+    <p><a href="/download/dizko-events.mcpb">Download the .mcpb extension</a> and double-click it (or drag it into Claude Desktop &rarr; Settings &rarr; Extensions). No terminal; Claude Desktop runs it with its built-in runtime.</p>
 
     <h3>Any MCP client (stdio config)</h3>
     <p>Requires Node 20+:</p>
     <pre>{
   "mcpServers": {
-    "uplayground-events": {
+    "dizko-events": {
       "command": "npx",
       "args": ["-y", "uplayground-events", "mcp"]
     }

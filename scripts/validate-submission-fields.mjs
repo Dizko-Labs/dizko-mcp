@@ -59,9 +59,8 @@ async function main() {
   assert(checklistText.includes("npm run preflight:submission"), "submission_checklist must include preflight command");
   assert(checklistText.includes("npm run submission:status"), "submission_checklist must include final status command");
   assert(checklistText.includes("ready_for_openai_dashboard_submission"), "submission_checklist must mention final ready flag");
-  assertArray(fields.do_not_submit_urls, "do_not_submit_urls", 1);
-  assert(fields.do_not_submit_urls.some((entry) => entry.url === "https://mcp.urbanplayground.xyz/mcp"), "do_not_submit_urls must include unresolved custom domain");
-  assert(!fields.mcp_endpoint.includes("mcp.urbanplayground.xyz"), "mcp_endpoint must not use unresolved custom domain");
+  assertArray(fields.do_not_submit_urls, "do_not_submit_urls", 0);
+  assert(fields.mcp_endpoint === "https://mcp.dizko.app/mcp", "mcp_endpoint must use the verified Dizko domain");
 
   const promptText = JSON.stringify(fields.review_test_prompts).toLowerCase();
   for (const phrase of ["consent", "follow-up", "delete", "event", "recommend"]) {

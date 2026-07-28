@@ -11,7 +11,7 @@ https://mcp.dizko.app/mcp
 Do not use:
 
 ```text
-https://mcp.urbanplayground.xyz/mcp
+https://mcp.dizko.app/mcp
 ```
 
 ## Required Screenshots

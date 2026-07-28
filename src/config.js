@@ -1,4 +1,4 @@
-export const DEFAULT_API_BASE_URL = "https://backend-production-958d.up.railway.app";
+export const DEFAULT_API_BASE_URL = "https://api.dizko.app";
 export const DEFAULT_WEB_BASE_URL = "https://www.dizko.app";
 export const DEFAULT_MCP_URL = "https://mcp.dizko.app/mcp";
 
@@ -50,7 +50,7 @@ export const SUPPORTED_CITIES = [
   "warsaw"
 ];
 
-export const TOOL_VERSION = "0.3.1";
+export const TOOL_VERSION = "0.3.2";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",
@@ -78,9 +78,9 @@ export function getConfig(env = process.env) {
     // Event inventory updates on a 6h scrape cadence, so a short response
     // cache is risk-free. 0 disables. Stale window: how long an expired
     // entry may still be served when the upstream fails (resilience).
-    apiCacheTtlMs: nonNegativeNumber(env.EVENTCHAT_API_CACHE_TTL_MS, 300_000),
-    apiCacheStaleMs: nonNegativeNumber(env.EVENTCHAT_API_CACHE_STALE_MS, 3_600_000),
-    userAgent: env.EVENTCHAT_USER_AGENT || `EventChatEventsTool/${TOOL_VERSION}`
+    apiCacheTtlMs: nonNegativeNumber(env.DIZKO_API_CACHE_TTL_MS || env.EVENTCHAT_API_CACHE_TTL_MS, 300_000),
+    apiCacheStaleMs: nonNegativeNumber(env.DIZKO_API_CACHE_STALE_MS || env.EVENTCHAT_API_CACHE_STALE_MS, 3_600_000),
+    userAgent: env.DIZKO_USER_AGENT || env.EVENTCHAT_USER_AGENT || `DizkoEventsTool/${TOOL_VERSION}`
   };
 }
 

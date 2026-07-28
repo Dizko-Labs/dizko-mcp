@@ -52,14 +52,6 @@ Security contact metadata:
 https://mcp.dizko.app/.well-known/security.txt
 ```
 
-Do not submit this URL yet:
-
-```text
-https://mcp.urbanplayground.xyz/mcp
-```
-
-That custom domain is not verified for review traffic.
-
 ## Dashboard Copy
 
 App name:

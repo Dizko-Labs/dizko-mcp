@@ -15,7 +15,7 @@
 //        import { searchEvents, recommendEvents } from "uplayground-events";
 //
 // Autonomous ticket purchase (the Hermes/OpenClaw integration point) is
-// only injectable in styles 1 and 2 — pass a ticketPurchaseProvider with
+// only injectable in styles 1 and 2 - pass a ticketPurchaseProvider with
 // canPurchase(event, summary) and purchase({ quote, confirmation_text,
 // delivery_email, add_to_calendar }). The hosted endpoint cannot accept
 // an adapter because the process is ours, so it returns checkout handoff.
@@ -42,7 +42,7 @@ export { recommendEvents, planNight } from "./planner.js";
 export { summarizeEvent, eventUrl } from "./format.js";
 export { TICKET_PURCHASE_POLICY } from "./tickets.js";
 
-// MCP transports — mount in a custom host or run the canonical servers.
+// MCP transports - mount in a custom host or run the canonical servers.
 export { handleMcpRequest, runMcpServer } from "./mcpServer.js";
 export { createSdkMcpServer } from "./sdkServer.js";
 export { createHttpMcpServer, runHttpMcpServer } from "./httpServer.js";
