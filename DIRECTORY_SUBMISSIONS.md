@@ -1,6 +1,6 @@
-# Directory Submissions — UPlayground Events
+# Directory Submissions  -  Dizko Events
 
-Getting listed turns installation into "search UPlayground, click add" and is the
+Getting listed turns installation into "search Dizko, click add" and is the
 only route to claude.ai users who can't add custom connectors. Status table at the
 bottom — update it as submissions land.
 

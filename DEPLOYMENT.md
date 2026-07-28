@@ -1,4 +1,4 @@
-# Deploy UPlayground Events MCP
+# Deploy Dizko Events MCP
 
 This service is deployed as a public HTTPS remote MCP endpoint:
 

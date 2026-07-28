@@ -10,7 +10,7 @@ export function eventUrl(event, webBaseUrl = DEFAULT_WEB_BASE_URL) {
 export function shortLinkBase(options = {}) {
   const mcpUrl = options.linkBaseUrl
     || (options.env || process.env).EVENTCHAT_MCP_URL
-    || (options.env || process.env).UPLAYGROUND_MCP_URL
+    || (options.env || process.env).DIZKO_MCP_URL
     || DEFAULT_MCP_URL;
   return mcpUrl.replace(/\/mcp\/?$/, "").replace(/\/+$/, "");
 }
@@ -89,7 +89,7 @@ export function googleCalendarUrl(summary) {
   const end = toCalendarDate(summary.ends_at) || toCalendarDate(new Date(Date.parse(summary.starts_at) + DEFAULT_DURATION_MS).toISOString());
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: summary.title || "UPlayground Event",
+    text: summary.title || "Dizko Event",
     dates: `${start}/${end}`
   });
   const location = [summary.venue, summary.city].filter(Boolean).join(", ");

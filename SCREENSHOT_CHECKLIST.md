@@ -1,6 +1,6 @@
 # ChatGPT Screenshot Checklist
 
-Capture these screenshots from the actual ChatGPT Developer Mode connector flow before submitting UPlayground Events for review.
+Capture these screenshots from the actual ChatGPT Developer Mode connector flow before submitting Dizko Events for review.
 
 Use the production MCP endpoint:
 
@@ -17,12 +17,12 @@ https://mcp.urbanplayground.xyz/mcp
 ## Required Screenshots
 
 1. `01-connector-connected.png`
-   - Show the connector setup screen with UPlayground Events connected.
+   - Show the connector setup screen with Dizko Events connected.
    - The hosted MCP endpoint should be visible if the UI exposes it.
 
 2. `02-tool-list.png`
    - Show tool list or tool-call details.
-   - It should be clear that UPlayground Events exposes 18 tools.
+   - It should be clear that Dizko Events exposes 18 tools.
 
 3. `03-live-event-search.png`
    - Prompt:
@@ -31,7 +31,7 @@ https://mcp.urbanplayground.xyz/mcp
 Find five techno events in Berlin this weekend.
 ```
 
-   - Expected: live events with UPlayground event URLs and ticket/source links when available.
+   - Expected: live events with Dizko event URLs and ticket/source links when available.
 
 4. `04-current-context-followups.png`
    - Prompt:
@@ -46,7 +46,7 @@ Find something good tonight in Berlin, but ask me what kind of event and vibe fi
    - Prompt:
 
 ```text
-Ask what kind of events I generally like, then ask whether UPlayground may save my preferences.
+Ask what kind of events I generally like, then ask whether Dizko may save my preferences.
 ```
 
    - Expected: onboarding questions and explicit consent request before profile creation.
@@ -73,10 +73,10 @@ Ask me a follow-up about whether I liked that event and remember my answer for f
    - Prompt:
 
 ```text
-Delete my UPlayground saved event preferences and feedback history.
+Delete my Dizko saved event preferences and feedback history.
 ```
 
-   - Expected: `delete_event_preferences` and an explanation that deletion is scoped to UPlayground connector preferences and feedback.
+   - Expected: `delete_event_preferences` and an explanation that deletion is scoped to Dizko connector preferences and feedback.
 
 ## Optional Mobile Screenshots
 

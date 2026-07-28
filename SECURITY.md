@@ -2,7 +2,7 @@
 
 ## Scope
 
-This policy covers the UPlayground Events MCP package, hosted MCP endpoint, preference-memory tools, profile-secret access, public privacy/support pages, event-search/recommendation tools, and ticket quote/purchase handoff tools in this directory.
+This policy covers the Dizko Events MCP package, hosted MCP endpoint, preference-memory tools, profile-secret access, public privacy/support pages, event-search/recommendation tools, and ticket quote/purchase handoff tools in this directory.
 
 Production MCP endpoint:
 

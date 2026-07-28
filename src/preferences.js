@@ -140,7 +140,7 @@ export function onboardingQuestions() {
     "What vibe usually works for you? Examples: underground, intimate, high-energy, social, seated, outdoors, upscale, cheap-and-cheerful.",
     "What should I avoid recommending? Examples: huge crowds, mainstream clubs, expensive tickets, late nights, alcohol-focused events.",
     "What budget, neighborhoods, venues, or cities should I remember?",
-    "Can I save these preferences and learn from your feedback after events? If yes, I will create a private UPlayground preference profile for you."
+    "Can I save these preferences and learn from your feedback after events? If yes, I will create a private Dizko preference profile for you."
   ];
 }
 

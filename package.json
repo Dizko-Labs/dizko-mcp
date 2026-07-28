@@ -2,7 +2,7 @@
   "name": "uplayground-events",
   "version": "0.3.1",
   "mcpName": "xyz.urbanplayground/events",
-  "description": "CLI and MCP server for live UPlayground event discovery.",
+  "description": "CLI and MCP server for live Dizko event discovery.",
   "type": "module",
   "main": "src/index.js",
   "exports": {

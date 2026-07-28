@@ -1,6 +1,6 @@
 // Public library entry point for agent frameworks (Hermes, OpenClaw,
 // LangGraph, OpenAI Agents SDK, custom loops) that want to embed the
-// UPlayground Events tools in-process or self-host the MCP server —
+// Dizko Events tools in-process or self-host the MCP server.
 // rather than connect to the hosted endpoint over MCP.
 //
 // Three embed styles:

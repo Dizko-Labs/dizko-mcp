@@ -27,14 +27,14 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     const termsBody = await terms.text();
     assert.equal(terms.status, 200);
     assert.match(terms.headers.get("content-type"), /text\/html/);
-    assert.match(termsBody, /UPlayground Events Connector Terms/);
+    assert.match(termsBody, /Dizko Events Connector Terms/);
     assert.match(termsBody, /explicit confirmation/);
 
     const userGuide = await fetch(`http://127.0.0.1:${port}/user-guide.html`);
     const userGuideBody = await userGuide.text();
     assert.equal(userGuide.status, 200);
     assert.match(userGuide.headers.get("content-type"), /text\/html/);
-    assert.match(userGuideBody, /UPlayground Events Connector User Guide/);
+    assert.match(userGuideBody, /Dizko Events Connector User Guide/);
     assert.match(userGuideBody, /Preference Memory/);
     assert.match(userGuideBody, /Deleting Saved Preferences/);
 
@@ -199,7 +199,7 @@ test("HTTP MCP server serves the install page at /install and /install.html", as
       assert.equal(response.status, 200, `${path} should be served`);
       assert.match(response.headers.get("content-type"), /text\/html/);
       const body = await response.text();
-      assert.match(body, /Install UPlayground Events/);
+      assert.match(body, /Install Dizko Events/);
       assert.match(body, /Add custom connector/);
       assert.match(body, /uplayground-events", "mcp"/);
     }

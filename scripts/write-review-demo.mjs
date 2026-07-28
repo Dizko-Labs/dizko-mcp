@@ -103,10 +103,10 @@ async function main() {
     confirm_delete: true
   });
   steps.push({
-    prompt: "Delete my UPlayground saved event preferences and feedback history.",
+    prompt: "Delete my Dizko saved event preferences and feedback history.",
     tools: ["delete_event_preferences"],
     evidence: ["Deletion confirmation: true", `Deleted: ${Boolean(deleted.deleted)}`],
-    response: "Your saved UPlayground event preferences and feedback history for this connector profile have been deleted."
+    response: "Your saved Dizko event preferences and feedback history for this connector profile have been deleted."
   });
 
   const body = renderMarkdown({ generatedAt, steps });
@@ -146,7 +146,7 @@ async function callRpc(method, params = undefined) {
 
 function renderMarkdown({ generatedAt, steps }) {
   return [
-    "# UPlayground Events Review Demo",
+    "# Dizko Events Review Demo",
     "",
     `Generated: ${generatedAt}`,
     `Endpoint: ${endpoint}`,
@@ -173,7 +173,7 @@ function renderMarkdown({ generatedAt, steps }) {
 function eventResponse(events = []) {
   if (!events.length) return "I would tell the user that no matching live events were found and suggest broadening the filters.";
   return [
-    "I would recommend these live UPlayground events:",
+    "I would recommend these live Dizko events:",
     "",
     ...events.slice(0, 5).map((event) => `- ${eventLine(event)}`)
   ].join("\n");

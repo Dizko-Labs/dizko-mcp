@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Install - UPlayground Events Connector</title>
+  <title>Install - Dizko Events Connector</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; max-width: 720px; margin: 0 auto; padding: 32px 20px; color: #111; }
     h1 { font-size: 28px; margin-bottom: 4px; }
@@ -23,7 +23,7 @@
   </style>
 </head>
 <body>
-  <h1>Install UPlayground Events</h1>
+  <h1>Install Dizko Events</h1>
   <p>Live event discovery (concerts, club nights, art, comedy, festivals) for any AI assistant that speaks MCP. No account, no API key.</p>
 
   <div class="recommended">
@@ -34,7 +34,7 @@
     <ol>
       <li>In Claude (claude.ai or Claude Desktop), open <strong>Settings &rarr; Connectors</strong> (web: click your initials, bottom-left).</li>
       <li>Click <strong>Add custom connector</strong>.</li>
-      <li>Name it <code>UPlayground Events</code> and paste the endpoint URL. No auth needed.</li>
+      <li>Name it <code>Dizko Events</code> and paste the endpoint URL. No auth needed.</li>
       <li>In any chat, enable it from the tools menu and ask: <em>&ldquo;What&rsquo;s happening in Los Angeles this weekend?&rdquo;</em></li>
     </ol>
     <p class="hint">Custom connectors require a paid Claude plan. When the tool-permission prompt appears, choose &ldquo;Always allow&rdquo; &mdash; you&rsquo;re only asked once per tool. (ChatGPT: Settings &rarr; Apps &amp; Connectors &rarr; Advanced &rarr; Developer mode &rarr; add the same URL.)</p>
@@ -55,7 +55,7 @@
 
   <details>
     <summary>Advanced: run the server locally</summary>
-    <p class="hint">Only needed if you can&rsquo;t use the hosted connector (e.g. a free Claude plan, or a client that only supports local servers). A local server runs on <em>your</em> machine, so Claude Desktop shows a warning that the extension &ldquo;can access everything on your computer.&rdquo; That&rsquo;s true of <strong>any</strong> local MCP extension &mdash; there&rsquo;s no narrower permission to grant; the program runs as you. The hosted connector above avoids this entirely because nothing runs locally. The code is open source and the server only ever calls the UPlayground events API.</p>
+    <p class="hint">Only needed if you can&rsquo;t use the hosted connector (e.g. a free Claude plan, or a client that only supports local servers). A local server runs on <em>your</em> machine, so Claude Desktop shows a warning that the extension &ldquo;can access everything on your computer.&rdquo; That&rsquo;s true of <strong>any</strong> local MCP extension &mdash; there&rsquo;s no narrower permission to grant; the program runs as you. The hosted connector above avoids this entirely because nothing runs locally. The code is open source and the server only ever calls the Dizko events API.</p>
 
     <h3>Claude Desktop one-click bundle</h3>
     <p><a href="/download/uplayground-events.mcpb">Download the .mcpb extension</a> and double-click it (or drag it into Claude Desktop &rarr; Settings &rarr; Extensions). No terminal; Claude Desktop runs it with its built-in runtime.</p>

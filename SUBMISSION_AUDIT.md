@@ -2,7 +2,7 @@
 
 Last reviewed: June 9, 2026
 
-This audit maps the UPlayground Events MCP submission requirements to current evidence. Use it with `OPENAI_SUBMISSION_PACKET.md` when doing the final ChatGPT dashboard handoff.
+This audit maps the Dizko Events MCP submission requirements to current evidence. Use it with `OPENAI_SUBMISSION_PACKET.md` when doing the final ChatGPT dashboard handoff.
 
 Official OpenAI guidance checked on June 9, 2026:
 
@@ -36,13 +36,13 @@ Expected current state: non-zero exit because `mcp.urbanplayground.xyz` still re
 | Public HTTPS MCP endpoint | Railway production endpoint above; `/health` and `/mcp` are verified by `npm run preflight:submission`. |
 | Streamable HTTP MCP transport | `src/httpServer.js` and `src/sdkServer.js`; verified by live `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` checks. |
 | Server-level MCP instructions | `initialize` returns cross-tool guidance for live search, consent-first preference memory, follow-up questions, feedback learning, deletion, and ticket quote/purchase handoff; enforced by tests and live verifier. |
-| Useful beyond normal ChatGPT answers | Live UPlayground inventory, structured event URLs, ticket/source links, deterministic filters, explainable ranking, night plans, follow-up questions, preference memory, feedback learning, ticket offers, locked quotes, and written-confirmation purchase boundaries in `src/tools.js`. |
+| Useful beyond normal ChatGPT answers | Live Dizko inventory, structured event URLs, ticket/source links, deterministic filters, explainable ranking, night plans, follow-up questions, preference memory, feedback learning, ticket offers, locked quotes, and written-confirmation purchase boundaries in `src/tools.js`. |
 | Preference onboarding | `get_preference_onboarding` returns consent-first questions; covered by tests and live verifier. |
 | Saved user preferences | `create_event_preference_profile`, `save_event_preferences`, and `get_event_preferences`; profile access uses `profile_id` plus private `profile_secret`. |
 | Learns over time | `record_event_feedback` updates learned preferences only after liked/disliked, rating, or notes are supplied; negative feedback creates learned avoid signals; covered by `test/preferences.test.js` and live verifier. |
 | Post-event follow-up | `get_event_feedback_prompt` asks short questions before `record_event_feedback`; covered by tests and live verifier. |
 | User deletion control | `delete_event_preferences` deletes saved connector preferences and feedback only when `confirm_delete: true`; support utility is `scripts/delete-preference-profile.mjs`. |
-| Ticket quote and purchase boundary | `get_ticket_offers`, `quote_ticket_order`, and `purchase_ticket_order` support ticket offers, locked quotes, explicit written confirmation, external checkout handoff, and future Hermes/OpenClaw/UPlayground provider adapters; covered by tests and live verifier. |
+| Ticket quote and purchase boundary | `get_ticket_offers`, `quote_ticket_order`, and `purchase_ticket_order` support ticket offers, locked quotes, explicit written confirmation, external checkout handoff, and future Hermes/OpenClaw/Dizko provider adapters; covered by tests and live verifier. |
 | Privacy policy | Hosted at `/privacy-policy.html`; covers preference memory and ticket quote/order metadata; verified by `scripts/verify-submission.mjs`. |
 | Terms and acceptable use | Hosted at `/terms.html`; covers event-detail volatility, third-party ticket/source links, preference memory, deletion confirmation, ticket checkout handoff, and acceptable use. |
 | Public user guide | Hosted at `/user-guide.html`; gives normal users prompts, preference-memory behavior, feedback learning, ticket purchase safety, deletion, and support links. |

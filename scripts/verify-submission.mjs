@@ -136,7 +136,7 @@ async function checkCompanyUrl() {
   const body = await response.text();
   assert(response.ok, `Company URL returned HTTP ${response.status}`);
   assert((response.headers.get("content-type") || "").includes("text/html"), "Company URL was not served as HTML");
-  assert(body.toLowerCase().includes("urban"), "Company URL did not include expected UrbanPlayground brand text");
+  assert(body.toLowerCase().includes("urban"), "Company URL did not include expected Dizko brand text");
   return {
     ok: true,
     url: companyUrl,
@@ -238,10 +238,10 @@ async function checkMetadata() {
 async function checkPublicPages() {
   const pages = {};
   for (const [name, path, requiredTexts] of [
-    ["privacy", "/privacy-policy.html", ["UrbanPlayground", "hashed profile secret", "Personalization summaries", "learned genres, vibes, event types, venues, and avoid signals", "24 months", "automatically pruned", "30 days", "Deletion requests"]],
+    ["privacy", "/privacy-policy.html", ["Dizko", "hashed profile secret", "Personalization summaries", "learned genres, vibes, event types, venues, and avoid signals", "24 months", "automatically pruned", "30 days", "Deletion requests"]],
     ["support", "/support.html", ["support@urbanplayground.xyz", "feedback history", "security@urbanplayground.xyz", "vulnerability"]],
-    ["terms", "/terms.html", ["UPlayground Events Connector Terms", "Third-Party Links", "Preference Memory", "explicit confirmation", "Acceptable Use"]],
-    ["user_guide", "/user-guide.html", ["UPlayground Events Connector User Guide", "UrbanPlayground", "Connect", "ChatGPT Developer Mode", "Claude custom connectors", "https://mcp.dizko.app/mcp", "https://mcp.urbanplayground.xyz/mcp", "Useful Prompts", "Preference Memory", "Learning From Feedback", "too crowded", "too expensive", "too late", "Deleting Saved Preferences"]]
+    ["terms", "/terms.html", ["Dizko Events Connector Terms", "Third-Party Links", "Preference Memory", "explicit confirmation", "Acceptable Use"]],
+    ["user_guide", "/user-guide.html", ["Dizko Events Connector User Guide", "Dizko", "Connect", "ChatGPT Developer Mode", "Claude custom connectors", "https://mcp.dizko.app/mcp", "https://mcp.urbanplayground.xyz/mcp", "Useful Prompts", "Preference Memory", "Learning From Feedback", "too crowded", "too expensive", "too late", "Deleting Saved Preferences"]]
   ]) {
     const response = await fetchWithTimeout(`${baseUrl}${path}`);
     const body = await response.text();

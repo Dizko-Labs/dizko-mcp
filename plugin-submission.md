@@ -1,4 +1,4 @@
-# UPlayground Events Plugin Submission Draft
+# Dizko Events Plugin Submission Draft
 
 Use this as the working copy for ChatGPT Apps Directory / Codex Plugin Directory submission fields.
 
@@ -20,21 +20,21 @@ Final dashboard handoff is summarized in `OPENAI_SUBMISSION_PACKET.md`.
 
 ## Name
 
-UPlayground Events
+Dizko Events
 
 ## Short Description
 
-Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.
+Find current concerts, parties, nightlife, festivals, and cultural events from Dizko's live event inventory.
 
 ## Long Description
 
-UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.
-Ticket tools can show ticket offers, create locked quotes, require explicit written confirmation, and hand off third-party checkout. Autonomous purchase is only available when a bounded provider adapter such as Hermes, OpenClaw, UPlayground Checkout, a partner ticketing API, or delegated payment is configured.
+Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.
+Ticket tools can show ticket offers, create locked quotes, require explicit written confirmation, and hand off third-party checkout. Autonomous purchase is only available when a bounded provider adapter such as Hermes, OpenClaw, Dizko Checkout, a partner ticketing API, or delegated payment is configured.
 
 ## Discovery Phrases
 
 - Find events this weekend in Berlin.
-- Use UrbanPlayground to find live events this weekend.
+- Use Dizko to find live events this weekend.
 - What techno events are happening tonight near me?
 - Plan a night out in New York with underground music.
 - Find free cultural events in Paris.
@@ -116,11 +116,11 @@ http://127.0.0.1:8787/mcp
 - `record_event_feedback`: Record post-event feedback with profile-secret access so recommendations learn over time; rejects empty feedback unless liked/disliked, rating, or notes are supplied.
 - `get_event_feedback_prompt`: Ask short post-event follow-up questions for a returned event before recording feedback.
 - `get_event_search_followups`: Ask only the missing event type, vibe, budget, area, or avoidance questions before searching tonight/week/weekend events.
-- `search_events`: Search live UPlayground event inventory with structured filters.
+- `search_events`: Search live Dizko event inventory with structured filters.
 - `recommend_events`: Search and rank events for a user's taste, returning explainable recommendation reasons.
 - `recommend_events_for_user`: Recommend events using saved preferences, learned feedback signals, profile-secret access, and the current night/week request.
 - `plan_night`: Build a compact event plan with a primary option and fallbacks.
-- `get_event`: Fetch detail for a specific UPlayground event id.
+- `get_event`: Fetch detail for a specific Dizko event id.
 - `get_ticket_purchase_policy`: Explain purchase modes, safety rules, and provider requirements.
 - `get_ticket_offers`: Return ticket options and whether autonomous purchase is supported for a specific event.
 - `quote_ticket_order`: Create a locked quote with quantity, max total, ticket type, expiration, and stop conditions.
@@ -128,7 +128,7 @@ http://127.0.0.1:8787/mcp
 
 ## Privacy Notes
 
-The public version does not require personal accounts for basic event search. Preference learning is opt-in: the assistant asks whether UPlayground may save preferences before calling `create_event_preference_profile` or `save_event_preferences`. New users receive an opaque `upg_...` profile id and a private `ups_...` profile secret that the assistant can remember for future recommendations. The creation response also returns `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions. The raw secret is returned once and stored only as a hash by the MCP service. Stored data can include a profile id, hashed profile secret, event preferences, liked/disliked event feedback, ratings, notes, event ids, timestamps, and derived learned taste signals. Users can request deletion through `delete_event_preferences`, which requires `confirm_delete: true` after the user confirms the UPlayground-only deletion scope. Search location is limited to user-provided city, neighborhood, venue, or event-area filters. Do not collect GPS coordinates, street addresses, full chat transcripts, or agent prompts unless the tool schemas, privacy policy, and submission packet are explicitly updated and re-reviewed.
+The public version does not require personal accounts for basic event search. Preference learning is opt-in: the assistant asks whether Dizko may save preferences before calling `create_event_preference_profile` or `save_event_preferences`. New users receive an opaque `upg_...` profile id and a private `ups_...` profile secret that the assistant can remember for future recommendations. The creation response also returns `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions. The raw secret is returned once and stored only as a hash by the MCP service. Stored data can include a profile id, hashed profile secret, event preferences, liked/disliked event feedback, ratings, notes, event ids, timestamps, and derived learned taste signals. Users can request deletion through `delete_event_preferences`, which requires `confirm_delete: true` after the user confirms the Dizko-only deletion scope. Search location is limited to user-provided city, neighborhood, venue, or event-area filters. Do not collect GPS coordinates, street addresses, full chat transcripts, or agent prompts unless the tool schemas, privacy policy, and submission packet are explicitly updated and re-reviewed.
 
 Saved preference profiles and feedback are retained until user deletion or 24 months of inactivity, whichever comes first. The preference store automatically prunes inactive profiles after the configured retention window, defaulting to 730 days. Technical logs and diagnostics are normally retained for up to 30 days unless needed longer for abuse, security, fraud, reliability, or support investigations.
 
@@ -144,7 +144,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 4. Get details for an event id returned by search.
 5. Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.
 6. Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.
-7. Delete my UPlayground saved event preferences and feedback history.
+7. Delete my Dizko saved event preferences and feedback history.
 
 ## Pre-Submission Checklist
 
@@ -174,13 +174,13 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 Capture these from the actual ChatGPT connector flow before submitting:
 
 - Connector setup screen showing the hosted MCP endpoint connected.
-- Tool list or tool-call details showing UPlayground Events exposes 18 tools.
+- Tool list or tool-call details showing Dizko Events exposes 18 tools.
 - Live search result for a current event prompt, including at least one event URL.
 - Current-context follow-up flow before a tonight/week/weekend search.
 - Consent-first preference onboarding before saving preferences.
 - Personalized recommendation after creating or reusing a preference profile.
 - Post-event feedback prompt and successful feedback recording.
-- Preference deletion flow scoped to UPlayground connector data.
+- Preference deletion flow scoped to Dizko connector data.
 
 Run this command before submitting to generate a JSON evidence report for the reachable endpoint, current Railway deployment metadata, public pages, logo, CSP/security headers, tool list, tool annotations, output schemas, live search, and preference-memory flow:
 

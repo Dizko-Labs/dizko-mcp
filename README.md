@@ -95,21 +95,21 @@ and explicit written confirmation before the adapter is invoked — see
 
 ---
 
-This package exposes UrbanPlayground's UPlayground live event inventory to agents and humans:
+This package exposes Dizko's live event inventory to agents and humans:
 
 - `uplayground-events` (alias `eventchat-events`): a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
 - `uplayground-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
 - `uplayground-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
-- Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/UPlayground purchase adapters.
+- Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/Dizko purchase adapters.
 
 ## Why This Beats Normal Chat
 
 General chat can describe likely events, but it does not reliably know current inventory. This tool gives an agent:
 
-- Live structured results from UrbanPlayground's `/events` API.
+- Live structured results from Dizko's `/events` API.
 - Deterministic filters for city, date, genre, vibe, venue, price, attendance, neighborhood, and artist.
 - Explainable ranking so recommendations include reasons instead of opaque taste guesses.
-- Ticket links and UPlayground event links for verification.
+- Ticket links and Dizko event links for verification.
 - A planning tool that returns primary options plus fallbacks in a compact machine-readable shape.
 - Consent-based preference learning: onboarding questions, saved taste profiles, post-event feedback, note-derived signals, and learned ranking signals.
 - Negative feedback becomes learned avoid signals, so future recommendations can steer away from disliked genres, vibes, event types, or venues.
@@ -227,11 +227,11 @@ Tools:
 
 Annotation note: search and recommendation tools read live event data, and preference tools write only private connector memory protected by `profile_id` plus `profile_secret`. Only `purchase_ticket_order` is marked destructive/open-world because it is the bounded action point for ticket purchases or checkout handoff.
 
-Ticket note: `purchase_ticket_order` is intentionally marked destructive and open-world because it is the future action boundary for autonomous ticket purchase. In the default npm/hosted build, third-party ticket links return `requires_external_checkout`; the tool does not scrape checkout pages, bypass CAPTCHAs, or charge cards. True autonomous purchase requires a provider adapter such as Hermes, OpenClaw, UPlayground Checkout, a partner ticketing API, or an approved delegated-payment flow.
+Ticket note: `purchase_ticket_order` is intentionally marked destructive and open-world because it is the future action boundary for autonomous ticket purchase. In the default npm/hosted build, third-party ticket links return `requires_external_checkout`; the tool does not scrape checkout pages, bypass CAPTCHAs, or charge cards. True autonomous purchase requires a provider adapter such as Hermes, OpenClaw, Dizko Checkout, a partner ticketing API, or an approved delegated-payment flow.
 
 Auth note: the public hosted connector submits as `noauth` for basic event discovery. Saved preference, feedback, personalized recommendation, read, update, and deletion tools still require the user's opaque `profile_id` plus private `profile_secret`. Tool descriptors include `securitySchemes: [{ "type": "noauth" }]` and mirror it in `_meta.securitySchemes` for ChatGPT compatibility.
 
-Deletion safety note: `delete_event_preferences` also requires `confirm_delete: true`, which should only be sent after the user confirms they want to delete UPlayground connector preferences and feedback history.
+Deletion safety note: `delete_event_preferences` also requires `confirm_delete: true`, which should only be sent after the user confirms they want to delete Dizko connector preferences and feedback history.
 
 Retention note: saved preference profiles are automatically pruned after the configured inactivity window, defaulting to 730 days, matching the published 24-month retention policy.
 
@@ -319,7 +319,7 @@ Personalization flow:
 
 1. User asks for personalized event help.
 2. Assistant calls `get_preference_onboarding` and asks what events, genres, vibe, budget, locations, and avoidances the user generally likes.
-3. Assistant asks whether UPlayground may save those preferences.
+3. Assistant asks whether Dizko may save those preferences.
 4. If yes and there is no existing profile, assistant calls `create_event_preference_profile` and privately remembers the returned `profile_id` and `profile_secret`.
 5. The creation response also includes `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions.
 6. If a profile already exists, assistant calls `save_event_preferences` with both `profile_id` and `profile_secret`.
@@ -335,7 +335,7 @@ Ticket purchase flow:
 5. Assistant asks for explicit written confirmation, for example: `Yes, buy 2 ticket(s) for Ostbahnhof XL, max total USD240. Stop if price, date, venue, ticket type, quantity, or refund terms change.`
 6. Assistant calls `purchase_ticket_order` only after that confirmation.
 7. If the quote uses `external_checkout`, the tool returns `requires_external_checkout` and a checkout URL. The assistant must not claim it purchased the ticket.
-8. If Hermes, OpenClaw, UPlayground Checkout, or another integrated provider is configured, the provider can execute the bounded purchase and return order/receipt/ticket delivery status.
+8. If Hermes, OpenClaw, Dizko Checkout, or another integrated provider is configured, the provider can execute the bounded purchase and return order/receipt/ticket delivery status.
 
 Provider adapter contract:
 

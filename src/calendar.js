@@ -40,7 +40,7 @@ export function buildIcs({ uid, title, starts_at, ends_at, location, description
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//UrbanPlayground//UPlayground Events//EN",
+    "PRODID:-//Dizko//Dizko Events//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
@@ -48,7 +48,7 @@ export function buildIcs({ uid, title, starts_at, ends_at, location, description
     `DTSTAMP:${toIcsDate(new Date().toISOString())}`,
     start ? `DTSTART:${start}` : null,
     end ? `DTEND:${end}` : null,
-    `SUMMARY:${escapeIcs(title || "UPlayground Event")}`,
+    `SUMMARY:${escapeIcs(title || "Dizko Event")}`,
     location ? `LOCATION:${escapeIcs(location)}` : null,
     description ? `DESCRIPTION:${escapeIcs(description)}` : null,
     url ? `URL:${escapeIcs(url)}` : null,

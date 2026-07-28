@@ -15,8 +15,8 @@ async function main() {
   assertNonEmpty(fields.app_name, "app_name");
   assertNonEmpty(fields.short_description, "short_description");
   assertNonEmpty(fields.long_description, "long_description");
-  assert(fields.short_description.includes("UrbanPlayground"), "short_description must include UrbanPlayground brand alias");
-  assert(fields.long_description.includes("UrbanPlayground"), "long_description must include UrbanPlayground brand alias");
+  assert(fields.short_description.includes("Dizko"), "short_description must include Dizko brand alias");
+  assert(fields.long_description.includes("Dizko"), "long_description must include Dizko brand alias");
   assertUrl(fields.mcp_endpoint, "mcp_endpoint");
   assertUrl(fields.company_url, "company_url");
   assertUrl(fields.privacy_policy_url, "privacy_policy_url");
@@ -68,7 +68,7 @@ async function main() {
     assert(promptText.includes(phrase), `review_test_prompts must cover ${phrase}`);
   }
   const discoveryText = fields.discovery_phrases.join(" ").toLowerCase();
-  assert(discoveryText.includes("urbanplayground"), "discovery_phrases must include UrbanPlayground brand alias");
+  assert(discoveryText.includes("urbanplayground"), "discovery_phrases must include Dizko brand alias");
   for (const phrase of ["liked/disliked", "rating", "notes"]) {
     assert(promptText.includes(phrase), `review_test_prompts must cover feedback signal ${phrase}`);
   }

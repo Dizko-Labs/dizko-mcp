@@ -1,7 +1,7 @@
 {
-  "app_name": "UPlayground Events",
-  "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.",
-  "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.",
+  "app_name": "Dizko Events",
+  "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from Dizko's live event inventory.",
+  "long_description": "Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.",
   "mcp_endpoint": "https://mcp.dizko.app/mcp",
   "company_url": "https://www.dizko.app",
   "privacy_policy_url": "https://mcp.dizko.app/privacy-policy.html",
@@ -29,7 +29,7 @@
   ],
   "discovery_phrases": [
     "Find events this weekend in Berlin.",
-    "Use UrbanPlayground to find live events this weekend.",
+    "Use Dizko to find live events this weekend.",
     "What techno events are happening tonight near me?",
     "Plan a night out in New York with underground music.",
     "Find free cultural events in Paris.",
@@ -59,8 +59,8 @@
       "expected_behavior": "Calls get_ticket_offers and quote_ticket_order, asks for explicit written confirmation, then calls purchase_ticket_order only after confirmation. Third-party-only offers return checkout handoff instead of claiming autonomous purchase."
     },
     {
-      "prompt": "Delete my UPlayground saved event preferences and feedback history.",
-      "expected_behavior": "Confirms the UPlayground-only deletion scope, then calls delete_event_preferences with confirm_delete true only for the user's UPlayground connector profile."
+      "prompt": "Delete my Dizko saved event preferences and feedback history.",
+      "expected_behavior": "Confirms the Dizko-only deletion scope, then calls delete_event_preferences with confirm_delete true only for the user's Dizko connector profile."
     }
   ],
   "privacy_notes": [
@@ -70,7 +70,7 @@
     "Profile access uses an opaque profile_id plus a private one-time profile_secret; the MCP service stores only a hash of the secret.",
     "Stored connector data can include saved event preferences, event feedback, ratings, notes, event ids, timestamps, derived taste signals, learned avoid signals, and personalization summaries.",
     "Saved preference profiles are retained until user deletion or 24 months of inactivity; technical logs are normally retained for up to 30 days.",
-    "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the UPlayground-only deletion scope."
+    "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the Dizko-only deletion scope."
   ],
   "submission_checklist": [
     "Use the hosted MCP endpoint, not the unresolved custom domain.",

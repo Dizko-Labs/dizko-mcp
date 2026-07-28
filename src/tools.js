@@ -24,14 +24,14 @@ export const EVENT_LINKS_INSTRUCTION = [
   "- Where: <venue>, <city> · [Get directions](<directions_url>)",
   "- What: <description, or genres/vibe tags if no description>",
   "- Price: <price> · [Tickets](<ticket_url>)",
-  "Always link the event title to event_url (the UPlayground event page), never to ticket_url. Make every link clickable markdown. Omit any line whose data is missing. Do not merge facts onto one line."
+  "Always link the event title to event_url (the Dizko event page), never to ticket_url. Make every link clickable markdown. Omit any line whose data is missing. Do not merge facts onto one line."
 ].join("\n");
 
 const rawTools = [
   {
     name: "get_preference_onboarding",
     title: "Get Preference Onboarding",
-    description: "Use this when a user wants personalized event recommendations and UPlayground needs consent-first questions before saving event preferences.",
+    description: "Use this when a user wants personalized event recommendations and Dizko needs consent-first questions before saving event preferences.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -49,7 +49,7 @@ const rawTools = [
   {
     name: "create_event_preference_profile",
     title: "Create Event Preference Profile",
-    description: "Use this when a user explicitly agrees to save event preferences and does not already have a UPlayground preference profile.",
+    description: "Use this when a user explicitly agrees to save event preferences and does not already have a Dizko preference profile.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -69,7 +69,7 @@ const rawTools = [
   {
     name: "save_event_preferences",
     title: "Save Event Preferences",
-    description: "Use this when a consenting user already has a UPlayground profile and wants to add, update, merge, or replace saved event preferences.",
+    description: "Use this when a consenting user already has a Dizko profile and wants to add, update, merge, or replace saved event preferences.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -92,7 +92,7 @@ const rawTools = [
   {
     name: "get_event_preferences",
     title: "Get Event Preferences",
-    description: "Use this when a user with a UPlayground profile wants to view saved event preferences or learned recommendation signals.",
+    description: "Use this when a user with a Dizko profile wants to view saved event preferences or learned recommendation signals.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -105,7 +105,7 @@ const rawTools = [
   {
     name: "delete_event_preferences",
     title: "Delete Event Preferences",
-    description: "Use this only when a user asks to delete their UPlayground saved event preferences and feedback history.",
+    description: "Use this only when a user asks to delete their Dizko saved event preferences and feedback history.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -118,7 +118,7 @@ const rawTools = [
   {
     name: "record_event_feedback",
     title: "Record Event Feedback",
-    description: "Use this when a user says whether they liked or disliked a specific event, provides a rating, or shares notes, so future UPlayground recommendations can learn from that feedback.",
+    description: "Use this when a user says whether they liked or disliked a specific event, provides a rating, or shares notes, so future Dizko recommendations can learn from that feedback.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -148,7 +148,7 @@ const rawTools = [
   {
     name: "get_event_feedback_prompt",
     title: "Get Event Feedback Prompt",
-    description: "Use this when a user previously picked or attended a UPlayground event and the assistant should ask a short post-event follow-up before recording feedback.",
+    description: "Use this when a user previously picked or attended a Dizko event and the assistant should ask a short post-event follow-up before recording feedback.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -181,7 +181,7 @@ const rawTools = [
   {
     name: "search_events",
     title: "Search Events",
-    description: "Use this when a user wants current events from live UPlayground inventory using filters such as city, date, genre, vibe, venue, artist, neighborhood, or price.",
+    description: "Use this when a user wants current events from live Dizko inventory using filters such as city, date, genre, vibe, venue, artist, neighborhood, or price.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -194,7 +194,7 @@ const rawTools = [
   {
     name: "recommend_events",
     title: "Recommend Events",
-    description: "Use this when a user wants ranked event suggestions from live UPlayground inventory based on the current request's taste, vibe, price, and avoid signals.",
+    description: "Use this when a user wants ranked event suggestions from live Dizko inventory based on the current request's taste, vibe, price, and avoid signals.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -207,7 +207,7 @@ const rawTools = [
   {
     name: "recommend_events_for_user",
     title: "Recommend Events For User",
-    description: "Use this when a user has a UPlayground preference profile and wants personalized event recommendations for tonight, this week, this weekend, or another date range.",
+    description: "Use this when a user has a Dizko preference profile and wants personalized event recommendations for tonight, this week, this weekend, or another date range.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -239,7 +239,7 @@ const rawTools = [
   {
     name: "plan_night",
     title: "Plan Night",
-    description: "Use this when a user wants a compact night-out plan with a primary live event option and fallback options from UPlayground inventory.",
+    description: "Use this when a user wants a compact night-out plan with a primary live event option and fallback options from Dizko inventory.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -252,7 +252,7 @@ const rawTools = [
   {
     name: "get_event",
     title: "Get Event",
-    description: "Use this when a user asks for details about a specific UPlayground event id returned by search, recommendations, or a night plan.",
+    description: "Use this when a user asks for details about a specific Dizko event id returned by search, recommendations, or a night plan.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -277,7 +277,7 @@ const rawTools = [
   {
     name: "get_ticket_purchase_policy",
     title: "Get Ticket Purchase Policy",
-    description: "Use this when a user asks whether agents can buy tickets autonomously or what purchase modes UPlayground, Hermes, OpenClaw, or other providers can support.",
+    description: "Use this when a user asks whether agents can buy tickets autonomously or what purchase modes Dizko, Hermes, OpenClaw, or other providers can support.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -293,7 +293,7 @@ const rawTools = [
   {
     name: "get_ticket_offers",
     title: "Get Ticket Offers",
-    description: "Use this when a user wants ticket options for a specific UPlayground event before quoting or buying.",
+    description: "Use this when a user wants ticket options for a specific Dizko event before quoting or buying.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -338,7 +338,7 @@ const rawTools = [
   {
     name: "create_event_calendar_file",
     title: "Create Event Calendar File",
-    description: "Use this when a user wants to add a UPlayground event to their calendar after choosing or buying tickets.",
+    description: "Use this when a user wants to add a Dizko event to their calendar after choosing or buying tickets.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -420,7 +420,7 @@ export async function callTool(name, input = {}, options = {}) {
         profile: publicProfile(profile),
         profile_secret: profileSecret,
         access_instructions: profileAccessInstructions(profile, profileSecret),
-        assistant_instruction: "Remember this profile_id and profile_secret for future UPlayground personalized event recommendations. Tell the user these credentials are their private UPlayground preference key if their client cannot remember connector state across sessions."
+        assistant_instruction: "Remember this profile_id and profile_secret for future Dizko personalized event recommendations. Tell the user these credentials are their private Dizko preference key if their client cannot remember connector state across sessions."
       });
     }
     case "save_event_preferences": {
@@ -455,8 +455,8 @@ export async function callTool(name, input = {}, options = {}) {
       if (input.confirm_delete !== true) {
         return toolJson({
           deleted: false,
-          error: "Confirmation is required before deleting saved UPlayground preferences and feedback.",
-          assistant_instruction: "Ask the user to confirm they want to delete only their UPlayground connector preferences and feedback history, then call delete_event_preferences with confirm_delete set to true."
+          error: "Confirmation is required before deleting saved Dizko preferences and feedback.",
+          assistant_instruction: "Ask the user to confirm they want to delete only their Dizko connector preferences and feedback history, then call delete_event_preferences with confirm_delete set to true."
         }, true);
       }
       const access = await requireProfileAccess(store, input);
@@ -496,7 +496,7 @@ export async function callTool(name, input = {}, options = {}) {
           "What should I remember for future recommendations: music, crowd, venue, price, timing, or anything to avoid?",
           "If you want, give it a 1-5 rating."
         ],
-        assistant_instruction: "Ask these questions naturally. If the user has a UPlayground profile and answers, call record_event_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available."
+        assistant_instruction: "Ask these questions naturally. If the user has a Dizko profile and answers, call record_event_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available."
       });
     }
     case "get_event_search_followups":
@@ -522,7 +522,7 @@ export async function callTool(name, input = {}, options = {}) {
         return toolJson({
           onboarding_needed: true,
           questions: onboardingQuestions(),
-          message: "Ask the user about their general event preferences and whether UPlayground may save them before personalized recommendations can learn over time."
+          message: "Ask the user about their general event preferences and whether Dizko may save them before personalized recommendations can learn over time."
         });
       }
       const preferences = buildPreferenceHints(profile, input);
@@ -558,7 +558,7 @@ export async function callTool(name, input = {}, options = {}) {
     case "get_ticket_purchase_policy":
       return toolJson({
         ...TICKET_PURCHASE_POLICY,
-        assistant_instruction: "Explain that autonomous ticket purchase requires a locked quote, explicit written confirmation, and an integrated purchase provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment. Third-party-only links become checkout handoff."
+        assistant_instruction: "Explain that autonomous ticket purchase requires a locked quote, explicit written confirmation, and an integrated purchase provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment. Third-party-only links become checkout handoff."
       });
     case "get_ticket_offers": {
       const event = await getEvent(input.event_id, options);
@@ -594,8 +594,8 @@ export async function callTool(name, input = {}, options = {}) {
       cause: described.cause ?? null,
       retryable,
       assistant_instruction: retryable
-        ? "This was a temporary network or upstream failure, not bad input. Retry the same call once or twice before changing anything; if it keeps failing, tell the user UPlayground's live event inventory is temporarily unreachable."
-        : "Tell the user UPlayground's live event inventory was unavailable for this request, then offer to retry with narrower filters such as city, date, event type, vibe, or limit."
+        ? "This was a temporary network or upstream failure, not bad input. Retry the same call once or twice before changing anything; if it keeps failing, tell the user Dizko's live event inventory is temporarily unreachable."
+        : "Tell the user Dizko's live event inventory was unavailable for this request, then offer to retry with narrower filters such as city, date, event type, vibe, or limit."
     }, true);
   }
 }
@@ -638,7 +638,7 @@ function deletePreferencesInputSchema() {
     properties: {
       profile_id: { type: "string", description: "Stable user/profile id." },
       profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
-      confirm_delete: { type: "boolean", description: "Must be true only after the user confirms deletion of UPlayground connector preferences and feedback history." }
+      confirm_delete: { type: "boolean", description: "Must be true only after the user confirms deletion of Dizko connector preferences and feedback history." }
     },
     required: ["profile_id", "profile_secret", "confirm_delete"]
   };
@@ -693,7 +693,7 @@ function profileAccessInstructions(profile, profileSecret = null) {
     reuse_instruction: profileSecret
       ? "If the client cannot remember connector state across sessions, the user should keep both profile_id and profile_secret somewhere private."
       : "Future calls still require the private profile_secret returned when this profile was created; the service stores only a hash and cannot reveal it later.",
-    deletion_instruction: "To delete saved UPlayground preferences and feedback, call delete_event_preferences with both profile_id and profile_secret."
+    deletion_instruction: "To delete saved Dizko preferences and feedback, call delete_event_preferences with both profile_id and profile_secret."
   };
 }
 

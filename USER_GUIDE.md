@@ -1,4 +1,4 @@
-# UPlayground Events User Guide
+# Dizko Events User Guide
 
 This guide is for ChatGPT, Claude, and other MCP-compatible clients that can connect to a remote MCP server.
 
@@ -53,7 +53,7 @@ Ask whether I liked the event I picked and remember my answer for future recomme
 Deletion:
 
 ```text
-Delete my UPlayground saved event preferences and feedback history.
+Delete my Dizko saved event preferences and feedback history.
 ```
 
 ## Preference Memory Flow
@@ -61,7 +61,7 @@ Delete my UPlayground saved event preferences and feedback history.
 Preference learning is opt-in.
 
 1. The assistant asks onboarding questions about event types, genres, vibe, budget, locations, and avoidances.
-2. The assistant asks whether UPlayground may save those preferences.
+2. The assistant asks whether Dizko may save those preferences.
 3. If the user consents, the MCP creates a private preference profile.
 4. The MCP returns an access card with a `profile_id` and one-time `profile_secret`.
 5. The assistant privately remembers both values when the client supports connector state.
@@ -79,15 +79,15 @@ The MCP service stores only a hash of the `profile_secret`. The raw secret is re
 - Ask current-context follow-ups before broad tonight, week, or weekend searches when type, vibe, budget, or avoidances are missing.
 - Ask for explicit consent before creating or saving a preference profile.
 - Keep the `profile_secret` private and use it only for preference, feedback, recommendation, or deletion tools.
-- If the client cannot persist connector state, tell the user the creation-time access card is their private UPlayground preference key.
+- If the client cannot persist connector state, tell the user the creation-time access card is their private Dizko preference key.
 - Ask post-event feedback questions before recording feedback.
 - Explain why recommendations match saved or learned preferences.
-- Scope deletion to UPlayground connector preferences and feedback history.
+- Scope deletion to Dizko connector preferences and feedback history.
 
 ## What The MCP Cannot Do
 
 - It cannot autonomously buy tickets from arbitrary third-party checkout pages.
-- It can prepare ticket offers and locked quotes, then either return third-party checkout handoff or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.
+- It can prepare ticket offers and locked quotes, then either return third-party checkout handoff or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.
 - It cannot guarantee event availability after returning a link.
 - It should not save unrelated personal data such as home address, phone number, or non-event notes.
 - It should not answer weather, news, travel, or restaurant requests unless the user also asks for events.

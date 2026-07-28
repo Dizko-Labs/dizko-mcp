@@ -12,7 +12,7 @@ export const TICKET_PURCHASE_POLICY = {
     "uplayground_checkout",
     "delegated_payment_future"
   ],
-  provider_contract: "Hermes, OpenClaw, UPlayground Checkout, or another purchase provider can implement ticketPurchaseProvider.purchase({ quote, confirmation_text, delivery_email, add_to_calendar }) to enable bounded autonomous purchase, ticket email delivery, and calendar attachment/creation.",
+  provider_contract: "Hermes, OpenClaw, Dizko Checkout, or another purchase provider can implement ticketPurchaseProvider.purchase({ quote, confirmation_text, delivery_email, add_to_calendar }) to enable bounded autonomous purchase, ticket email delivery, and calendar attachment/creation.",
   hard_rules: [
     "Never purchase from a third-party ticket site by browser automation, scraping, CAPTCHA bypass, or stored raw card details.",
     "Create a locked quote before purchase.",
@@ -56,7 +56,7 @@ export function buildTicketOffers(event, options = {}) {
     offers: purchaseMode === "unavailable" ? [] : [offer],
     policy: TICKET_PURCHASE_POLICY,
     assistant_instruction: purchaseMode === "unavailable"
-      ? "Tell the user ticket inventory is not available through UPlayground for this event yet."
+      ? "Tell the user ticket inventory is not available through Dizko for this event yet."
       : "Show ticket options, explain whether autonomous purchase is supported, and call quote_ticket_order only after the user chooses quantity and constraints."
   };
 }
@@ -253,7 +253,7 @@ function offerNotes({ hasCheckout, autonomousSupported, provider }) {
   if (hasCheckout) {
     return [
       "Third-party checkout link is available.",
-      "Autonomous purchase is not enabled unless Hermes, OpenClaw, UPlayground Checkout, or another provider supplies an integrated purchase adapter."
+      "Autonomous purchase is not enabled unless Hermes, OpenClaw, Dizko Checkout, or another provider supplies an integrated purchase adapter."
     ];
   }
   return ["No ticket checkout link is currently available for this event."];

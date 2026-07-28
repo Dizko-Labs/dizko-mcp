@@ -1,4 +1,4 @@
-# UPlayground Events MCP Operations Runbook
+# Dizko Events MCP Operations Runbook
 
 Use this runbook after deployment, before OpenAI submission, and during public operation.
 
