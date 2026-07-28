@@ -66,15 +66,16 @@ export const MCP_SERVER_INSTRUCTIONS = [
 // Single source of truth for endpoints + retry policy. The CLI, the stdio
 // MCP server, the hosted HTTP MCP server, the doctor command, smoke-live,
 // and monitor-live must all resolve endpoints through here so they cannot
-// drift. EVENTCHAT_* vars stay canonical; DIZKO_* are aliases.
+// drift. DIZKO_* is preferred publicly. EVENTCHAT_* stays canonical
+// internally, and UPLAYGROUND_* remains as a compatibility alias.
 export function getConfig(env = process.env) {
   return {
-    apiBaseUrl: (env.EVENTCHAT_API_BASE_URL || env.DIZKO_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, ""),
-    webBaseUrl: (env.EVENTCHAT_WEB_BASE_URL || env.DIZKO_WEB_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/+$/, ""),
-    mcpUrl: (env.EVENTCHAT_MCP_URL || env.DIZKO_MCP_URL || DEFAULT_MCP_URL).replace(/\/+$/, ""),
-    apiTimeoutMs: positiveNumber(env.EVENTCHAT_API_TIMEOUT_MS, 8000),
-    apiRetries: nonNegativeNumber(env.EVENTCHAT_API_RETRIES, 2),
-    apiRetryBaseDelayMs: positiveNumber(env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),
+    apiBaseUrl: (env.DIZKO_API_BASE_URL || env.EVENTCHAT_API_BASE_URL || env.UPLAYGROUND_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, ""),
+    webBaseUrl: (env.DIZKO_WEB_BASE_URL || env.EVENTCHAT_WEB_BASE_URL || env.UPLAYGROUND_WEB_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/+$/, ""),
+    mcpUrl: (env.DIZKO_MCP_URL || env.EVENTCHAT_MCP_URL || env.UPLAYGROUND_MCP_URL || DEFAULT_MCP_URL).replace(/\/+$/, ""),
+    apiTimeoutMs: positiveNumber(env.DIZKO_API_TIMEOUT_MS || env.EVENTCHAT_API_TIMEOUT_MS, 8000),
+    apiRetries: nonNegativeNumber(env.DIZKO_API_RETRIES || env.EVENTCHAT_API_RETRIES, 2),
+    apiRetryBaseDelayMs: positiveNumber(env.DIZKO_API_RETRY_BASE_DELAY_MS || env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),
     // Event inventory updates on a 6h scrape cadence, so a short response
     // cache is risk-free. 0 disables. Stale window: how long an expired
     // entry may still be served when the upstream fails (resilience).

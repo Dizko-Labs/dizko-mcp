@@ -37,17 +37,17 @@ test("getConfig honors EVENTCHAT_* env overrides and trims trailing slashes", ()
   assert.equal(config.apiRetryBaseDelayMs, 10);
 });
 
-test("getConfig accepts DIZKO_* aliases with EVENTCHAT_* taking precedence", () => {
+test("getConfig accepts legacy aliases and gives DIZKO_* public precedence", () => {
   const aliased = getConfig({
-    DIZKO_API_BASE_URL: "https://alias-api.example.test",
-    DIZKO_MCP_URL: "https://alias-mcp.example.test/mcp"
+    UPLAYGROUND_API_BASE_URL: "https://alias-api.example.test",
+    UPLAYGROUND_MCP_URL: "https://alias-mcp.example.test/mcp"
   });
   assert.equal(aliased.apiBaseUrl, "https://alias-api.example.test");
   assert.equal(aliased.mcpUrl, "https://alias-mcp.example.test/mcp");
 
   const both = getConfig({
     EVENTCHAT_API_BASE_URL: "https://canonical.example.test",
-    DIZKO_API_BASE_URL: "https://alias-api.example.test"
+    UPLAYGROUND_API_BASE_URL: "https://alias-api.example.test"
   });
   assert.equal(both.apiBaseUrl, "https://canonical.example.test");
 
