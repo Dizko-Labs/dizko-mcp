@@ -9,7 +9,7 @@
     "subfolder": "ios/EventChat/agent-tools/eventchat-events"
   },
   "version": "0.3.1",
-  "websiteUrl": "https://urbanplayground.xyz",
+  "websiteUrl": "https://www.dizko.app",
   "remotes": [
     {
       "type": "streamable-http",

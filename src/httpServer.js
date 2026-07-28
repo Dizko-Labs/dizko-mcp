@@ -311,9 +311,9 @@ function securityHeaders() {
     "Content-Security-Policy": [
       "default-src 'none'",
       "base-uri 'none'",
-      "connect-src 'self' https://backend-production-958d.up.railway.app https://urbanplayground.xyz",
+      "connect-src 'self' https://backend-production-958d.up.railway.app https://www.dizko.app",
       "frame-ancestors https://chatgpt.com https://chat.openai.com",
-      "img-src 'self' https://urbanplayground.xyz data:",
+      "img-src 'self' https://www.dizko.app data:",
       "style-src 'unsafe-inline'"
     ].join("; "),
     "Referrer-Policy": "no-referrer",

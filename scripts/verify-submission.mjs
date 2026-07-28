@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 
 const endpoint = process.env.EVENTCHAT_MCP_URL || "https://eventchat-events-mcp-production.up.railway.app/mcp";
 const baseUrl = endpoint.replace(/\/mcp\/?$/, "");
-const companyUrl = process.env.EVENTCHAT_COMPANY_URL || "https://urbanplayground.xyz";
+const companyUrl = process.env.EVENTCHAT_COMPANY_URL || "https://www.dizko.app";
 const requestTimeoutMs = Number(process.env.EVENTCHAT_VERIFY_TIMEOUT_MS || 15000);
 const evidenceOutputPath = process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || null;
 const railwayService = process.env.EVENTCHAT_RAILWAY_SERVICE || "eventchat-events-mcp";
@@ -556,7 +556,7 @@ async function fetchWithTimeout(url, options = {}) {
 function assertSecurityHeaders(response, path) {
   const csp = response.headers.get("content-security-policy") || "";
   assert(csp.includes("default-src 'none'"), `${path} missing restrictive CSP default-src`);
-  assert(csp.includes("connect-src 'self' https://backend-production-958d.up.railway.app https://urbanplayground.xyz"), `${path} CSP missing exact connect-src domains`);
+  assert(csp.includes("connect-src 'self' https://backend-production-958d.up.railway.app https://www.dizko.app"), `${path} CSP missing exact connect-src domains`);
   assert(csp.includes("frame-ancestors https://chatgpt.com https://chat.openai.com"), `${path} CSP missing ChatGPT frame ancestors`);
   assert(response.headers.get("x-content-type-options") === "nosniff", `${path} missing X-Content-Type-Options`);
   assert(response.headers.get("referrer-policy") === "no-referrer", `${path} missing Referrer-Policy`);

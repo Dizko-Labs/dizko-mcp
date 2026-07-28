@@ -1,5 +1,5 @@
 export const DEFAULT_API_BASE_URL = "https://backend-production-958d.up.railway.app";
-export const DEFAULT_WEB_BASE_URL = "https://urbanplayground.xyz";
+export const DEFAULT_WEB_BASE_URL = "https://www.dizko.app";
 export const DEFAULT_MCP_URL = "https://eventchat-events-mcp-production.up.railway.app/mcp";
 
 export const SUPPORTED_CITIES = [

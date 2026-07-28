@@ -23,9 +23,9 @@ const manifest = {
   author: {
     name: "UrbanPlayground",
     email: "support@urbanplayground.xyz",
-    url: "https://urbanplayground.xyz"
+    url: "https://www.dizko.app"
   },
-  homepage: "https://urbanplayground.xyz",
+  homepage: "https://www.dizko.app",
   documentation: "https://eventchat-events-mcp-production.up.railway.app/user-guide.html",
   support: "https://eventchat-events-mcp-production.up.railway.app/support.html",
   icon: "icon.png",

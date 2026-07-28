@@ -37,7 +37,7 @@ https://eventchat-events-mcp-production.up.railway.app/user-guide.html
 Company:
 
 ```text
-https://urbanplayground.xyz
+https://www.dizko.app
 ```
 
 Logo:

@@ -3,7 +3,7 @@
   "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from UrbanPlayground's UPlayground live event inventory.",
   "long_description": "UPlayground Events is UrbanPlayground's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, UPlayground Checkout, a partner API, or delegated payment when configured.",
   "mcp_endpoint": "https://eventchat-events-mcp-production.up.railway.app/mcp",
-  "company_url": "https://urbanplayground.xyz",
+  "company_url": "https://www.dizko.app",
   "privacy_policy_url": "https://eventchat-events-mcp-production.up.railway.app/privacy-policy.html",
   "support_url": "https://eventchat-events-mcp-production.up.railway.app/support.html",
   "terms_url": "https://eventchat-events-mcp-production.up.railway.app/terms.html",

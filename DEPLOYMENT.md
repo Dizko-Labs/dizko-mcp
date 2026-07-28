@@ -27,7 +27,7 @@ Expected before cutover: this command exits non-zero and explains that the Railw
 ```bash
 EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
 EVENTCHAT_API_TIMEOUT_MS=8000
-EVENTCHAT_WEB_BASE_URL=https://urbanplayground.xyz
+EVENTCHAT_WEB_BASE_URL=https://www.dizko.app
 EVENTCHAT_MCP_HOST=0.0.0.0
 EVENTCHAT_PREFERENCES_PATH=/data/preferences.json
 PORT=8787
@@ -51,8 +51,8 @@ The public MCP endpoint rate-limits `/mcp` POST traffic by client IP and returns
 The HTTP server emits a restrictive `Content-Security-Policy` header on `/mcp`, `/health`, `/`, static public pages, and the logo asset. The current policy allows only these network/image origins:
 
 ```text
-connect-src 'self' https://backend-production-958d.up.railway.app https://urbanplayground.xyz
-img-src 'self' https://urbanplayground.xyz data:
+connect-src 'self' https://backend-production-958d.up.railway.app https://www.dizko.app
+img-src 'self' https://www.dizko.app data:
 frame-ancestors https://chatgpt.com https://chat.openai.com
 ```
 
@@ -108,7 +108,7 @@ npm run verify:submission
 docker build -t eventchat-events-mcp .
 docker run --rm -p 8787:8787 \
   -e EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app \
-  -e EVENTCHAT_WEB_BASE_URL=https://urbanplayground.xyz \
+  -e EVENTCHAT_WEB_BASE_URL=https://www.dizko.app \
   -v eventchat-preferences:/data \
   eventchat-events-mcp
 ```

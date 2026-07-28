@@ -149,7 +149,7 @@ Environment (all surfaces — CLI, stdio MCP, hosted MCP, smoke test, and monito
 
 ```bash
 EVENTCHAT_API_BASE_URL=https://backend-production-958d.up.railway.app
-EVENTCHAT_WEB_BASE_URL=https://urbanplayground.xyz
+EVENTCHAT_WEB_BASE_URL=https://www.dizko.app
 EVENTCHAT_MCP_URL=https://eventchat-events-mcp-production.up.railway.app/mcp
 EVENTCHAT_API_TIMEOUT_MS=8000
 EVENTCHAT_API_RETRIES=2                  # transient network/5xx failures retry with backoff + jitter
