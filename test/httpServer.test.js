@@ -43,7 +43,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(securityTxt.status, 200);
     assert.match(securityTxt.headers.get("content-type"), /text\/plain/);
     assert.equal(securityTxt.headers.get("x-content-type-options"), "nosniff");
-    assert.match(securityBody, /Contact: mailto:security@urbanplayground\.xyz/);
+    assert.match(securityBody, /Contact: mailto:security@dizko\.app/);
     assert.match(securityBody, /Expires: /);
 
     const logo = await fetch(`http://127.0.0.1:${port}/logo-512.png`);
@@ -189,20 +189,21 @@ test("HTTP MCP server rate-limits MCP POST requests with JSON-RPC errors", async
   }
 });
 
-test("HTTP MCP server serves the install page at /install and /install.html", async () => {
+test("HTTP MCP server redirects /install and keeps /install.html as a branded fallback", async () => {
   const server = createHttpMcpServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
   try {
-    for (const path of ["/install", "/install.html"]) {
-      const response = await fetch(`http://127.0.0.1:${port}${path}`);
-      assert.equal(response.status, 200, `${path} should be served`);
-      assert.match(response.headers.get("content-type"), /text\/html/);
-      const body = await response.text();
-      assert.match(body, /Install Dizko Events/);
-      assert.match(body, /Add custom connector/);
-      assert.match(body, /uplayground-events", "mcp"/);
-    }
+    const redirect = await fetch(`http://127.0.0.1:${port}/install`, { redirect: "manual" });
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.get("location"), "https://www.dizko.app/mcp#install");
+
+    const response = await fetch(`http://127.0.0.1:${port}/install.html`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/html/);
+    const body = await response.text();
+    assert.match(body, /Install Dizko Events/);
+    assert.match(body, /Claude Code, Codex, Cursor, ChatGPT/);
     const metadata = await (await fetch(`http://127.0.0.1:${port}/`)).json();
     assert.equal(metadata.install, "/install");
   } finally {

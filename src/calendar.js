@@ -2,7 +2,7 @@ import { summarizeEvent } from "./format.js";
 
 export function buildCalendarEvent(event, options = {}) {
   const summary = options.alreadySummarized ? event : summarizeEvent(event, options);
-  const uid = `uplayground-${summary.id}@urbanplayground.xyz`;
+  const uid = `dizko-${summary.id}@dizko.app`;
   const description = [
     summary.event_url ? `Event: ${summary.event_url}` : null,
     summary.ticket_url ? `Tickets: ${summary.ticket_url}` : null,

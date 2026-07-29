@@ -1,4 +1,7 @@
 const NIGHTLIFE_TYPES = new Set(["party", "club", "rave", "dj", "nightlife"]);
+const CROWD_AVOIDANCE_TERMS = new Set(["crowded", "huge crowd", "huge crowds", "packed"]);
+const MAINSTREAM_AVOIDANCE_TERMS = new Set(["mainstream", "commercial", "mainstream clubs"]);
+const EXPENSIVE_AVOIDANCE_TERMS = new Set(["expensive", "expensive tickets", "overpriced", "pricey"]);
 
 export function rankEvents(events, preferences = {}, now = new Date()) {
   return [...events]
@@ -14,8 +17,10 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
   const desiredGenres = normalizeList(preferences.genres);
   const desiredVibes = normalizeList(preferences.vibe);
   const desiredTypes = normalizeList(preferences.event_types || preferences.event_type);
+  const desiredVenues = normalizeList(preferences.venues || preferences.venue);
+  const desiredArtists = normalizeList(preferences.featuring);
   const disliked = normalizeList(preferences.avoid);
-  const eventTokens = normalizeList([
+  const eventText = normalizeList([
     event.title,
     event.description,
     event.venue_name,
@@ -23,11 +28,13 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
     ...(event.vibe || []),
     ...(event.event_types || []),
     ...(event.lineup || [])
-  ]);
+  ]).join(" ");
 
   total += addMatches(reasons, "genre match", desiredGenres, event.genres, 18);
   total += addMatches(reasons, "vibe match", desiredVibes, event.vibe, 14);
   total += addMatches(reasons, "event type match", desiredTypes, event.event_types, 12);
+  total += addTextMatches(reasons, "venue match", desiredVenues, event.venue_name, 16);
+  total += addMatches(reasons, "artist match", desiredArtists, event.lineup, 20);
 
   const start = event.start_time ? new Date(event.start_time) : null;
   if (start && !Number.isNaN(start.valueOf())) {
@@ -59,6 +66,9 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
   if (preferences.max_price != null && event.price_min != null && event.price_min <= preferences.max_price) {
     total += 7;
     reasons.push("within budget");
+  } else if (preferences.max_price != null && event.price_min != null && event.price_min > preferences.max_price) {
+    total -= 30;
+    reasons.push("over budget");
   }
 
   if (preferences.nightlife === true && normalizeList(event.event_types).some((type) => NIGHTLIFE_TYPES.has(type))) {
@@ -67,13 +77,36 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
   }
 
   for (const term of disliked) {
-    if (eventTokens.includes(term)) {
+    if (matchesAvoidance(term, event, eventText, preferences)) {
       total -= 25;
       reasons.push(`penalized: ${term}`);
     }
   }
 
   return { total: Math.round(total * 10) / 10, reasons };
+}
+
+function addTextMatches(reasons, label, desired, actual, points) {
+  const text = String(actual || "").trim().toLowerCase();
+  const matches = desired.filter((item) => text.includes(item));
+  if (!matches.length) return 0;
+  reasons.push(`${label}: ${matches.join(", ")}`);
+  return matches.length * points;
+}
+
+function matchesAvoidance(term, event, eventText, preferences) {
+  if (eventText.includes(term)) return true;
+
+  const attendance = Number(event.attendance_count || 0);
+  if (CROWD_AVOIDANCE_TERMS.has(term) && attendance >= 350) return true;
+  if (MAINSTREAM_AVOIDANCE_TERMS.has(term) && attendance >= 750) return true;
+
+  if (EXPENSIVE_AVOIDANCE_TERMS.has(term) && event.price_min != null) {
+    const threshold = preferences.max_price ?? 40;
+    return event.price_min > threshold;
+  }
+
+  return false;
 }
 
 function addMatches(reasons, label, desired, actual, points) {

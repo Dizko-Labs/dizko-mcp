@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import * as lib from "uplayground-events";
+import * as lib from "dizko-events";
 import { clearEventCache } from "../src/api.js";
 
 beforeEach(() => clearEventCache());

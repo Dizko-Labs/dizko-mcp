@@ -4,11 +4,12 @@ import { dirname, join } from "node:path";
 import { getConfig } from "./config.js";
 
 export const SERVER_NAME = "dizko-events";
+// Retained only so existing pre-rebrand local configs migrate cleanly.
 export const LEGACY_SERVER_NAME = "uplayground-events";
 
-// One canonical stdio snippet everywhere: `npx -y uplayground-events mcp`.
+// One canonical stdio snippet everywhere: `npx -y dizko-events mcp`.
 export function stdioServerEntry() {
-  return { command: "npx", args: ["-y", "uplayground-events", "mcp"] };
+  return { command: "npx", args: ["-y", "dizko-events", "mcp"] };
 }
 
 export function claudeDesktopConfigPath({ env = process.env, os = platform(), home = homedir() } = {}) {
@@ -140,6 +141,6 @@ export function installOverview(config) {
     "",
     "Advanced - local stdio server snippet (runs on your machine; Claude warns",
     "it can access your computer, as with any local extension):",
-    `  { "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }`
+    `  { "command": "npx", "args": ["-y", "dizko-events", "mcp"] }`
   ].join("\n");
 }

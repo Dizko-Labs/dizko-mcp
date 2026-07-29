@@ -68,7 +68,7 @@ test("help text documents the mcp, serve, and install commands", () => {
   assert.match(text, /\binstall\b/);
   assert.match(text, /\bmcp\b/);
   assert.match(text, /\bserve\b/);
-  assert.match(text, /npx -y uplayground-events mcp/);
+  assert.match(text, /npx -y dizko-events mcp/);
 });
 
 test("install with an unknown target exits 1 with the overview", async () => {

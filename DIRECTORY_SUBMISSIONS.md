@@ -7,17 +7,17 @@ bottom - update it as submissions land.
 The two URLs every directory wants:
 
 - Hosted MCP endpoint: `https://mcp.dizko.app/mcp`
-- npm package: `uplayground-events` (stdio command: `npx -y uplayground-events mcp`)
+- npm package: `dizko-events` (stdio command: `npx -y dizko-events mcp`)
 
 ## 1. Official MCP Registry (registry.modelcontextprotocol.io)
 
 The manifest is checked in as [`server.json`](server.json). Publishing requires
-proving you own the `xyz.urbanplayground/*` namespace via DNS:
+proving you own the `app.dizko/*` namespace via DNS:
 
 ```bash
 brew install mcp-publisher        # or download from github.com/modelcontextprotocol/registry
 cd ios/EventChat/agent-tools/eventchat-events
-mcp-publisher login dns --domain urbanplayground.xyz
+mcp-publisher login dns --domain dizko.app
 # ^ prints a TXT record to add at your DNS host, then verifies it
 mcp-publisher publish
 ```

@@ -15,7 +15,7 @@ https://mcp.dizko.app/mcp
 Email security reports to:
 
 ```text
-security@urbanplayground.xyz
+security@dizko.app
 ```
 
 Please include:
@@ -26,7 +26,7 @@ Please include:
 - Whether preference profiles, profile secrets, feedback, or other user data may be involved.
 - Any relevant timestamps or request ids, if available.
 
-Do not include another person's profile secret, private notes, or personal data in the report. For ordinary support, deletion, or account/privacy help, use `support@urbanplayground.xyz` or `privacy@urbanplayground.xyz`.
+Do not include another person's profile secret, private notes, or personal data in the report. For ordinary support, deletion, or account/privacy help, use `support@dizko.app` or `privacy@dizko.app`.
 
 ## Operational Safeguards
 

@@ -239,7 +239,7 @@ async function checkPublicPages() {
   const pages = {};
   for (const [name, path, requiredTexts] of [
     ["privacy", "/privacy-policy.html", ["Dizko", "hashed profile secret", "Personalization summaries", "learned genres, vibes, event types, venues, and avoid signals", "24 months", "automatically pruned", "30 days", "Deletion requests"]],
-    ["support", "/support.html", ["support@urbanplayground.xyz", "feedback history", "security@urbanplayground.xyz", "vulnerability"]],
+    ["support", "/support.html", ["support@dizko.app", "feedback history", "security@dizko.app", "vulnerability"]],
     ["terms", "/terms.html", ["Dizko Events Connector Terms", "Third-Party Links", "Preference Memory", "explicit confirmation", "Acceptable Use"]],
     ["user_guide", "/user-guide.html", ["Dizko Events Connector User Guide", "Dizko", "Connect", "ChatGPT Developer Mode", "Claude custom connectors", "https://mcp.dizko.app/mcp", "Useful Prompts", "Preference Memory", "Learning From Feedback", "too crowded", "too expensive", "too late", "Deleting Saved Preferences"]]
   ]) {
@@ -275,7 +275,7 @@ async function checkPublicPages() {
   const securityBody = await securityTxt.text();
   assert(securityTxt.ok, `security.txt returned HTTP ${securityTxt.status}`);
   assert((securityTxt.headers.get("content-type") || "").includes("text/plain"), "security.txt was not served as text/plain");
-  for (const requiredText of ["Contact: mailto:security@urbanplayground.xyz", "Policy: https://mcp.dizko.app/support.html", "Expires:"]) {
+  for (const requiredText of ["Contact: mailto:security@dizko.app", "Policy: https://mcp.dizko.app/support.html", "Expires:"]) {
     assert(securityBody.includes(requiredText), `security.txt missing expected text: ${requiredText}`);
   }
   pages.security_txt = {

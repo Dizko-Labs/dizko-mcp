@@ -9,7 +9,7 @@
   "terms_url": "https://mcp.dizko.app/terms.html",
   "user_guide_url": "https://mcp.dizko.app/user-guide.html",
   "logo_url": "https://mcp.dizko.app/logo-512.png",
-  "local_logo_file": "public/submission-assets/uplayground-events-logo-512.png",
+  "local_logo_file": "public/submission-assets/dizko-events-logo-512.png",
   "localization": {
     "default_locale": "en-US",
     "supported_locales": [

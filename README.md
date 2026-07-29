@@ -27,9 +27,9 @@ everything on your computer". That is inherent to *any* local MCP extension,
 not something this package over-requests. The hosted connector above avoids it.
 
 ```bash
-npx -y uplayground-events install claude-desktop   # writes the local config
+npx -y dizko-events install claude-desktop   # writes the local config
 # or the raw stdio snippet for any client:
-{ "command": "npx", "args": ["-y", "uplayground-events", "mcp"] }
+{ "command": "npx", "args": ["-y", "dizko-events", "mcp"] }
 ```
 
 Claude Desktop one-click bundle: `npm run build:mcpb` produces `dist/dizko-events-<version>.mcpb`.
@@ -44,7 +44,7 @@ Four paths, simplest first:
    (streamable-http, no auth). Works with the official MCP SDKs, the OpenAI
    Agents SDK, LangGraph/LangChain MCP adapters, Pydantic AI, etc.
 
-2. **stdio MCP**: spawn `npx -y uplayground-events mcp` as a subprocess and
+2. **stdio MCP**: spawn `npx -y dizko-events mcp` as a subprocess and
    speak MCP over stdio.
 
 3. **Raw HTTP JSON-RPC**: no MCP library needed; POST to `/mcp`:
@@ -60,7 +60,7 @@ Four paths, simplest first:
    exposes a stable API:
 
    ```js
-   import { tools, callTool, searchEvents } from "uplayground-events";
+   import { tools, callTool, searchEvents } from "dizko-events";
    // Hand `tools` (JSON Schemas) to your model as function definitions, then:
    const result = await callTool("search_events", { city: "berlin", when: "weekend" });
    ```
@@ -73,7 +73,7 @@ only injectable when you **embed the package** or **self-host the server** - the
 hosted endpoint runs in our process and cannot accept your payment adapter.
 
 ```js
-import { createHttpMcpServer, callTool } from "uplayground-events";
+import { createHttpMcpServer, callTool } from "dizko-events";
 
 const hermesAdapter = {
   canPurchase: (event, summary) => true,
@@ -97,9 +97,9 @@ and explicit written confirmation before the adapter is invoked. See
 
 This package exposes Dizko's live event inventory to agents and humans:
 
-- `dizko-events` (compatibility aliases `uplayground-events` and `eventchat-events`): a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
-- `uplayground-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
-- `uplayground-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
+- `dizko-events`: a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
+- `dizko-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
+- `dizko-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
 - Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/Dizko purchase adapters.
 
 ## Why This Beats Normal Chat
@@ -122,14 +122,14 @@ The agent can still write conversational prose, but its event facts come from th
 Run without installing:
 
 ```bash
-npm exec --yes --package uplayground-events -- uplayground-events search --city "Los Angeles" --when week --limit 5
-npm exec --yes --package uplayground-events -- uplayground-events recommend --city "New York" --when tonight --vibe underground,intimate --max-price 30
+npm exec --yes --package dizko-events -- dizko-events search --city "Los Angeles" --when week --limit 5
+npm exec --yes --package dizko-events -- dizko-events recommend --city "New York" --when tonight --vibe underground,intimate --max-price 30
 ```
 
 Or install the early-access developer package:
 
 ```bash
-npm install -g uplayground-events
+npm install -g dizko-events
 eventchat-events search --city berlin --when weekend --genres techno --limit 5
 ```
 
@@ -164,7 +164,7 @@ Transient network failures (`EAI_AGAIN`, `ETIMEDOUT`, `ECONNRESET`, `ENOTFOUND`,
 Run the stdio MCP server from npm:
 
 ```bash
-npm exec --yes --package uplayground-events -- eventchat-events-mcp
+npm exec --yes --package dizko-events -- eventchat-events-mcp
 ```
 
 Or from this repository:
@@ -196,7 +196,7 @@ Example MCP client config using npm:
   "mcpServers": {
     "dizko-events": {
       "command": "npm",
-      "args": ["exec", "--yes", "--package", "uplayground-events", "--", "eventchat-events-mcp"],
+      "args": ["exec", "--yes", "--package", "dizko-events", "--", "eventchat-events-mcp"],
       "env": {
         "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }

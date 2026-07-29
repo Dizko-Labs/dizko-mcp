@@ -5,14 +5,14 @@
 //
 // Three embed styles:
 //   1. Register tools as native function-calls:
-//        import { tools, callTool } from "uplayground-events";
+//        import { tools, callTool } from "dizko-events";
 //        // expose `tools` (JSON Schemas) to your model, then:
 //        const result = await callTool(name, args);
 //   2. Self-host the MCP server with your own ticket-purchase adapter:
-//        import { createHttpMcpServer } from "uplayground-events";
+//        import { createHttpMcpServer } from "dizko-events";
 //        createHttpMcpServer({ ticketPurchaseProvider }).listen(8787);
 //   3. Call the data layer directly:
-//        import { searchEvents, recommendEvents } from "uplayground-events";
+//        import { searchEvents, recommendEvents } from "dizko-events";
 //
 // Autonomous ticket purchase (the Hermes/OpenClaw integration point) is
 // only injectable in styles 1 and 2 - pass a ticketPurchaseProvider with

@@ -2,7 +2,7 @@
 
 Use these assets when submitting the MCP app through the OpenAI Platform Dashboard.
 
-- Logo file: `uplayground-events-logo-512.png`
+- Logo file: `dizko-events-logo-512.png`
 - Public logo URL: `https://mcp.dizko.app/logo-512.png`
 - MCP URL: `https://mcp.dizko.app/mcp`
 - Privacy URL: `https://mcp.dizko.app/privacy-policy.html`

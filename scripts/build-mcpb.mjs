@@ -15,14 +15,14 @@ const outFile = join(distDir, `dizko-events-${pkg.version}.mcpb`);
 
 const manifest = {
   manifest_version: "0.2",
-  name: "uplayground-events",
+  name: "dizko-events",
   display_name: "Dizko Events",
   version: pkg.version,
-  description: "Live event discovery: concerts, club nights, art, comedy, and festivals across 14 cities.",
+  description: "Live event discovery: concerts, club nights, art, comedy, and festivals across 32 live cities.",
   long_description: "Search and get recommendations from Dizko's live event inventory (Resident Advisor, Dice, Eventbrite, Luma, and city calendars). Includes consent-first preference profiles, night planning, ticket-offer lookup, and calendar files. No account or API key required.",
   author: {
     name: "Dizko",
-    email: "support@urbanplayground.xyz",
+    email: "support@dizko.app",
     url: "https://www.dizko.app"
   },
   homepage: "https://www.dizko.app",

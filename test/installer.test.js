@@ -24,7 +24,7 @@ test("installIntoJsonConfig creates a fresh config file with our server", async 
   const written = JSON.parse(await readFile(path, "utf8"));
   assert.deepEqual(written.mcpServers["dizko-events"], {
     command: "npx",
-    args: ["-y", "uplayground-events", "mcp"]
+    args: ["-y", "dizko-events", "mcp"]
   });
 });
 
@@ -46,7 +46,7 @@ test("installIntoJsonConfig merges into an existing config and writes a backup",
   assert.ok(written.mcpServers["dizko-events"]);
 
   const backup = JSON.parse(await readFile(`${path}.bak`, "utf8"));
-  assert.equal(backup.mcpServers["uplayground-events"], undefined, "backup holds the pre-install state");
+  assert.equal(backup.mcpServers["dizko-events"], undefined, "backup holds the pre-install state");
 });
 
 test("installIntoJsonConfig migrates the legacy public server name", async () => {
@@ -95,7 +95,7 @@ test("runInstall with no target prints an overview with all targets", async () =
   for (const target of ["claude-desktop", "cursor", "claude-code", "claude-ai", "chatgpt"]) {
     assert.match(text, new RegExp(target));
   }
-  assert.match(text, /npx -y uplayground-events mcp|"uplayground-events", "mcp"/);
+  assert.match(text, /npx -y dizko-events mcp|"dizko-events", "mcp"/);
 });
 
 test("install overview leads with the hosted connector and flags local access", async () => {

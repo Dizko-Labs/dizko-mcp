@@ -111,7 +111,7 @@ export function parseArgs(args) {
 }
 
 export function helpText() {
-  return `dizko-events (compatibility aliases: uplayground-events, eventchat-events)
+  return `dizko-events
 
 Commands:
   search       Print live matching events.
@@ -120,7 +120,7 @@ Commands:
   get <id>     Fetch one event.
   cities       List supported cities.
   install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.
-  mcp          Run the local stdio MCP server (package command: npx -y uplayground-events mcp).
+  mcp          Run the local stdio MCP server (package command: npx -y dizko-events mcp).
   serve        Run the HTTP MCP server (same as the hosted endpoint).
   doctor       Diagnose connectivity (DNS, health, MCP endpoint, live search). Add --json for machine-readable output.
   help         Show this help (also --help / -h).

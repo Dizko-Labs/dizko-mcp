@@ -98,6 +98,10 @@ test("MCP output schemas expose reusable structured fields", async () => {
 
   assert.equal(tools.search_events.outputSchema.anyOf[0].properties.events.items.properties.event_url.type, "string");
   assert.equal(tools.recommend_events.outputSchema.anyOf[0].properties.events.items.properties.recommendation_score.type, "number");
+  assert.equal(tools.plan_night.inputSchema.properties.profile_id.type, "string");
+  assert.deepEqual(tools.plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
+  assert.equal(tools.plan_night.outputSchema.anyOf[0].properties.events.items.properties.plan_role.type, "string");
+  assert.equal(tools.plan_night.outputSchema.anyOf[0].properties.events.items.properties.distance_from_primary_km.type[1], "null");
   assert.equal(tools.create_event_preference_profile.outputSchema.anyOf[0].properties.profile_secret.type, "string");
   assert.equal(tools.create_event_preference_profile.outputSchema.anyOf[0].properties.access_instructions.properties.profile_secret_returned_now.type, "boolean");
   assert.equal(tools.get_event_preferences.outputSchema.anyOf[0].properties.profile.properties.learned_preferences.type, "object");

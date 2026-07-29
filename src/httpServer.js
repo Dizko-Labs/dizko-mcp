@@ -58,7 +58,11 @@ export function createHttpMcpServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/install") {
-        await sendStaticHtml(response, "install.html", corsHeaders(request, settings));
+        response.writeHead(302, {
+          ...corsHeaders(request, settings),
+          Location: "https://www.dizko.app/mcp#install"
+        });
+        response.end();
         return;
       }
 
@@ -293,8 +297,8 @@ async function sendStaticPng(response, filename, headers = {}) {
 function sendSecurityTxt(response, headers = {}) {
   const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
   const body = [
-    "Contact: mailto:security@urbanplayground.xyz",
-    "Contact: mailto:support@urbanplayground.xyz",
+    "Contact: mailto:security@dizko.app",
+    "Contact: mailto:support@dizko.app",
     "Policy: https://mcp.dizko.app/support.html",
     "Preferred-Languages: en",
     `Expires: ${expires}`,

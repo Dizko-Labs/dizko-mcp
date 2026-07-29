@@ -76,7 +76,7 @@ async function main() {
     assert(privacyText.includes(phrase), `privacy_notes must cover ${phrase}`);
   }
   const securityPolicy = await readFile(securityPolicyPath, "utf8");
-  assert(securityPolicy.includes("security@urbanplayground.xyz"), "SECURITY.md must include security contact");
+  assert(securityPolicy.includes("security@dizko.app"), "SECURITY.md must include security contact");
   assert(securityPolicy.includes("profile_secret"), "SECURITY.md must cover profile_secret scope");
 
   const submissionPacket = await readFile(submissionPacketPath, "utf8");

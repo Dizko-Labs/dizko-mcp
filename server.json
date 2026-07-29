@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "xyz.urbanplayground/events",
+  "name": "app.dizko/events",
   "description": "Dizko live event discovery: concerts, club nights, art, comedy, and festivals across 32 live cities.",
   "status": "active",
   "repository": {
@@ -8,7 +8,7 @@
     "source": "github",
     "subfolder": "ios/EventChat/agent-tools/eventchat-events"
   },
-  "version": "0.3.2",
+  "version": "0.4.0",
   "websiteUrl": "https://www.dizko.app",
   "remotes": [
     {
@@ -20,8 +20,8 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "uplayground-events",
-      "version": "0.3.1",
+      "identifier": "dizko-events",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

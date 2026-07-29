@@ -228,6 +228,12 @@ const rawTools = [
         genres: { type: "array", items: { type: "string" } },
         vibe: { type: "array", items: { type: "string" } },
         neighborhoods: { type: "array", items: { type: "string" } },
+        venue: { type: "string" },
+        featuring: { type: "string" },
+        free: { type: "boolean" },
+        nightlife: { type: "boolean" },
+        avoid: { type: "array", items: { type: "string" } },
+        max_price: { type: "number" },
         price_max: { type: "number" },
         limit: { type: "number", default: 50 },
         result_limit: { type: "number", default: 10 }
@@ -246,7 +252,7 @@ const rawTools = [
       idempotentHint: true,
       openWorldHint: false
     },
-    inputSchema: eventSearchSchema(),
+    inputSchema: planNightInputSchema(),
     outputSchema: planOutputSchema()
   },
   {
@@ -526,18 +532,7 @@ export async function callTool(name, input = {}, options = {}) {
         });
       }
       const preferences = buildPreferenceHints(profile, input);
-      const response = await recommendEvents({
-        ...input,
-        genres: input.genres?.length ? input.genres : preferences.genres,
-        vibe: input.vibe?.length ? input.vibe : preferences.vibe,
-        event_types: input.event_types?.length ? input.event_types : preferences.event_types,
-        neighborhoods: input.neighborhoods?.length ? input.neighborhoods : preferences.neighborhoods,
-        venue: input.venue || preferences.venues?.[0],
-        max_price: input.max_price ?? input.price_max ?? preferences.max_price,
-        free: input.free ?? preferences.free,
-        nightlife: input.nightlife ?? preferences.nightlife,
-        preferences
-      }, options);
+      const response = await recommendEvents(personalizedSearchInput(input, preferences), options);
       return toolJson({
         profile: publicProfile(profile),
         personalization: personalizationSummary(profile, input, preferences),
@@ -545,11 +540,24 @@ export async function callTool(name, input = {}, options = {}) {
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
-    case "plan_night":
+    case "plan_night": {
+      if (input.profile_id || input.profile_secret) {
+        const access = await requireProfileAccess(store, input);
+        if (access.error) return access.error;
+        const profile = access.profile;
+        const preferences = buildPreferenceHints(profile, input);
+        return toolJson({
+          profile: publicProfile(profile),
+          personalization: personalizationSummary(profile, input, preferences),
+          ...await planNight(personalizedSearchInput(input, preferences), options),
+          assistant_instruction: EVENT_LINKS_INSTRUCTION
+        });
+      }
       return toolJson({
         ...await planNight(input, options),
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
+    }
     case "get_event":
       return toolJson({
         ...summarizeEvent(await getEvent(input.id, options)),
@@ -676,6 +684,25 @@ function personalizationSummary(profile, input = {}, applied = {}) {
   };
 }
 
+function personalizedSearchInput(input, preferences) {
+  const maxPrice = input.max_price ?? input.price_max ?? preferences.max_price;
+  return {
+    ...input,
+    city: input.city || preferences.cities?.[0],
+    genres: input.genres?.length ? input.genres : preferences.genres,
+    vibe: input.vibe?.length ? input.vibe : preferences.vibe,
+    event_types: input.event_types?.length ? input.event_types : preferences.event_types,
+    neighborhoods: input.neighborhoods?.length ? input.neighborhoods : preferences.neighborhoods,
+    venue: input.venue || preferences.venues?.[0],
+    featuring: input.featuring || preferences.featuring?.[0],
+    max_price: maxPrice,
+    price_max: maxPrice,
+    free: input.free ?? preferences.free,
+    nightlife: input.nightlife ?? preferences.nightlife,
+    preferences
+  };
+}
+
 function hasFeedbackSignal(input) {
   return typeof input.liked === "boolean"
     || Number.isFinite(input.rating)
@@ -754,6 +781,28 @@ function eventSearchSchema() {
       limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events - raise limit or use offset to page through more." },
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
+    }
+  };
+}
+
+function planNightInputSchema() {
+  const search = eventSearchSchema();
+  return {
+    ...search,
+    properties: {
+      ...search.properties,
+      profile_id: {
+        type: "string",
+        description: "Optional Dizko preference profile id. Supply it with profile_secret to apply saved and learned taste."
+      },
+      profile_secret: {
+        type: "string",
+        description: "Private profile secret returned when the profile was created."
+      }
+    },
+    dependentRequired: {
+      profile_id: ["profile_secret"],
+      profile_secret: ["profile_id"]
     }
   };
 }
@@ -922,17 +971,34 @@ function planOutputSchema() {
   return withError({
     type: "object",
     properties: {
+      profile: profileOutputSchema(),
+      personalization: personalizationOutputSchema(),
       city: nullableString(),
       when: nullableString(),
       strategy: { type: "string" },
       events: {
         type: "array",
-        items: rankedEventSchema()
+        items: planEventSchema()
       },
       assistant_instruction: { type: "string" }
     },
     required: ["city", "when", "strategy", "events"]
   });
+}
+
+function planEventSchema() {
+  return {
+    ...rankedEventSchema(),
+    properties: {
+      ...rankedEventSchema().properties,
+      plan_role: {
+        type: "string",
+        enum: ["primary", "nearby_fallback", "later_fallback", "alternate"]
+      },
+      plan_note: { type: "string" },
+      distance_from_primary_km: nullableNumber()
+    }
+  };
 }
 
 function ticketPolicyOutputSchema() {

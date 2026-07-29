@@ -89,7 +89,7 @@ https://mcp.dizko.app/logo-512.png
 Local logo file:
 
 ```text
-public/submission-assets/uplayground-events-logo-512.png
+public/submission-assets/dizko-events-logo-512.png
 ```
 
 Local development:
@@ -211,7 +211,7 @@ Run the complete preflight immediately before submitting:
 npm run preflight:submission
 ```
 
-Security and vulnerability reporting are documented in `SECURITY.md` and on the hosted support page. Security reports should go to `security@urbanplayground.xyz`.
+Security and vulnerability reporting are documented in `SECURITY.md` and on the hosted support page. Security reports should go to `security@dizko.app`.
 
 ## Current External Submission Blockers
 

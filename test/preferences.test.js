@@ -374,6 +374,101 @@ test("negative feedback becomes learned avoid signals for future recommendations
   }
 });
 
+test("personalized night plans apply saved city, budget, taste, and fallback roles", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
+  const preferencesPath = join(dir, "preferences.json");
+
+  try {
+    const created = await callTool("create_event_preference_profile", {
+      consent: true,
+      preferences: {
+        cities: ["berlin"],
+        genres: ["techno"],
+        max_price: 25,
+        avoid: ["huge crowds"]
+      }
+    }, { preferencesPath });
+    const createdBody = JSON.parse(created.content[0].text);
+    let requestedUrl = "";
+
+    const planned = await callTool("plan_night", {
+      profile_id: createdBody.profile.profile_id,
+      profile_secret: createdBody.profile_secret,
+      when: "weekend",
+      result_limit: 3
+    }, {
+      preferencesPath,
+      now: new Date("2026-07-29T12:00:00Z"),
+      fetch: async (url) => {
+        requestedUrl = String(url);
+        return Response.json({
+          count: 3,
+          events: [
+            {
+              id: "primary",
+              title: "Small Room Techno",
+              start_time: "2026-08-01T20:00:00Z",
+              venue_city: "berlin",
+              price_min: 18,
+              genres: ["techno"],
+              vibe: ["intimate"],
+              event_types: ["party"],
+              lineup: [],
+              lat: 52.52,
+              lng: 13.405,
+              attendance_count: 120,
+              ra_pick: true
+            },
+            {
+              id: "later",
+              title: "Later Techno",
+              start_time: "2026-08-01T23:00:00Z",
+              venue_city: "berlin",
+              price_min: 20,
+              genres: ["techno"],
+              vibe: ["underground"],
+              event_types: ["party"],
+              lineup: [],
+              lat: 52.60,
+              lng: 13.50,
+              attendance_count: 160
+            },
+            {
+              id: "nearby",
+              title: "Nearby Alternative",
+              start_time: "2026-08-01T19:00:00Z",
+              venue_city: "berlin",
+              price_min: 15,
+              genres: ["house"],
+              vibe: ["intimate"],
+              event_types: ["party"],
+              lineup: [],
+              lat: 52.521,
+              lng: 13.406,
+              attendance_count: 90
+            }
+          ]
+        });
+      }
+    });
+    const plannedBody = JSON.parse(planned.content[0].text);
+    const params = new URL(requestedUrl).searchParams;
+
+    assert.equal(params.get("city"), "berlin");
+    assert.equal(params.get("price_max"), "25");
+    assert.deepEqual(params.getAll("genres"), ["techno"]);
+    assert.equal(plannedBody.profile.profile_id, createdBody.profile.profile_id);
+    assert.equal(plannedBody.personalization.applied_preferences.max_price, 25);
+    assert.deepEqual(plannedBody.events.map((event) => event.plan_role), [
+      "primary",
+      "nearby_fallback",
+      "later_fallback"
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent preference writes preserve profiles in the file store", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
   const preferencesPath = join(dir, "preferences.json");
