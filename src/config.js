@@ -50,7 +50,7 @@ export const SUPPORTED_CITIES = [
   "warsaw"
 ];
 
-export const TOOL_VERSION = "0.5.0";
+export const TOOL_VERSION = "0.6.0";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",
@@ -60,6 +60,8 @@ export const MCP_SERVER_INSTRUCTIONS = [
   "When a profile is created, remember both profile_id and profile_secret privately for future preference, recommendation, feedback, and deletion calls.",
   "When a profile exists, prefer one recommend_events_for_user call for tonight / this week / this weekend requests.",
   "For a daily digest ('what's happening today/tomorrow', a morning briefing, a scheduled check-in), call get_daily_roundup once and render its top picks plus category sections; pass profile_id and profile_secret when the user has a profile so saved and per-day (day_filters) preferences shape the picks.",
+  "search_events' query is hybrid-ranked with semantic similarity over event embeddings, so pass soft natural-language intent ('dark queer warehouse rave') directly instead of guessing exact keywords.",
+  "When the user asks about specific DJs, performers, or comedians ('when does X play next'), call get_artist_events; with a profile and no artists named, it reads the saved featuring list. When they ask what's hot or where the momentum is in a city, call get_city_pulse and ground the summary in its evidence counts.",
   "When a user wants a night plan and has a profile, pass profile_id and profile_secret directly to plan_night so saved and learned taste shape the primary, nearby fallback, and later fallback.",
   "After an event, call get_event_feedback_prompt, ask whether the user liked it, and call record_event_feedback only when the user answers.",
   "For ticket buying, call get_ticket_offers, then quote_ticket_order, then purchase_ticket_order only after explicit written confirmation from the user. Third-party-only ticket links must return checkout handoff; autonomous purchase requires an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment."

@@ -22,7 +22,7 @@ https://mcp.dizko.app/mcp
 
 2. `02-tool-list.png`
    - Show tool list or tool-call details.
-   - It should be clear that Dizko Events exposes 19 tools.
+   - It should be clear that Dizko Events exposes 21 tools.
 
 3. `03-live-event-search.png`
    - Prompt:

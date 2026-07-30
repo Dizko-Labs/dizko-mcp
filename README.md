@@ -220,6 +220,8 @@ Tools:
 - `recommend_events_for_user`: live recommendations using saved preferences and learned feedback with profile-secret access.
 - `plan_night`: compact plan with fallbacks.
 - `get_daily_roundup`: one-day digest for a city: ranked top picks plus parties, live music, art, comedy, talks, and food sections. Built for recurring morning briefings; optional profile-secret access personalizes the ranking with saved, learned, and per-day preferences.
+- `get_artist_events`: upcoming shows grouped by artist for named DJs, performers, or comedians. With profile-secret access and no artists named, it tracks the profile's saved `featuring` list.
+- `get_city_pulse`: aggregate momentum read for a city over the coming days: busiest nights, top venues, genre mix, and headline events, every stat carrying its evidence counts. Public inventory only.
 - `get_event`: detail lookup by event id.
 - `get_ticket_purchase_policy`: explains current purchase modes, hard safety rules, and provider requirements.
 - `get_ticket_offers`: returns ticket options for an event, including checkout URL and whether autonomous purchase is supported.

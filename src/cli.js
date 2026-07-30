@@ -6,6 +6,8 @@ import { runInstall } from "./installer.js";
 import { runMcpServer } from "./mcpServer.js";
 import { planNight, recommendEvents } from "./planner.js";
 import { dailyRoundup } from "./roundup.js";
+import { getArtistEvents } from "./artistEvents.js";
+import { cityPulse } from "./cityPulse.js";
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
   const [command, ...args] = argv;
@@ -31,6 +33,16 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
       }
       case "roundup": {
         const response = await dailyRoundup(options);
+        io.stdout.write(JSON.stringify(response, null, 2) + "\n");
+        break;
+      }
+      case "artists": {
+        const response = await getArtistEvents(options);
+        io.stdout.write(JSON.stringify(response, null, 2) + "\n");
+        break;
+      }
+      case "pulse": {
+        const response = await cityPulse(options);
         io.stdout.write(JSON.stringify(response, null, 2) + "\n");
         break;
       }
@@ -107,7 +119,7 @@ export function parseArgs(args) {
     }
   }
 
-  for (const key of ["genres", "vibe", "event_types", "event_type", "neighborhoods", "avoid"]) {
+  for (const key of ["genres", "vibe", "event_types", "event_type", "neighborhoods", "avoid", "artists"]) {
     if (typeof parsed[key] === "string") {
       parsed[key] = parsed[key].split(",").map((item) => item.trim()).filter(Boolean);
     }
@@ -124,6 +136,8 @@ Commands:
   recommend    Return ranked JSON with recommendation reasons.
   plan         Return a compact night plan with fallbacks.
   roundup      Daily digest for a city: top picks + category sections.
+  artists      Upcoming events per artist (--artists "Ben Klock,Marcel Dettmann").
+  pulse        Aggregate momentum for a city: busiest nights, venues, genres.
   get <id>     Fetch one event.
   cities       List supported cities.
   install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.

@@ -116,7 +116,7 @@ noauth
 
 Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector `profile_id` plus the private `profile_secret` returned when the user opts in to preference memory. Ticket purchase tools require an event-specific locked quote and explicit written confirmation; third-party-only offers return external checkout handoff unless an integrated provider is configured.
 
-All 19 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
+All 21 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
 
 Tool descriptors also include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`, with verifier-enforced strings under the 64-character limit.
 
@@ -223,7 +223,7 @@ Latest preflight passed with:
 - support page
 - logo asset
 - security.txt
-- 19 tool descriptors
+- 21 tool descriptors
 - tool annotations
 - output schemas
 - rate-limit headers

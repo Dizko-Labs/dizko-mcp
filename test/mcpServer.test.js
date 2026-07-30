@@ -43,6 +43,8 @@ test("MCP lists event tools", async () => {
     "recommend_events_for_user",
     "plan_night",
     "get_daily_roundup",
+    "get_artist_events",
+    "get_city_pulse",
     "get_event",
     "get_ticket_purchase_policy",
     "get_ticket_offers",

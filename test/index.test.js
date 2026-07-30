@@ -16,7 +16,7 @@ test("public library entry exposes the stable agent-integration surface", () => 
     assert.ok(name in lib, `missing export: ${name}`);
   }
   assert.equal(Array.isArray(lib.tools), true);
-  assert.equal(lib.tools.length, 19);
+  assert.equal(lib.tools.length, 21);
   assert.equal(typeof lib.callTool, "function");
 });
 

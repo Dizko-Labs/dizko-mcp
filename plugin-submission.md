@@ -166,7 +166,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 Capture these from the actual ChatGPT connector flow before submitting:
 
 - Connector setup screen showing the hosted MCP endpoint connected.
-- Tool list or tool-call details showing Dizko Events exposes 19 tools.
+- Tool list or tool-call details showing Dizko Events exposes 21 tools.
 - Live search result for a current event prompt, including at least one event URL.
 - Current-context follow-up flow before a tonight/week/weekend search.
 - Consent-first preference onboarding before saving preferences.

@@ -4,6 +4,8 @@ import { summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, recommendEvents } from "./planner.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
+import { getArtistEvents } from "./artistEvents.js";
+import { cityPulse } from "./cityPulse.js";
 import { resolveSingleDay, weekdayName } from "./dateRange.js";
 import {
   FilePreferenceStore,
@@ -278,6 +280,32 @@ const rawTools = [
     outputSchema: roundupOutputSchema()
   },
   {
+    name: "get_artist_events",
+    title: "Get Artist Events",
+    description: "Use this when a user asks when specific DJs, performers, or comedians play next, or wants upcoming shows for the artists they follow. Pass artists explicitly, or pass only profile_id and profile_secret to use the artists saved in the profile's featuring list.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: artistEventsInputSchema(),
+    outputSchema: artistEventsOutputSchema()
+  },
+  {
+    name: "get_city_pulse",
+    title: "Get City Pulse",
+    description: "Use this when a user asks what is hot, where the momentum is, or how busy a city's event scene looks over the coming days. Returns busiest nights, top venues, genre mix, and headline events from aggregate public inventory, every stat with evidence counts.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: cityPulseInputSchema(),
+    outputSchema: cityPulseOutputSchema()
+  },
+  {
     name: "get_event",
     title: "Get Event",
     description: "Use this when a user asks for details about a specific Dizko event id returned by search, recommendations, or a night plan.",
@@ -399,6 +427,8 @@ const toolInvocationStatus = {
   recommend_events_for_user: ["Personalizing live events", "Personalized events ready"],
   plan_night: ["Planning the night", "Night plan ready"],
   get_daily_roundup: ["Building the daily roundup", "Daily roundup ready"],
+  get_artist_events: ["Checking artist calendars", "Artist events ready"],
+  get_city_pulse: ["Reading the city pulse", "City pulse ready"],
   get_event: ["Loading event details", "Event details loaded"],
   get_ticket_purchase_policy: ["Loading purchase policy", "Purchase policy ready"],
   get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
@@ -607,6 +637,40 @@ export async function callTool(name, input = {}, options = {}) {
         assistant_instruction: ROUNDUP_INSTRUCTION
       });
     }
+    case "get_artist_events": {
+      let profile = null;
+      let artists = input.artists;
+      if (input.profile_id || input.profile_secret) {
+        const access = await requireProfileAccess(store, input);
+        if (access.error) return access.error;
+        profile = access.profile;
+        if (!artists?.length) artists = profile.preferences?.featuring || [];
+      }
+      if (!artists?.length) {
+        return toolJson({
+          artists: [],
+          not_found: [],
+          error: "No artists given and none saved. Pass artists, or save favorites first via save_event_preferences featuring.",
+          assistant_instruction: "Ask which DJs, performers, or comedians to track, then call get_artist_events with those names. Offer to save them to the profile's featuring list for future automatic tracking."
+        }, true);
+      }
+      const result = await getArtistEvents({ ...input, artists }, options);
+      const payload = profile
+        ? { profile: publicProfile(profile), ...result }
+        : result;
+      return toolJson({
+        ...payload,
+        assistant_instruction: [
+          "Group the answer by artist, one heading per artist with their upcoming events under it. Mention artists in not_found as having no upcoming listed dates. Render every event with the standard template:",
+          EVENT_LINKS_INSTRUCTION
+        ].join("\n")
+      });
+    }
+    case "get_city_pulse":
+      return toolJson({
+        ...await cityPulse(input, options),
+        assistant_instruction: "Summarize the scene's momentum in a few sentences grounded ONLY in these aggregates: name the busiest nights, the venues with the most programming, the dominant genres, and the headline events, citing the evidence counts. Note the sample_note when aggregates cover a sample. Do not invent trends beyond this data."
+      });
     case "get_event":
       return toolJson({
         ...summarizeEvent(await getEvent(input.id, options)),
@@ -837,7 +901,7 @@ function eventSearchSchema() {
       when: { type: "string", description: "Date preset: today, tonight, tomorrow, weekend, week, this week, any, or YYYY-MM-DD." },
       date_from: { type: "string", description: "Inclusive start date in YYYY-MM-DD format." },
       date_to: { type: "string", description: "Inclusive end date in YYYY-MM-DD format." },
-      query: { type: "string", description: "Keyword search." },
+      query: { type: "string", description: "Free-text search, hybrid-ranked by the live API: exact prefix > substring > fuzzy > semantic similarity over event embeddings. Handles soft natural-language intent ('dark queer warehouse rave', 'ambient listening bar') as well as literal names, and recognizes date phrases." },
       event_types: { type: "array", items: { type: "string" } },
       genres: { type: "array", items: { type: "string" } },
       vibe: { type: "array", items: { type: "string" } },
@@ -911,6 +975,130 @@ function roundupInputSchema() {
       profile_secret: ["profile_id"]
     }
   };
+}
+
+function artistEventsInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      artists: {
+        type: "array",
+        items: { type: "string" },
+        description: "Artist, DJ, performer, or comedian names to look up (max 8 per call)."
+      },
+      city: { type: "string", description: "Optional city to scope the search; omit to search all cities." },
+      date_from: { type: "string", description: "Inclusive start date in YYYY-MM-DD format. Defaults to today." },
+      date_to: { type: "string", description: "Optional inclusive end date in YYYY-MM-DD format." },
+      limit_per_artist: { type: "number", default: 5, description: "Upcoming events per artist (max 10)." },
+      profile_id: {
+        type: "string",
+        description: "Optional Dizko preference profile id. When artists is omitted, the profile's saved featuring list is used."
+      },
+      profile_secret: {
+        type: "string",
+        description: "Private profile secret returned when the profile was created."
+      }
+    },
+    dependentRequired: {
+      profile_id: ["profile_secret"],
+      profile_secret: ["profile_id"]
+    }
+  };
+}
+
+function artistEventsOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      profile: profileOutputSchema(),
+      city: nullableString(),
+      date_from: { type: "string" },
+      date_to: nullableString(),
+      artists: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            artist: { type: "string" },
+            count: { type: "number" },
+            events: { type: "array", items: eventSummarySchema() }
+          },
+          required: ["artist", "count", "events"]
+        }
+      },
+      not_found: stringArray(),
+      dropped_artists: stringArray(),
+      assistant_instruction: { type: "string" }
+    },
+    required: ["artists", "not_found"]
+  });
+}
+
+function cityPulseInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      city: { type: "string", description: "City name, for example berlin or new york." },
+      days: { type: "number", default: 7, description: "Window length in days starting from date_from (max 14)." },
+      date_from: { type: "string", description: "Inclusive start date in YYYY-MM-DD format. Defaults to today." },
+      event_types: { type: "array", items: { type: "string" }, description: "Optional event-type filter, for example party." }
+    },
+    required: ["city"]
+  };
+}
+
+function cityPulseOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      city: nullableString(),
+      date_from: { type: "string" },
+      date_to: { type: "string" },
+      days: { type: "number" },
+      total_available: { type: "number" },
+      sample_size: { type: "number" },
+      sample_note: { type: "string" },
+      busiest_nights: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            date: { type: "string" },
+            weekday: nullableString(),
+            events: { type: "number" }
+          },
+          required: ["date", "events"]
+        }
+      },
+      top_venues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            venue: { type: "string" },
+            events: { type: "number" },
+            total_attendance: { type: "number" }
+          },
+          required: ["venue", "events"]
+        }
+      },
+      top_genres: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            genre: { type: "string" },
+            events: { type: "number" }
+          },
+          required: ["genre", "events"]
+        }
+      },
+      headliners: { type: "array", items: eventSummarySchema() },
+      free_events_in_sample: { type: "number" },
+      assistant_instruction: { type: "string" }
+    },
+    required: ["date_from", "date_to", "total_available", "sample_size", "busiest_nights", "top_venues", "top_genres", "headliners"]
+  });
 }
 
 function roundupOutputSchema() {

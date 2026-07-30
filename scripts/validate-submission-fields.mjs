@@ -41,7 +41,7 @@ async function main() {
   assert(evidence.checks?.public_pages?.user_guide?.ok === true, "latest evidence must show user guide page ok");
   assert(fields.logo_url === `${evidence.base_url}/logo-512.png`, "logo_url must match evidence base_url");
   assert(evidence.ok === true, "latest evidence must be ok");
-  assert(evidence.checks?.tools?.count === 19, "latest evidence must show 19 tools");
+  assert(evidence.checks?.tools?.count === 21, "latest evidence must show 21 tools");
   if (requireDeploymentMetadata) {
     assert(evidence.deployment?.ok === true, "latest evidence must include current deployment metadata");
     assertNonEmpty(evidence.deployment?.id, "evidence.deployment.id");
@@ -139,7 +139,7 @@ function assertPacketMatches(packet, fields, evidence) {
     "feedback learning",
     "empty feedback",
     "preference deletion",
-    "19 tool descriptors"
+    "21 tool descriptors"
   ]) {
     assert(packet.includes(phrase), `OPENAI_SUBMISSION_PACKET.md must mention ${phrase}`);
   }

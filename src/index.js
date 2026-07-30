@@ -40,6 +40,8 @@ export {
 } from "./api.js";
 export { recommendEvents, planNight } from "./planner.js";
 export { dailyRoundup } from "./roundup.js";
+export { getArtistEvents } from "./artistEvents.js";
+export { cityPulse } from "./cityPulse.js";
 export { summarizeEvent, eventUrl } from "./format.js";
 export { TICKET_PURCHASE_POLICY } from "./tickets.js";
 
