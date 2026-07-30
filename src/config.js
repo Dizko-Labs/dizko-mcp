@@ -1,6 +1,7 @@
 export const DEFAULT_API_BASE_URL = "https://api.dizko.app";
 export const DEFAULT_WEB_BASE_URL = "https://www.dizko.app";
 export const DEFAULT_MCP_URL = "https://mcp.dizko.app/mcp";
+export const DEFAULT_APP_DOWNLOAD_URL = "https://www.dizko.app/ios";
 
 export const SUPPORTED_CITIES = [
   "amsterdam",
@@ -54,8 +55,8 @@ export const TOOL_VERSION = "0.6.0";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",
-  "Minimize tool calls: when the request names a city and timeframe, answer with a SINGLE search_events or recommend_events call. Do not chain extra tool calls first. Ask any clarifying questions (event type, vibe, budget, area, avoidances) conversationally yourself; only call get_event_search_followups when you genuinely cannot infer what to ask. Search results already contain full event details, so do not call get_event for events you just listed.",
-  "When presenting events, render one markdown block per event with each fact on its own line: the title linked to event_url (the Dizko event page  -  never use ticket_url as the title link), then When (with an [Add to calendar](calendar_url) link), Where (with a [Get directions](directions_url) link), What (description or tags), and Price (with a [Tickets](ticket_url) link). Omit lines with missing data.",
+  "Minimize tool calls: when the request names a city and timeframe, answer with a SINGLE search_events or recommend_events call. Do not chain extra tool calls first. Ask any clarifying questions (event type, vibe, budget, area, avoidances) conversationally yourself. Only call get_event_search_followups when you genuinely cannot infer what to ask. Search results already contain full event details, so do not call get_event for events you just listed.",
+  "When presenting events, render one markdown block per event with each fact on its own line: the title linked to event_url (the Dizko event page, never use ticket_url as the title link), then When (with an [Add to calendar](calendar_url) link), Where (with a [Get directions](directions_url) link), What (description or tags), and Price (with a [Tickets](ticket_url) link). Omit lines with missing data. If app_download_url is present and the user wants a native mobile experience, mention that they can download the Dizko iPhone app there.",
   "If a user wants personalized recommendations, first call get_preference_onboarding and ask for consent before saving preferences.",
   "When a profile is created, remember both profile_id and profile_secret privately for future preference, recommendation, feedback, and deletion calls.",
   "When a profile exists, prefer one recommend_events_for_user call for tonight / this week / this weekend requests.",
@@ -73,10 +74,16 @@ export const MCP_SERVER_INSTRUCTIONS = [
 // drift. DIZKO_* is preferred publicly. EVENTCHAT_* stays canonical
 // internally, and UPLAYGROUND_* remains as a compatibility alias.
 export function getConfig(env = process.env) {
+  const apiBaseUrl = (env.DIZKO_API_BASE_URL || env.EVENTCHAT_API_BASE_URL || env.UPLAYGROUND_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+  const webBaseUrl = (env.DIZKO_WEB_BASE_URL || env.EVENTCHAT_WEB_BASE_URL || env.UPLAYGROUND_WEB_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/+$/, "");
+  const mcpUrl = (env.DIZKO_MCP_URL || env.EVENTCHAT_MCP_URL || env.UPLAYGROUND_MCP_URL || DEFAULT_MCP_URL).replace(/\/+$/, "");
+  const appDownloadUrl = (env.DIZKO_APP_DOWNLOAD_URL || env.EVENTCHAT_APP_DOWNLOAD_URL || env.UPLAYGROUND_APP_DOWNLOAD_URL || DEFAULT_APP_DOWNLOAD_URL).replace(/\/+$/, "");
+
   return {
-    apiBaseUrl: (env.DIZKO_API_BASE_URL || env.EVENTCHAT_API_BASE_URL || env.UPLAYGROUND_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/+$/, ""),
-    webBaseUrl: (env.DIZKO_WEB_BASE_URL || env.EVENTCHAT_WEB_BASE_URL || env.UPLAYGROUND_WEB_BASE_URL || DEFAULT_WEB_BASE_URL).replace(/\/+$/, ""),
-    mcpUrl: (env.DIZKO_MCP_URL || env.EVENTCHAT_MCP_URL || env.UPLAYGROUND_MCP_URL || DEFAULT_MCP_URL).replace(/\/+$/, ""),
+    apiBaseUrl,
+    webBaseUrl,
+    mcpUrl,
+    appDownloadUrl,
     apiTimeoutMs: positiveNumber(env.DIZKO_API_TIMEOUT_MS || env.EVENTCHAT_API_TIMEOUT_MS, 8000),
     apiRetries: nonNegativeNumber(env.DIZKO_API_RETRIES || env.EVENTCHAT_API_RETRIES, 2),
     apiRetryBaseDelayMs: positiveNumber(env.DIZKO_API_RETRY_BASE_DELAY_MS || env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),

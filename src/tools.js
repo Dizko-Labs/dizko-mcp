@@ -1,4 +1,5 @@
 import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
+import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
@@ -326,6 +327,7 @@ const rawTools = [
       ...eventSummarySchema(),
       properties: {
         ...eventSummarySchema().properties,
+        app_download_url: { type: "string", description: "Dizko iPhone app landing page." },
         assistant_instruction: { type: "string" }
       }
     })
@@ -561,18 +563,23 @@ export async function callTool(name, input = {}, options = {}) {
     case "get_event_search_followups":
       return toolJson(buildSearchFollowups(input));
     case "search_events": {
-      const response = await searchEvents(input, options);
+      const config = { ...getConfig(options.env), ...(options.config || {}) };
+      const response = await searchEvents(input, { ...options, config });
       return toolJson({
         count: response.count ?? response.events?.length ?? 0,
-        events: (response.events || []).map((event) => summarizeEvent(event)),
+        events: (response.events || []).map((event) => summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl })),
+        app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
-    case "recommend_events":
+    case "recommend_events": {
+      const config = { ...getConfig(options.env), ...(options.config || {}) };
       return toolJson({
-        ...await recommendEvents(input, options),
+        ...await recommendEvents(input, { ...options, config }),
+        app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
+    }
     case "recommend_events_for_user": {
       const access = await requireProfileAccess(store, input);
       if (access.error) return access.error;
@@ -584,18 +591,21 @@ export async function callTool(name, input = {}, options = {}) {
           message: "Ask the user about their general event preferences and whether Dizko may save them before personalized recommendations can learn over time."
         });
       }
+      const config = { ...getConfig(options.env), ...(options.config || {}) };
       const preferences = buildPreferenceHints(profile, input, {
         weekday: weekdayName(resolveSingleDay(input, options.now))
       });
-      const response = await recommendEvents(personalizedSearchInput(input, preferences), options);
+      const response = await recommendEvents(personalizedSearchInput(input, preferences), { ...options, config });
       return toolJson({
         profile: publicProfile(profile),
         personalization: personalizationSummary(profile, input, preferences),
         ...response,
+        app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
     case "plan_night": {
+      const config = { ...getConfig(options.env), ...(options.config || {}) };
       if (input.profile_id || input.profile_secret) {
         const access = await requireProfileAccess(store, input);
         if (access.error) return access.error;
@@ -606,12 +616,14 @@ export async function callTool(name, input = {}, options = {}) {
         return toolJson({
           profile: publicProfile(profile),
           personalization: personalizationSummary(profile, input, preferences),
-          ...await planNight(personalizedSearchInput(input, preferences), options),
+          ...await planNight(personalizedSearchInput(input, preferences), { ...options, config }),
+          app_download_url: config.appDownloadUrl,
           assistant_instruction: EVENT_LINKS_INSTRUCTION
         });
       }
       return toolJson({
-        ...await planNight(input, options),
+        ...await planNight(input, { ...options, config }),
+        app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
     }
@@ -622,8 +634,6 @@ export async function callTool(name, input = {}, options = {}) {
         if (access.error) return access.error;
         const profile = access.profile;
         const preferences = buildPreferenceHints(profile, input, { weekday: weekdayName(day) });
-        // Preferences shape the ranking only; the day's full inventory is
-        // searched so every category section stays populated.
         const roundup = await dailyRoundup({ ...input, date: day, preferences }, options);
         return toolJson({
           profile: publicProfile(profile),
@@ -671,11 +681,14 @@ export async function callTool(name, input = {}, options = {}) {
         ...await cityPulse(input, options),
         assistant_instruction: "Summarize the scene's momentum in a few sentences grounded ONLY in these aggregates: name the busiest nights, the venues with the most programming, the dominant genres, and the headline events, citing the evidence counts. Note the sample_note when aggregates cover a sample. Do not invent trends beyond this data."
       });
-    case "get_event":
+    case "get_event": {
+      const config = { ...getConfig(options.env), ...(options.config || {}) };
       return toolJson({
-        ...summarizeEvent(await getEvent(input.id, options)),
+        ...summarizeEvent(await getEvent(input.id, { ...options, config }), { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
+        app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
+    }
     case "get_ticket_purchase_policy":
       return toolJson({
         ...TICKET_PURCHASE_POLICY,
@@ -806,8 +819,8 @@ function personalizedSearchInput(input, preferences) {
     vibe: input.vibe?.length ? input.vibe : preferences.vibe,
     event_types: input.event_types?.length ? input.event_types : preferences.event_types,
     neighborhoods: input.neighborhoods?.length ? input.neighborhoods : preferences.neighborhoods,
-    venue: input.venue || preferences.venues?.[0],
-    featuring: input.featuring || preferences.featuring?.[0],
+    venue: input.venue,
+    featuring: input.featuring,
     max_price: maxPrice,
     price_max: maxPrice,
     free: input.free ?? preferences.free,
@@ -914,7 +927,7 @@ function eventSearchSchema() {
       featuring: { type: "string", description: "Artist or performer name." },
       venue: { type: "string" },
       avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in recommendations." },
-      limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events - raise limit or use offset to page through more." },
+      limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events. Raise limit or use offset to page through more." },
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
     }
@@ -1251,6 +1264,7 @@ function eventsOutputSchema() {
         type: "array",
         items: eventSummarySchema()
       },
+      app_download_url: { type: "string", description: "Dizko iPhone app landing page." },
       assistant_instruction: { type: "string" }
     },
     required: ["count", "events"]
@@ -1266,6 +1280,7 @@ function rankedEventsOutputSchema() {
         type: "array",
         items: rankedEventSchema()
       },
+      app_download_url: { type: "string", description: "Dizko iPhone app landing page." },
       assistant_instruction: { type: "string" }
     },
     required: ["count", "events"]
@@ -1286,6 +1301,7 @@ function userRecommendationsOutputSchema() {
       onboarding_needed: { type: "boolean" },
       questions: stringArray(),
       message: { type: "string" },
+      app_download_url: { type: "string", description: "Dizko iPhone app landing page." },
       assistant_instruction: { type: "string" }
     }
   });
@@ -1304,6 +1320,7 @@ function planOutputSchema() {
         type: "array",
         items: planEventSchema()
       },
+      app_download_url: { type: "string", description: "Dizko iPhone app landing page." },
       assistant_instruction: { type: "string" }
     },
     required: ["city", "when", "strategy", "events"]
@@ -1537,8 +1554,8 @@ function eventSummarySchema() {
       description: { ...nullableString(), description: "Short one-line event description for display." },
       ticket_url: nullableString(),
       event_url: { type: "string" },
-      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link - offer as 'Add to calendar'." },
-      directions_url: { ...nullableString(), description: "Google Maps directions link - offer as 'Get directions'." }
+      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link. Offer as 'Add to calendar'." },
+      directions_url: { ...nullableString(), description: "Google Maps directions link. Offer as 'Get directions'." }
     },
     required: ["id", "title", "event_url"]
   };
@@ -1606,6 +1623,7 @@ function ticketQuoteSchema() {
 
 function withError(successSchema) {
   return {
+    type: "object",
     anyOf: [
       successSchema,
       {

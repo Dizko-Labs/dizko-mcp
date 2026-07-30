@@ -67,14 +67,14 @@ export function buildEventQuery(input = {}, now = new Date()) {
 }
 
 export async function searchEvents(input = {}, options = {}) {
-  const config = options.config || getConfig(options.env);
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
   const url = new URL("/events", config.apiBaseUrl);
   url.search = buildEventQuery(input, options.now).toString();
   return fetchJsonCached(url, config, options, "Event search");
 }
 
 export async function getEvent(id, options = {}) {
-  const config = options.config || getConfig(options.env);
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
   const url = new URL(`/events/${encodeURIComponent(id)}`, config.apiBaseUrl);
   return fetchJsonCached(url, config, options, "Event lookup");
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_API_BASE_URL,
+  DEFAULT_APP_DOWNLOAD_URL,
   DEFAULT_MCP_URL,
   DEFAULT_WEB_BASE_URL,
   SUPPORTED_CITIES,
@@ -14,6 +15,7 @@ test("getConfig returns shared defaults for every surface", () => {
   assert.equal(config.apiBaseUrl, DEFAULT_API_BASE_URL);
   assert.equal(config.webBaseUrl, DEFAULT_WEB_BASE_URL);
   assert.equal(config.mcpUrl, DEFAULT_MCP_URL);
+  assert.equal(config.appDownloadUrl, DEFAULT_APP_DOWNLOAD_URL);
   assert.equal(config.apiTimeoutMs, 8000);
   assert.equal(config.apiRetries, 2);
   assert.equal(config.apiRetryBaseDelayMs, 250);
@@ -25,6 +27,7 @@ test("getConfig honors EVENTCHAT_* env overrides and trims trailing slashes", ()
     EVENTCHAT_API_BASE_URL: "https://api.example.test///",
     EVENTCHAT_WEB_BASE_URL: "https://web.example.test/",
     EVENTCHAT_MCP_URL: "https://mcp.example.test/mcp/",
+    EVENTCHAT_APP_DOWNLOAD_URL: "https://apps.example.test/download/",
     EVENTCHAT_API_TIMEOUT_MS: "1234",
     EVENTCHAT_API_RETRIES: "5",
     EVENTCHAT_API_RETRY_BASE_DELAY_MS: "10"
@@ -32,6 +35,7 @@ test("getConfig honors EVENTCHAT_* env overrides and trims trailing slashes", ()
   assert.equal(config.apiBaseUrl, "https://api.example.test");
   assert.equal(config.webBaseUrl, "https://web.example.test");
   assert.equal(config.mcpUrl, "https://mcp.example.test/mcp");
+  assert.equal(config.appDownloadUrl, "https://apps.example.test/download");
   assert.equal(config.apiTimeoutMs, 1234);
   assert.equal(config.apiRetries, 5);
   assert.equal(config.apiRetryBaseDelayMs, 10);

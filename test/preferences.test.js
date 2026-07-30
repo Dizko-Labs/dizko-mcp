@@ -238,6 +238,72 @@ test("feedback requires a real learning signal before writing", async () => {
   }
 });
 
+test("personalized recommendations do not turn learned venue affinity into a hard venue filter", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
+  const preferencesPath = join(dir, "preferences.json");
+
+  try {
+    const created = await callTool("create_event_preference_profile", {
+      consent: true,
+      preferences: { cities: ["berlin"], genres: ["techno"] }
+    }, { preferencesPath });
+    const createdBody = JSON.parse(created.content[0].text);
+
+    await callTool("record_event_feedback", {
+      profile_id: createdBody.profile.profile_id,
+      profile_secret: createdBody.profile_secret,
+      event_id: "event-1",
+      liked: true,
+      notes: "Loved the venue and the music."
+    }, {
+      preferencesPath,
+      fetch: async () => Response.json({
+        id: "event-1",
+        title: "Venue Love",
+        genres: ["techno"],
+        vibe: ["underground"],
+        event_types: ["party"],
+        lineup: [],
+        venue_name: "ÆDEN",
+        venue_city: "berlin"
+      })
+    });
+
+    let requestedUrl = null;
+    await callTool("recommend_events_for_user", {
+      profile_id: createdBody.profile.profile_id,
+      profile_secret: createdBody.profile_secret,
+      when: "weekend",
+      result_limit: 2
+    }, {
+      preferencesPath,
+      fetch: async (url) => {
+        requestedUrl = String(url);
+        return Response.json({
+          count: 2,
+          events: [{
+            id: "event-2",
+            title: "Another Night",
+            start_time: "2026-06-10T22:00:00Z",
+            genres: ["techno"],
+            vibe: ["queer-friendly"],
+            event_types: ["party"],
+            lineup: [],
+            venue_name: "OXI",
+            venue_city: "berlin"
+          }]
+        });
+      }
+    });
+
+    const params = new URL(requestedUrl).searchParams;
+    assert.equal(params.get("venue"), null, "learned venue affinity should guide ranking, not hard-filter the search");
+    assert.equal(params.get("city"), "berlin", "saved city can still seed the search when the user omits it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("feedback notes create learned preference and avoid signals", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
   const preferencesPath = join(dir, "preferences.json");

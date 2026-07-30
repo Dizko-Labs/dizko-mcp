@@ -4,14 +4,14 @@ import { summarizeEvent } from "./format.js";
 import { rankEvents } from "./rank.js";
 
 export async function recommendEvents(input = {}, options = {}) {
-  const config = options.config || getConfig(options.env);
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
   const response = await searchEvents({ ...input, limit: input.limit ?? 50 }, { ...options, config });
   const ranked = rankEvents(response.events || [], input.preferences || input, options.now);
   const limit = input.result_limit ?? input.limit ?? 10;
   return {
     count: ranked.length,
     events: ranked.slice(0, limit).map((event) => ({
-      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl }),
+      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
       recommendation_score: event.recommendation_score,
       recommendation_reasons: event.recommendation_reasons
     }))
@@ -19,7 +19,7 @@ export async function recommendEvents(input = {}, options = {}) {
 }
 
 export async function planNight(input = {}, options = {}) {
-  const config = options.config || getConfig(options.env);
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
   const response = await searchEvents({ ...input, limit: input.limit ?? 75 }, { ...options, config });
   const ranked = rankEvents(response.events || [], input.preferences || input, options.now);
   const plan = buildPlan(ranked, input);
@@ -29,7 +29,7 @@ export async function planNight(input = {}, options = {}) {
     when: input.when || input.date_from || null,
     strategy: "Lead with the strongest taste match, then keep a nearby fallback and a later fallback when the inventory supports them.",
     events: plan.map((event) => ({
-      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl }),
+      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
       recommendation_score: event.recommendation_score,
       recommendation_reasons: event.recommendation_reasons,
       plan_role: event.plan_role,

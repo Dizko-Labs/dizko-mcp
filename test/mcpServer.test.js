@@ -99,7 +99,9 @@ test("MCP output schemas expose reusable structured fields", async () => {
   const response = await handleMcpRequest({ method: "tools/list" });
   const tools = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
 
+  assert.equal(tools.search_events.outputSchema.type, "object");
   assert.equal(tools.search_events.outputSchema.anyOf[0].properties.events.items.properties.event_url.type, "string");
+  assert.equal(tools.search_events.outputSchema.anyOf[0].properties.app_download_url.type, "string");
   assert.equal(tools.recommend_events.outputSchema.anyOf[0].properties.events.items.properties.recommendation_score.type, "number");
   assert.equal(tools.plan_night.inputSchema.properties.profile_id.type, "string");
   assert.deepEqual(tools.plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
@@ -177,6 +179,7 @@ test("MCP search_events returns tool content", async () => {
   assert.equal(response.content[0].type, "text");
   assert.match(response.content[0].text, /Night One/);
   assert.equal(response.structuredContent.events[0].title, "Night One");
+  assert.equal(response.structuredContent.app_download_url, "https://www.dizko.app/ios");
 });
 
 test("MCP search_events returns structured tool errors for slow upstream calls", async () => {
