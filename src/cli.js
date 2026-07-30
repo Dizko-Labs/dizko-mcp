@@ -5,6 +5,7 @@ import { formatEventList, summarizeEvent } from "./format.js";
 import { runInstall } from "./installer.js";
 import { runMcpServer } from "./mcpServer.js";
 import { planNight, recommendEvents } from "./planner.js";
+import { dailyRoundup } from "./roundup.js";
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
   const [command, ...args] = argv;
@@ -25,6 +26,11 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
       }
       case "plan": {
         const response = await planNight(options);
+        io.stdout.write(JSON.stringify(response, null, 2) + "\n");
+        break;
+      }
+      case "roundup": {
+        const response = await dailyRoundup(options);
         io.stdout.write(JSON.stringify(response, null, 2) + "\n");
         break;
       }
@@ -117,6 +123,7 @@ Commands:
   search       Print live matching events.
   recommend    Return ranked JSON with recommendation reasons.
   plan         Return a compact night plan with fallbacks.
+  roundup      Daily digest for a city: top picks + category sections.
   get <id>     Fetch one event.
   cities       List supported cities.
   install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.
@@ -129,6 +136,7 @@ Examples:
   dizko-events search --city "los angeles" --when "this week" --limit 5
   dizko-events recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
   dizko-events plan --city london --when weekend --event-types party --avoid mainstream
+  dizko-events roundup --city berlin --when today
   dizko-events install claude-desktop
   dizko-events doctor
 

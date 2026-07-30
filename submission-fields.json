@@ -1,7 +1,7 @@
 {
   "app_name": "Dizko Events",
   "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from Dizko's live event inventory.",
-  "long_description": "Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.",
+  "long_description": "Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, daily city roundups with top picks and category sections, consent-based saved preferences with per-weekday day filters, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.",
   "mcp_endpoint": "https://mcp.dizko.app/mcp",
   "company_url": "https://www.dizko.app",
   "privacy_policy_url": "https://mcp.dizko.app/privacy-policy.html",
@@ -30,7 +30,8 @@
     "Find free cultural events in Paris.",
     "Show events at a specific venue.",
     "Remember what kind of events I like and recommend something for this weekend.",
-    "I went to that event yesterday; I liked the music but not the crowd."
+    "I went to that event yesterday; I liked the music but not the crowd.",
+    "Give me a Dizko roundup of everything happening in Berlin today."
   ],
   "review_test_prompts": [
     {

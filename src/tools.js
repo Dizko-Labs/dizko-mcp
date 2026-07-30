@@ -3,6 +3,8 @@ import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, recommendEvents } from "./planner.js";
+import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
+import { resolveSingleDay, weekdayName } from "./dateRange.js";
 import {
   FilePreferenceStore,
   buildPreferenceHints,
@@ -25,6 +27,13 @@ export const EVENT_LINKS_INSTRUCTION = [
   "- What: <description, or genres/vibe tags if no description>",
   "- Price: <price> · [Tickets](<ticket_url>)",
   "Always link the event title to event_url (the Dizko event page), never to ticket_url. Make every link clickable markdown. Omit any line whose data is missing. Do not merge facts onto one line."
+].join("\n");
+
+const WEEKDAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+export const ROUNDUP_INSTRUCTION = [
+  "Render a daily digest: one intro line naming the city, weekday, date, and total_available, then 'Top picks', then each section under its own heading in the given order. Render every event with the standard template:",
+  EVENT_LINKS_INSTRUCTION
 ].join("\n");
 
 const rawTools = [
@@ -256,6 +265,19 @@ const rawTools = [
     outputSchema: planOutputSchema()
   },
   {
+    name: "get_daily_roundup",
+    title: "Get Daily Roundup",
+    description: "Use this when a user wants a daily digest of what is happening in a city today, tomorrow, or on a specific date: top picks plus parties, live music, art, comedy, talks, and food sections from live Dizko inventory. Ideal for recurring morning briefings; pass profile_id and profile_secret so saved, learned, and per-day (day_filters) preferences shape the picks.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: roundupInputSchema(),
+    outputSchema: roundupOutputSchema()
+  },
+  {
     name: "get_event",
     title: "Get Event",
     description: "Use this when a user asks for details about a specific Dizko event id returned by search, recommendations, or a night plan.",
@@ -376,6 +398,7 @@ const toolInvocationStatus = {
   recommend_events: ["Ranking live events", "Event recommendations ready"],
   recommend_events_for_user: ["Personalizing live events", "Personalized events ready"],
   plan_night: ["Planning the night", "Night plan ready"],
+  get_daily_roundup: ["Building the daily roundup", "Daily roundup ready"],
   get_event: ["Loading event details", "Event details loaded"],
   get_ticket_purchase_policy: ["Loading purchase policy", "Purchase policy ready"],
   get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
@@ -531,7 +554,9 @@ export async function callTool(name, input = {}, options = {}) {
           message: "Ask the user about their general event preferences and whether Dizko may save them before personalized recommendations can learn over time."
         });
       }
-      const preferences = buildPreferenceHints(profile, input);
+      const preferences = buildPreferenceHints(profile, input, {
+        weekday: weekdayName(resolveSingleDay(input, options.now))
+      });
       const response = await recommendEvents(personalizedSearchInput(input, preferences), options);
       return toolJson({
         profile: publicProfile(profile),
@@ -545,7 +570,9 @@ export async function callTool(name, input = {}, options = {}) {
         const access = await requireProfileAccess(store, input);
         if (access.error) return access.error;
         const profile = access.profile;
-        const preferences = buildPreferenceHints(profile, input);
+        const preferences = buildPreferenceHints(profile, input, {
+          weekday: weekdayName(resolveSingleDay(input, options.now))
+        });
         return toolJson({
           profile: publicProfile(profile),
           personalization: personalizationSummary(profile, input, preferences),
@@ -556,6 +583,28 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson({
         ...await planNight(input, options),
         assistant_instruction: EVENT_LINKS_INSTRUCTION
+      });
+    }
+    case "get_daily_roundup": {
+      const day = resolveRoundupDay(input, options.now);
+      if (input.profile_id || input.profile_secret) {
+        const access = await requireProfileAccess(store, input);
+        if (access.error) return access.error;
+        const profile = access.profile;
+        const preferences = buildPreferenceHints(profile, input, { weekday: weekdayName(day) });
+        // Preferences shape the ranking only; the day's full inventory is
+        // searched so every category section stays populated.
+        const roundup = await dailyRoundup({ ...input, date: day, preferences }, options);
+        return toolJson({
+          profile: publicProfile(profile),
+          personalization: personalizationSummary(profile, input, preferences),
+          ...roundup,
+          assistant_instruction: ROUNDUP_INSTRUCTION
+        });
+      }
+      return toolJson({
+        ...await dailyRoundup({ ...input, date: day }, options),
+        assistant_instruction: ROUNDUP_INSTRUCTION
       });
     }
     case "get_event":
@@ -752,6 +801,29 @@ function preferenceSchema() {
       avoid: { type: "array", items: { type: "string" } },
       max_price: { type: "number" },
       free: { type: "boolean" },
+      nightlife: { type: "boolean" },
+      day_filters: {
+        type: "object",
+        description: "Optional per-weekday filters applied only when searching that day, for example techno Fridays but chill Sundays. Array fields add to the user's general taste; max_price/free/nightlife override it for that day.",
+        properties: Object.fromEntries(WEEKDAY_KEYS.map((day) => [day, dayPreferenceSchema()]))
+      }
+    }
+  };
+}
+
+function dayPreferenceSchema() {
+  return {
+    type: "object",
+    properties: {
+      event_types: { type: "array", items: { type: "string" } },
+      genres: { type: "array", items: { type: "string" } },
+      vibe: { type: "array", items: { type: "string" } },
+      neighborhoods: { type: "array", items: { type: "string" } },
+      venues: { type: "array", items: { type: "string" } },
+      featuring: { type: "array", items: { type: "string" } },
+      avoid: { type: "array", items: { type: "string" } },
+      max_price: { type: "number" },
+      free: { type: "boolean" },
       nightlife: { type: "boolean" }
     }
   };
@@ -805,6 +877,70 @@ function planNightInputSchema() {
       profile_secret: ["profile_id"]
     }
   };
+}
+
+function roundupInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      city: { type: "string", description: "City name, for example berlin or new york." },
+      date: { type: "string", description: "Target day in YYYY-MM-DD format. Defaults to today." },
+      when: { type: "string", description: "Alternative date preset: today, tonight, or tomorrow." },
+      profile_id: {
+        type: "string",
+        description: "Optional Dizko preference profile id. Supply it with profile_secret to personalize the picks with saved, learned, and per-day preferences."
+      },
+      profile_secret: {
+        type: "string",
+        description: "Private profile secret returned when the profile was created."
+      },
+      event_types: { type: "array", items: { type: "string" } },
+      genres: { type: "array", items: { type: "string" } },
+      vibe: { type: "array", items: { type: "string" } },
+      neighborhoods: { type: "array", items: { type: "string" } },
+      free: { type: "boolean" },
+      price_max: { type: "number" },
+      avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in the ranking." },
+      limit: { type: "number", default: 100, description: "How many of the day's events to fetch and rank." },
+      top_limit: { type: "number", default: 5, description: "Top picks to feature (max 10)." },
+      section_limit: { type: "number", default: 5, description: "Events per category section (max 10)." }
+    },
+    required: ["city"],
+    dependentRequired: {
+      profile_id: ["profile_secret"],
+      profile_secret: ["profile_id"]
+    }
+  };
+}
+
+function roundupOutputSchema() {
+  return withError({
+    type: "object",
+    properties: {
+      profile: profileOutputSchema(),
+      personalization: personalizationOutputSchema(),
+      city: nullableString(),
+      date: { type: "string" },
+      weekday: nullableString(),
+      total_available: { type: "number" },
+      top_picks: { type: "array", items: rankedEventSchema() },
+      sections: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string" },
+            title: { type: "string" },
+            count: { type: "number" },
+            events: { type: "array", items: rankedEventSchema() }
+          },
+          required: ["key", "title", "count", "events"]
+        }
+      },
+      assistant_instruction: { type: "string" }
+    },
+    required: ["date", "total_available", "top_picks", "sections"]
+  });
 }
 
 function onboardingOutputSchema() {

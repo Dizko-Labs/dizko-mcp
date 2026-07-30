@@ -469,6 +469,64 @@ test("personalized night plans apply saved city, budget, taste, and fallback rol
   }
 });
 
+test("day_filters merge per weekday and steer single-day recommendations", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
+  const preferencesPath = join(dir, "preferences.json");
+  const fridayNoon = new Date("2026-08-07T12:00:00Z");
+
+  try {
+    const created = await callTool("create_event_preference_profile", {
+      consent: true,
+      preferences: {
+        genres: ["house"],
+        day_filters: { friday: { genres: ["techno"] } }
+      }
+    }, { preferencesPath });
+    const createdBody = JSON.parse(created.content[0].text);
+
+    const saved = await callTool("save_event_preferences", {
+      profile_id: createdBody.profile.profile_id,
+      profile_secret: createdBody.profile_secret,
+      consent: true,
+      preferences: { day_filters: { sunday: { vibe: ["chill"], nightlife: false } } }
+    }, { preferencesPath });
+    const savedBody = JSON.parse(saved.content[0].text);
+    assert.deepEqual(savedBody.profile.preferences.day_filters.friday.genres, ["techno"]);
+    assert.deepEqual(savedBody.profile.preferences.day_filters.sunday.vibe, ["chill"]);
+    assert.equal(savedBody.profile.preferences.day_filters.sunday.nightlife, false);
+
+    const recommended = await callTool("recommend_events_for_user", {
+      profile_id: createdBody.profile.profile_id,
+      profile_secret: createdBody.profile_secret,
+      city: "berlin",
+      when: "tonight",
+      result_limit: 1
+    }, {
+      preferencesPath,
+      now: fridayNoon,
+      fetch: async () => Response.json({
+        count: 2,
+        events: [
+          {
+            id: "pop-1", title: "Chart Night", start_time: "2026-08-07T22:00:00Z",
+            genres: ["pop"], vibe: [], event_types: ["party"], lineup: [], venue_name: "Big Room"
+          },
+          {
+            id: "techno-1", title: "Friday Pressure", start_time: "2026-08-07T23:00:00Z",
+            genres: ["techno"], vibe: [], event_types: ["party"], lineup: [], venue_name: "Basement"
+          }
+        ]
+      })
+    });
+    const recommendedBody = JSON.parse(recommended.content[0].text);
+    assert.ok(recommendedBody.personalization.applied_preferences.genres.includes("techno"),
+      "tonight on a Friday should pull the friday day_filters into the applied taste");
+    assert.equal(recommendedBody.events[0].id, "techno-1");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("concurrent preference writes preserve profiles in the file store", async () => {
   const dir = await mkdtemp(join(tmpdir(), "eventchat-prefs-"));
   const preferencesPath = join(dir, "preferences.json");

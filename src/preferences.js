@@ -138,16 +138,24 @@ export function onboardingQuestions() {
     "What kinds of events do you generally like? Examples: concerts, club nights, art openings, comedy, festivals, talks, food, sports.",
     "What genres or scenes do you gravitate toward? Examples: techno, house, jazz, indie, experimental, queer nightlife, wellness.",
     "What vibe usually works for you? Examples: underground, intimate, high-energy, social, seated, outdoors, upscale, cheap-and-cheerful.",
+    "Do different days call for different things? For example techno on Fridays but something chill on Sundays. I can save per-day filters that only apply on that weekday.",
     "What should I avoid recommending? Examples: huge crowds, mainstream clubs, expensive tickets, late nights, alcohol-focused events.",
     "What budget, neighborhoods, venues, or cities should I remember?",
     "Can I save these preferences and learn from your feedback after events? If yes, I will create a private Dizko preference profile for you."
   ];
 }
 
-export function buildPreferenceHints(profile, current = {}) {
+// options.weekday ("monday".."sunday") applies that day's saved
+// day_filters entry on top of general + learned taste. Array fields are
+// additive; max_price/free/nightlife for the day override the general
+// values. The explicit current request always wins last.
+export function buildPreferenceHints(profile, current = {}, options = {}) {
   if (!profile) return current;
   const learned = learnedToPreferences(profile.learned);
-  return mergePreferences(mergePreferences(profile.preferences, learned), normalizePreferences(current));
+  let hints = mergeBasePreferences(profile.preferences, learned);
+  const dayFilter = options.weekday ? profile.preferences?.day_filters?.[options.weekday] : undefined;
+  if (dayFilter) hints = mergeBasePreferences(hints, dayFilter);
+  return mergeBasePreferences(hints, normalizeBasePreferences(current));
 }
 
 export function publicProfile(profile) {
@@ -215,7 +223,16 @@ function hashSecret(profileSecret) {
   return createHash("sha256").update(String(profileSecret)).digest("hex");
 }
 
+const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
 function normalizePreferences(preferences = {}) {
+  const normalized = normalizeBasePreferences(preferences);
+  const dayFilters = normalizeDayFilters(preferences.day_filters);
+  if (dayFilters) normalized.day_filters = dayFilters;
+  return normalized;
+}
+
+function normalizeBasePreferences(preferences = {}) {
   return {
     cities: list(preferences.cities || preferences.city),
     event_types: list(preferences.event_types || preferences.event_type),
@@ -231,7 +248,26 @@ function normalizePreferences(preferences = {}) {
   };
 }
 
+function normalizeDayFilters(dayFilters) {
+  if (!dayFilters || typeof dayFilters !== "object" || Array.isArray(dayFilters)) return undefined;
+  const normalized = {};
+  for (const [day, filters] of Object.entries(dayFilters)) {
+    const key = String(day || "").trim().toLowerCase();
+    if (!WEEKDAYS.includes(key) || !filters || typeof filters !== "object" || Array.isArray(filters)) continue;
+    const cleaned = compactPreferences(normalizeBasePreferences(filters));
+    if (Object.keys(cleaned).length) normalized[key] = cleaned;
+  }
+  return Object.keys(normalized).length ? normalized : undefined;
+}
+
 function mergePreferences(base = {}, incoming = {}) {
+  const merged = mergeBasePreferences(base, incoming);
+  const dayFilters = mergeDayFilters(base.day_filters, incoming.day_filters);
+  if (dayFilters) merged.day_filters = dayFilters;
+  return merged;
+}
+
+function mergeBasePreferences(base = {}, incoming = {}) {
   const merged = {};
   for (const key of ["cities", "event_types", "genres", "vibe", "neighborhoods", "venues", "featuring", "avoid"]) {
     merged[key] = unique([...(base[key] || []), ...(incoming[key] || [])]);
@@ -239,7 +275,21 @@ function mergePreferences(base = {}, incoming = {}) {
   for (const key of ["max_price", "free", "nightlife"]) {
     merged[key] = incoming[key] !== undefined ? incoming[key] : base[key];
   }
-  return Object.fromEntries(Object.entries(merged).filter(([, value]) => {
+  return compactPreferences(merged);
+}
+
+function mergeDayFilters(base, incoming) {
+  if (!base && !incoming) return undefined;
+  const merged = {};
+  for (const day of WEEKDAYS) {
+    const combined = mergeBasePreferences(base?.[day] || {}, incoming?.[day] || {});
+    if (Object.keys(combined).length) merged[day] = combined;
+  }
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+function compactPreferences(preferences) {
+  return Object.fromEntries(Object.entries(preferences).filter(([, value]) => {
     if (Array.isArray(value)) return value.length > 0;
     return value !== undefined;
   }));

@@ -219,6 +219,7 @@ Tools:
 - `recommend_events`: live search plus explainable taste ranking.
 - `recommend_events_for_user`: live recommendations using saved preferences and learned feedback with profile-secret access.
 - `plan_night`: compact plan with fallbacks.
+- `get_daily_roundup`: one-day digest for a city: ranked top picks plus parties, live music, art, comedy, talks, and food sections. Built for recurring morning briefings; optional profile-secret access personalizes the ranking with saved, learned, and per-day preferences.
 - `get_event`: detail lookup by event id.
 - `get_ticket_purchase_policy`: explains current purchase modes, hard safety rules, and provider requirements.
 - `get_ticket_offers`: returns ticket options for an event, including checkout URL and whether autonomous purchase is supported.
@@ -324,7 +325,9 @@ Personalization flow:
 5. The creation response also includes `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions.
 6. If a profile already exists, assistant calls `save_event_preferences` with both `profile_id` and `profile_secret`.
 7. For tonight/week/weekend searches, assistant calls `get_event_search_followups`, asks lightweight current-context questions, then calls `recommend_events_for_user`.
-8. After the event, assistant calls `get_event_feedback_prompt`, asks whether the user went and liked it, then calls `record_event_feedback` only after the user provides liked/disliked, rating, or notes.
+8. Preferences can include `day_filters`, per-weekday rules such as techno Fridays but chill Sundays. Array fields add to the general taste and `max_price`/`free`/`nightlife` override it, but only on that weekday: single-day searches (tonight, tomorrow, an explicit date) and daily roundups apply the matching day automatically.
+9. For a daily digest ("what's happening today?", a scheduled morning briefing), assistant calls `get_daily_roundup` with the city plus the profile credentials and renders top picks followed by category sections.
+10. After the event, assistant calls `get_event_feedback_prompt`, asks whether the user went and liked it, then calls `record_event_feedback` only after the user provides liked/disliked, rating, or notes.
 
 Ticket purchase flow:
 

@@ -39,6 +39,7 @@ export {
   EventChatNetworkError
 } from "./api.js";
 export { recommendEvents, planNight } from "./planner.js";
+export { dailyRoundup } from "./roundup.js";
 export { summarizeEvent, eventUrl } from "./format.js";
 export { TICKET_PURCHASE_POLICY } from "./tickets.js";
 

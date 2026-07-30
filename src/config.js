@@ -50,7 +50,7 @@ export const SUPPORTED_CITIES = [
   "warsaw"
 ];
 
-export const TOOL_VERSION = "0.4.0";
+export const TOOL_VERSION = "0.5.0";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",
@@ -59,6 +59,7 @@ export const MCP_SERVER_INSTRUCTIONS = [
   "If a user wants personalized recommendations, first call get_preference_onboarding and ask for consent before saving preferences.",
   "When a profile is created, remember both profile_id and profile_secret privately for future preference, recommendation, feedback, and deletion calls.",
   "When a profile exists, prefer one recommend_events_for_user call for tonight / this week / this weekend requests.",
+  "For a daily digest ('what's happening today/tomorrow', a morning briefing, a scheduled check-in), call get_daily_roundup once and render its top picks plus category sections; pass profile_id and profile_secret when the user has a profile so saved and per-day (day_filters) preferences shape the picks.",
   "When a user wants a night plan and has a profile, pass profile_id and profile_secret directly to plan_night so saved and learned taste shape the primary, nearby fallback, and later fallback.",
   "After an event, call get_event_feedback_prompt, ask whether the user liked it, and call record_event_feedback only when the user answers.",
   "For ticket buying, call get_ticket_offers, then quote_ticket_order, then purchase_ticket_order only after explicit written confirmation from the user. Third-party-only ticket links must return checkout handoff; autonomous purchase requires an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment."

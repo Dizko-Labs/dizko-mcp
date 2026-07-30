@@ -69,7 +69,7 @@ Find current concerts, parties, nightlife, festivals, and cultural events from D
 Long description:
 
 ```text
-Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.
+Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, daily city roundups with top picks and category sections, consent-based saved preferences with per-weekday day filters, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.
 ```
 
 Localization:
@@ -116,7 +116,7 @@ noauth
 
 Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector `profile_id` plus the private `profile_secret` returned when the user opts in to preference memory. Ticket purchase tools require an event-specific locked quote and explicit written confirmation; third-party-only offers return external checkout handoff unless an integrated provider is configured.
 
-All 18 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
+All 19 tool descriptors advertise `securitySchemes: [{ "type": "noauth" }]` and mirror the same value in `_meta.securitySchemes` for ChatGPT compatibility.
 
 Tool descriptors also include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`, with verifier-enforced strings under the 64-character limit.
 
@@ -223,7 +223,7 @@ Latest preflight passed with:
 - support page
 - logo asset
 - security.txt
-- 18 tool descriptors
+- 19 tool descriptors
 - tool annotations
 - output schemas
 - rate-limit headers
