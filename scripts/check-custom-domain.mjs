@@ -12,7 +12,16 @@ async function main() {
   const mcp = await callMcp(`https://${domain}${endpointPath}`, {
     jsonrpc: "2.0",
     id: 1,
-    method: "tools/list"
+    method: "tools/list",
+    // 2026-07-28 stateless envelope — without it the request is classified
+    // as 2025-era and answered over SSE, which readJson cannot parse.
+    params: {
+      _meta: {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": { name: "eventchat-domain-check", version: "0.0.0" }
+      }
+    }
   });
 
   const checks = {
@@ -76,7 +85,8 @@ async function callMcp(url, payload) {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": payload.method
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10000)

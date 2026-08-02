@@ -61,7 +61,8 @@ async function main() {
   evidence.checks.metadata = await checkMetadata();
   evidence.checks.public_pages = await checkPublicPages();
   evidence.checks.company_url = await checkCompanyUrl();
-  evidence.checks.initialize = await checkInitialize();
+  evidence.checks.discover = await checkDiscover();
+  evidence.checks.initialize = await checkLegacyInitialize();
   evidence.checks.initialized_notification = await checkInitializedNotification();
   evidence.checks.tools = await checkTools();
   evidence.checks.rate_limit_headers = await checkRateLimitHeaders();
@@ -170,17 +171,58 @@ async function checkInitializedNotification() {
   };
 }
 
-async function checkInitialize() {
-  const result = await callRpc("initialize", {
-    protocolVersion: "2024-11-05",
-    capabilities: {},
-    clientInfo: {
-      name: "eventchat-submission-verifier",
-      version: "0.0.0"
-    }
+// server/discover replaces the initialize handshake on 2026-07-28: it
+// advertises supported revisions, capabilities and identity with no prior
+// request and no session.
+async function checkDiscover() {
+  const result = await callRpc("server/discover");
+  const serverInfo = result._meta?.["io.modelcontextprotocol/serverInfo"];
+  assert(
+    Array.isArray(result.supportedVersions) && result.supportedVersions.includes("2026-07-28"),
+    `server/discover did not advertise 2026-07-28 (got ${JSON.stringify(result.supportedVersions)})`
+  );
+  assert(serverInfo?.name === "eventchat-events", "server/discover returned unexpected serverInfo.name");
+  assert(result.capabilities?.tools, "server/discover returned no tools capability");
+  assertInstructions(result.instructions);
+  return {
+    ok: true,
+    server_info: serverInfo,
+    supported_versions: result.supportedVersions,
+    tool_capabilities: result.capabilities.tools,
+    cache_scope: result.cacheScope,
+    ttl_ms: result.ttlMs,
+    instructions: result.instructions
+  };
+}
+
+// 2025-era clients still send `initialize`; the SDK serves them from the
+// same definition through its stateless legacy fallback. This check is what
+// proves we did not break existing ChatGPT/Claude connectors.
+async function checkLegacyInitialize() {
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25"
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1_000_000),
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name: "eventchat-submission-verifier", version: "0.0.0" }
+      }
+    })
   });
-  assert(result.serverInfo?.name === "eventchat-events", "initialize returned unexpected serverInfo.name");
-  assert(result.capabilities?.tools, "initialize returned no tools capability");
+  assert(response.ok, `legacy initialize failed: HTTP ${response.status}`);
+  const body = await readRpcBody(response);
+  const result = body.result;
+  assert(!body.error, `legacy initialize error: ${body.error?.message}`);
+  assert(result?.serverInfo?.name === "eventchat-events", "legacy initialize returned unexpected serverInfo.name");
+  assert(result.capabilities?.tools, "legacy initialize returned no tools capability");
   assertInstructions(result.instructions);
   return {
     ok: true,
@@ -520,26 +562,56 @@ async function callTool(name, args) {
   return JSON.parse(first.text);
 }
 
+// 2026-07-28 is stateless: the revision, the client's capabilities and its
+// identity travel in `_meta` on every request rather than being negotiated
+// once by `initialize`.
+const MODERN_META = {
+  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": {
+    name: "eventchat-submission-verifier",
+    version: "0.0.0"
+  }
+};
+
 async function callRpc(method, params = undefined) {
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
     headers: {
       Accept: "application/json, text/event-stream",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      // Required on 2026-07-28 POSTs so intermediaries can route without
+      // parsing the body (SEP-2243).
+      "Mcp-Method": method,
+      ...(method === "tools/call" && params?.name ? { "Mcp-Name": params.name } : {})
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: Math.floor(Math.random() * 1_000_000),
       method,
-      params
+      params: { ...(params || {}), _meta: MODERN_META }
     })
   });
   assert(response.ok, `${method} failed: HTTP ${response.status}`);
   assertSecurityHeaders(response, "/mcp");
   assertRateLimitHeaders(response, "/mcp");
-  const body = await response.json();
+  const body = await readRpcBody(response);
   assert(!body.error, `${method} error: ${body.error?.message}`);
+  assert(
+    body.result?.resultType === "complete",
+    `${method} returned resultType ${body.result?.resultType} (expected "complete")`
+  );
   return body.result;
+}
+
+// Modern exchanges answer with a single JSON body; the 2025-era fallback
+// answers over SSE. Read either shape.
+async function readRpcBody(response) {
+  const text = await response.text();
+  if (!text.trimStart().startsWith("event:")) return JSON.parse(text);
+  const line = text.split("\n").find((entry) => entry.startsWith("data:"));
+  assert(line, "SSE response carried no data frame");
+  return JSON.parse(line.slice("data:".length).trim());
 }
 
 async function fetchWithTimeout(url, options = {}) {

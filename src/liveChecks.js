@@ -1,4 +1,4 @@
-import { getConfig } from "./config.js";
+import { TOOL_VERSION, getConfig } from "./config.js";
 import { describeNetworkError, hostnameFromUrl } from "./netError.js";
 import { tools } from "./tools.js";
 
@@ -35,14 +35,15 @@ export function expectedToolCount() {
   return tools.length;
 }
 
-export async function fetchJson(url, { fetchImpl = fetch, timeoutMs = 10_000, check = null, method = "GET", body = undefined } = {}) {
+export async function fetchJson(url, { fetchImpl = fetch, timeoutMs = 10_000, check = null, method = "GET", body = undefined, headers = undefined } = {}) {
   let response;
   try {
     response = await fetchImpl(url, {
       method,
       headers: {
         accept: "application/json, text/event-stream",
-        ...(body !== undefined ? { "content-type": "application/json" } : {})
+        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(headers || {})
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(timeoutMs)
@@ -87,15 +88,30 @@ export async function fetchJson(url, { fetchImpl = fetch, timeoutMs = 10_000, ch
   return { status: response.status, body: parsed };
 }
 
+// 2026-07-28 is stateless: the revision and the client's capabilities ride
+// in `_meta` on every request, and Mcp-Method / Mcp-Name let intermediaries
+// route without parsing the body (SEP-2243). Sending the modern envelope
+// also keeps responses as a single JSON body — the 2025-era fallback
+// answers over SSE, which this JSON parser could not read.
+const MODERN_META = {
+  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": { name: "eventchat-live-checks", version: TOOL_VERSION }
+};
+
 export async function rpcCall(endpoint, method, params = undefined, options = {}) {
   const { status, body } = await fetchJson(endpoint, {
     ...options,
     method: "POST",
+    headers: {
+      "mcp-method": method,
+      ...(method === "tools/call" && params?.name ? { "mcp-name": params.name } : {})
+    },
     body: {
       jsonrpc: "2.0",
       id: options.id ?? 1,
       method,
-      ...(params ? { params } : {})
+      params: { ...(params || {}), _meta: MODERN_META }
     }
   });
   if (body.error) {

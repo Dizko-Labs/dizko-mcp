@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHttpMcpServer } from "../src/httpServer.js";
 
+// 2026-07-28 is stateless: every request carries its revision, the client's
+// capabilities and (optionally) its identity in `_meta` instead of doing an
+// `initialize` handshake first.
+const MODERN_META = {
+  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": { name: "eventchat-test", version: "0.0.0" }
+};
+
+// Modern exchanges answer with a single JSON body; the 2025-era fallback
+// answers over SSE. Tests read either without caring which.
+async function readRpc(response) {
+  const text = await response.text();
+  if (!text.trimStart().startsWith("event:")) return JSON.parse(text);
+  const line = text.split("\n").find((entry) => entry.startsWith("data:"));
+  return JSON.parse(line.slice("data:".length).trim());
+}
+
 test("HTTP MCP server exposes health and tools/list", async () => {
   const server = createHttpMcpServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -70,7 +88,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
         }
       })
     });
-    const initializedBody = await initialized.json();
+    const initializedBody = await readRpc(initialized);
     assert.equal(initialized.status, 200);
     assert.equal(initialized.headers.get("mcp-protocol-version"), "2024-11-05");
     assert.equal(initializedBody.result.serverInfo.name, "eventchat-events");
@@ -93,12 +111,72 @@ test("HTTP MCP server exposes health and tools/list", async () => {
       headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })
     });
-    const body = await response.json();
+    const body = await readRpc(response);
 
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
     assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
+  const server = createHttpMcpServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  const modern = (id, method, params, headers) => fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "Mcp-Method": method,
+      ...headers
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params: { ...params, _meta: MODERN_META } })
+  });
+
+  try {
+    // server/discover replaces the initialize handshake: it advertises the
+    // revisions we speak without any prior request.
+    const discover = await modern(1, "server/discover", {});
+    const discoverBody = await readRpc(discover);
+    assert.equal(discover.status, 200);
+    assert.match(discover.headers.get("content-type"), /application\/json/);
+    assert.deepEqual(discoverBody.result.supportedVersions, ["2026-07-28"]);
+    assert.equal(discoverBody.result.resultType, "complete");
+    assert.equal(typeof discoverBody.result.capabilities.tools, "object");
+    assert.equal(
+      discoverBody.result._meta["io.modelcontextprotocol/serverInfo"].name,
+      "eventchat-events"
+    );
+
+    // Cacheable results must carry ttlMs + cacheScope (SEP-2549).
+    const list = await modern(2, "tools/list", {});
+    const listBody = await readRpc(list);
+    assert.equal(list.status, 200);
+    assert.equal(listBody.result.resultType, "complete");
+    assert.equal(listBody.result.ttlMs, 300_000);
+    assert.equal(listBody.result.cacheScope, "public");
+    assert.ok(listBody.result.tools.some((tool) => tool.name === "search_events"));
+
+    const call = await modern(3, "tools/call", {
+      name: "get_ticket_purchase_policy",
+      arguments: {}
+    }, { "Mcp-Name": "get_ticket_purchase_policy" });
+    const callBody = await readRpc(call);
+    assert.equal(call.status, 200);
+    assert.equal(callBody.result.resultType, "complete");
+    assert.ok(callBody.result.content.length > 0);
+
+    // No session is ever minted — the header is gone from the transport.
+    assert.equal(call.headers.get("mcp-session-id"), null);
+
+    // The 2025-era GET stream endpoint is gone; only POST remains.
+    const streamGet = await fetch(`http://127.0.0.1:${port}/mcp`);
+    assert.equal(streamGet.status, 405);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

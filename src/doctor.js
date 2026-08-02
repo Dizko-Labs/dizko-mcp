@@ -97,9 +97,23 @@ async function mcpToolsCheck(endpoint, fetchImpl, timeoutMs) {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
       },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      // 2026-07-28 stateless envelope. Without it the request is served by
+      // the 2025-era fallback over SSE, which safeJson cannot parse.
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": { name: "eventchat-doctor", version: TOOL_VERSION }
+          }
+        }
+      }),
       signal: AbortSignal.timeout(timeoutMs)
     });
     const body = await safeJson(response);

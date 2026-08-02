@@ -217,7 +217,8 @@ Latest preflight passed with:
 
 - health endpoint
 - metadata endpoint
-- MCP `initialize`
+- MCP `server/discover` (protocol revision `2026-07-28`)
+- MCP `initialize` (2025-era backward-compatibility fallback)
 - MCP `notifications/initialized`
 - privacy page
 - support page

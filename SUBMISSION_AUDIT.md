@@ -32,8 +32,8 @@ Expected current state: success for `mcp.dizko.app`.
 | --- | --- |
 | OpenAI dashboard materials | `submission-fields.json`, `OPENAI_SUBMISSION_PACKET.md`, `SCREENSHOT_CHECKLIST.md`, hosted logo, company URL, privacy URL, support URL, terms URL, user guide URL, review prompts, and generated test responses cover the current OpenAI submission checklist. |
 | Public HTTPS MCP endpoint | Railway production endpoint above; `/health` and `/mcp` are verified by `npm run preflight:submission`. |
-| Streamable HTTP MCP transport | `src/httpServer.js` and `src/sdkServer.js`; verified by live `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` checks. |
-| Server-level MCP instructions | `initialize` returns cross-tool guidance for live search, consent-first preference memory, follow-up questions, feedback learning, deletion, and ticket quote/purchase handoff; enforced by tests and live verifier. |
+| Streamable HTTP MCP transport | `src/httpServer.js` and `src/sdkServer.js` serve protocol revision `2026-07-28` (stateless, no sessions) with a 2025-era fallback from the same definition; verified by live `server/discover`, `initialize`, `notifications/initialized`, `tools/list`, and `tools/call` checks. |
+| Server-level MCP instructions | `server/discover` (and `initialize` for 2025-era clients) returns cross-tool guidance for live search, consent-first preference memory, follow-up questions, feedback learning, deletion, and ticket quote/purchase handoff; enforced by tests and live verifier. |
 | Useful beyond normal ChatGPT answers | Live Dizko inventory, structured event URLs, ticket/source links, deterministic filters, explainable ranking, night plans, follow-up questions, preference memory, feedback learning, ticket offers, locked quotes, and written-confirmation purchase boundaries in `src/tools.js`. |
 | Preference onboarding | `get_preference_onboarding` returns consent-first questions; covered by tests and live verifier. |
 | Saved user preferences | `create_event_preference_profile`, `save_event_preferences`, and `get_event_preferences`; profile access uses `profile_id` plus private `profile_secret`. |

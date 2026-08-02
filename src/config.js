@@ -51,7 +51,7 @@ export const SUPPORTED_CITIES = [
   "warsaw"
 ];
 
-export const TOOL_VERSION = "0.6.0";
+export const TOOL_VERSION = "0.7.0";
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",

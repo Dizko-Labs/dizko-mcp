@@ -123,18 +123,28 @@ async function callTool(name, args) {
   return JSON.parse(first.text);
 }
 
+// 2026-07-28 stateless envelope: revision + client capabilities per request
+// instead of an initialize handshake, plus the SEP-2243 routing headers.
+const MODERN_META = {
+  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": { name: "eventchat-review-demo", version: "0.0.0" }
+};
+
 async function callRpc(method, params = undefined) {
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Accept: "application/json, text/event-stream",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Mcp-Method": method,
+      ...(method === "tools/call" && params?.name ? { "Mcp-Name": params.name } : {})
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: Math.floor(Math.random() * 1_000_000),
       method,
-      params
+      params: { ...(params || {}), _meta: MODERN_META }
     }),
     signal: AbortSignal.timeout(15000)
   });

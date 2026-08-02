@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import { extractMessage, handleMcpRequest, writeMcpMessage } from "../src/mcpServer.js";
+import { PassThrough } from "node:stream";
+import { handleMcpRequest, runMcpServer } from "../src/mcpServer.js";
 import { clearEventCache } from "../src/api.js";
+
+// 2026-07-28 carries the protocol revision and client capabilities per
+// request instead of negotiating them once via initialize.
+const MODERN_META = {
+  "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+  "io.modelcontextprotocol/clientCapabilities": {},
+  "io.modelcontextprotocol/clientInfo": { name: "test", version: "0" }
+};
 
 beforeEach(() => clearEventCache());
 
@@ -311,18 +320,47 @@ test("MCP purchase_ticket_order rejects vague confirmation", async () => {
   assert.match(purchase.structuredContent.error, /buy or purchase/);
 });
 
-test("MCP stdio framing reads and writes Content-Length messages", () => {
-  const payload = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-  const framed = `Content-Length: ${Buffer.byteLength(payload, "utf8")}\r\n\r\n${payload}extra`;
-  const message = extractMessage(framed);
+test("MCP stdio serves newline-delimited JSON-RPC on the 2026-07-28 revision", async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const closed = runMcpServer({ input, output });
 
-  assert.equal(message.payload, payload);
-  assert.equal(message.remaining, "extra");
+  const lines = [];
+  output.on("data", (chunk) => lines.push(...String(chunk).split("\n").filter(Boolean)));
 
-  let written = "";
-  writeMcpMessage({ write: (chunk) => { written += chunk; } }, { jsonrpc: "2.0", id: 1, result: {} });
-  assert.match(written, /^Content-Length: \d+\r\n\r\n\{/);
+  input.write(`${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "server/discover",
+    params: { _meta: MODERN_META }
+  })}\n`);
+
+  const discover = await nextMessage(lines);
+  assert.deepEqual(discover.result.supportedVersions, ["2026-07-28"]);
+  assert.equal(discover.result.resultType, "complete");
+
+  input.write(`${JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/list",
+    params: { _meta: MODERN_META }
+  })}\n`);
+
+  const list = await nextMessage(lines);
+  assert.equal(list.result.resultType, "complete");
+  assert.ok(list.result.tools.some((tool) => tool.name === "search_events"));
+
+  input.end();
+  await closed;
 });
+
+async function nextMessage(lines) {
+  for (let attempt = 0; attempt < 200 && lines.length === 0; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.ok(lines.length > 0, "expected a JSON-RPC message on stdout");
+  return JSON.parse(lines.shift());
+}
 
 test("MCP search_events reports DNS failures as retryable with cause, code, hostname, and url", async () => {
   const dnsError = new TypeError("fetch failed");

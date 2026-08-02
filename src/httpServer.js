@@ -2,7 +2,8 @@ import http from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpHandler } from "@modelcontextprotocol/server";
+import { toNodeHandler } from "@modelcontextprotocol/node";
 import { getEvent } from "./api.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { eventLinkTargets } from "./format.js";
@@ -20,6 +21,13 @@ export function createHttpMcpServer(options = {}) {
     rateLimitMax: Number(options.rateLimitMax || process.env.EVENTCHAT_MCP_RATE_LIMIT_MAX || 120)
   };
   const rateLimiter = createRateLimiter(settings);
+  // Serves the 2026-07-28 revision and falls back to old-school stateless
+  // serving for 2025-era clients, both from the same server definition.
+  // The factory runs once per request — nothing is retained between calls,
+  // which is what the stateless core requires.
+  const mcpHandler = toNodeHandler(createMcpHandler(() => createSdkMcpServer(options), {
+    onerror: (error) => process.stderr.write(`eventchat-events MCP error: ${error.message}\n`)
+  }));
 
   return http.createServer(async (request, response) => {
     try {
@@ -134,7 +142,12 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      response.setHeader("MCP-Protocol-Version", request.headers["mcp-protocol-version"] || "2024-11-05");
+      // 2026-07-28 requests carry their revision in `_meta`, not a header.
+      // Only 2025-era clients send MCP-Protocol-Version, so echo it back
+      // when it is present rather than asserting a revision of our own.
+      if (request.headers["mcp-protocol-version"]) {
+        response.setHeader("MCP-Protocol-Version", request.headers["mcp-protocol-version"]);
+      }
       for (const [name, value] of Object.entries(securityHeaders())) {
         response.setHeader(name, value);
       }
@@ -147,17 +160,7 @@ export function createHttpMcpServer(options = {}) {
 
       const payload = await readJson(request, settings.maxBodyBytes);
       validateJsonRpcPayload(payload);
-      const server = createSdkMcpServer(options);
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true
-      });
-      await server.connect(transport);
-      response.on("close", () => {
-        transport.close();
-        server.close();
-      });
-      await transport.handleRequest(request, response, payload);
+      await mcpHandler(request, response, payload);
     } catch (error) {
       sendJson(response, 400, {
         jsonrpc: "2.0",
@@ -413,7 +416,9 @@ function corsHeaders(request, settings) {
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type,MCP-Protocol-Version",
+    // Mcp-Method / Mcp-Name are required on 2026-07-28 POSTs (SEP-2243);
+    // MCP-Protocol-Version is the 2025-era header kept for old clients.
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,MCP-Protocol-Version,Mcp-Method,Mcp-Name",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin"
   };

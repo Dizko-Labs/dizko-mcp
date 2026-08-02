@@ -53,8 +53,17 @@ Four paths, simplest first:
    curl -s https://mcp.dizko.app/mcp \
      -H 'content-type: application/json' \
      -H 'accept: application/json, text/event-stream' \
-     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"this week"}}}'
+     -H 'mcp-method: tools/call' \
+     -H 'mcp-name: search_events' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"this week"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
    ```
+
+   The `_meta` block is what makes this a `2026-07-28` request: the revision
+   is stateless, so there is no `initialize` handshake and no session — every
+   request carries its own protocol version and client capabilities. Call
+   `server/discover` to see which revisions the endpoint speaks. Clients on
+   `2025-11-25` and earlier keep working unchanged; omit `_meta` and the
+   server answers them over the 2025-era path instead.
 
 4. **In-process library**: embed the tools directly (no MCP layer). The package
    exposes a stable API:
