@@ -91,7 +91,7 @@ export async function fetchJson(url, { fetchImpl = fetch, timeoutMs = 10_000, ch
 // 2026-07-28 is stateless: the revision and the client's capabilities ride
 // in `_meta` on every request, and Mcp-Method / Mcp-Name let intermediaries
 // route without parsing the body (SEP-2243). Sending the modern envelope
-// also keeps responses as a single JSON body — the 2025-era fallback
+// also keeps responses as a single JSON body - the 2025-era fallback
 // answers over SSE, which this JSON parser could not read.
 const MODERN_META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",

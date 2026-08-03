@@ -77,13 +77,13 @@ function humanNetworkMessage({ classification, code, hostname, root, error }) {
   const host = hostname || "the server";
   switch (classification) {
     case "dns":
-      return `DNS lookup for ${host} failed (${code}). This is usually a temporary resolver or network issue — retry shortly, check your network/VPN/DNS, or override the endpoint via environment variables.`;
+      return `DNS lookup for ${host} failed (${code}). This is usually a temporary resolver or network issue - retry shortly, check your network/VPN/DNS, or override the endpoint via environment variables.`;
     case "connection_refused":
       return `Connection to ${host} was refused (${code}). The service may be down or the port blocked.`;
     case "connection_reset":
-      return `Connection to ${host} was dropped (${code}). This is usually transient — retry shortly.`;
+      return `Connection to ${host} was dropped (${code}). This is usually transient - retry shortly.`;
     case "timeout":
-      return `Request to ${host} timed out${code ? ` (${code})` : ""}. The service may be slow or unreachable — retry shortly.`;
+      return `Request to ${host} timed out${code ? ` (${code})` : ""}. The service may be slow or unreachable - retry shortly.`;
     case "tls":
       return `TLS handshake with ${host} failed (${code}). Check system certificates or any intercepting proxy.`;
     default:

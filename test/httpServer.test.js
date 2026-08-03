@@ -171,7 +171,7 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(callBody.result.resultType, "complete");
     assert.ok(callBody.result.content.length > 0);
 
-    // No session is ever minted — the header is gone from the transport.
+    // No session is ever minted - the header is gone from the transport.
     assert.equal(call.headers.get("mcp-session-id"), null);
 
     // The 2025-era GET stream endpoint is gone; only POST remains.

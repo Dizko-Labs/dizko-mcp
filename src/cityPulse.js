@@ -8,7 +8,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 // Aggregate cultural-momentum read over the public event inventory:
 // busiest nights, top venues, genre mix, and headline events for the
 // next N days, every stat carrying its evidence counts. Public data
-// only — no user behavior feeds this.
+// only - no user behavior feeds this.
 export async function cityPulse(input = {}, options = {}) {
   const config = options.config || getConfig(options.env);
   const days = boundedLimit(input.days, 7, 14);

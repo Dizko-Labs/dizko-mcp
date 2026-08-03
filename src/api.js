@@ -147,7 +147,7 @@ async function fetchJsonCached(url, config, options, label) {
 // GET with a conservative bounded retry: transient network failures
 // (EAI_AGAIN, ETIMEDOUT, ECONNRESET, ENOTFOUND, ...) and retryable HTTP
 // statuses (408/429/5xx) are retried with exponential backoff + jitter.
-// Defaults: 2 retries, 250ms base — worst case adds ~1.25s.
+// Defaults: 2 retries, 250ms base - worst case adds ~1.25s.
 async function fetchApi(url, config, options, label) {
   const timeoutMs = options.timeoutMs ?? config.apiTimeoutMs ?? 8000;
   const maxRetries = options.retries ?? config.apiRetries ?? 2;

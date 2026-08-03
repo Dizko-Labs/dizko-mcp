@@ -23,7 +23,7 @@ export function createHttpMcpServer(options = {}) {
   const rateLimiter = createRateLimiter(settings);
   // Serves the 2026-07-28 revision and falls back to old-school stateless
   // serving for 2025-era clients, both from the same server definition.
-  // The factory runs once per request — nothing is retained between calls,
+  // The factory runs once per request - nothing is retained between calls,
   // which is what the stateless core requires.
   const mcpHandler = toNodeHandler(createMcpHandler(() => createSdkMcpServer(options), {
     onerror: (error) => process.stderr.write(`eventchat-events MCP error: ${error.message}\n`)

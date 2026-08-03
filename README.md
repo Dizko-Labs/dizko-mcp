@@ -59,7 +59,7 @@ Four paths, simplest first:
    ```
 
    The `_meta` block is what makes this a `2026-07-28` request: the revision
-   is stateless, so there is no `initialize` handshake and no session — every
+   is stateless, so there is no `initialize` handshake and no session - every
    request carries its own protocol version and client capabilities. Call
    `server/discover` to see which revisions the endpoint speaks. Clients on
    `2025-11-25` and earlier keep working unchanged; omit `_meta` and the

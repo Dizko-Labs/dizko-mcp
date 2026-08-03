@@ -16,7 +16,7 @@ export const CACHE_HINTS = {
 
 // One factory serves both protocol eras: the 2026-07-28 path and the
 // stateless 2025-era fallback are built from this same definition, so the
-// two can never drift apart. Callers must treat it as per-serving-unit —
+// two can never drift apart. Callers must treat it as per-serving-unit -
 // createMcpHandler calls it once per HTTP request.
 export function createSdkMcpServer(options = {}) {
   const server = new Server(SERVER_INFO, {

@@ -13,7 +13,7 @@ async function main() {
     jsonrpc: "2.0",
     id: 1,
     method: "tools/list",
-    // 2026-07-28 stateless envelope — without it the request is classified
+    // 2026-07-28 stateless envelope - without it the request is classified
     // as 2025-era and answered over SSE, which readJson cannot parse.
     params: {
       _meta: {
