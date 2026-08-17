@@ -22,11 +22,10 @@
   "homepage": "https://www.dizko.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ZakKrevitt/EventChat.git",
-    "directory": "ios/EventChat/agent-tools/eventchat-events"
+    "url": "git+https://github.com/Dizko-Labs/dizko-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/ZakKrevitt/EventChat/issues"
+    "url": "https://github.com/Dizko-Labs/dizko-mcp/issues"
   },
   "bin": {
     "dizko-events": "bin/eventchat-events.js",

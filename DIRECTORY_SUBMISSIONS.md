@@ -16,7 +16,7 @@ proving you own the `app.dizko/*` namespace via DNS:
 
 ```bash
 brew install mcp-publisher        # or download from github.com/modelcontextprotocol/registry
-cd ios/EventChat/agent-tools/eventchat-events
+cd dizko-mcp
 mcp-publisher login dns --domain dizko.app
 # ^ prints a TXT record to add at your DNS host, then verifies it
 mcp-publisher publish
@@ -28,8 +28,8 @@ changed it.
 
 ## 2. Smithery (smithery.ai)
 
-Sign in with GitHub → "Add server" → point it at the GitHub repo (subfolder
-`ios/EventChat/agent-tools/eventchat-events`). For a hosted-only listing, choose
+Sign in with GitHub → "Add server" → point it at the public GitHub repository.
+For a hosted-only listing, choose
 "external/remote server" and give the endpoint URL. Smithery reads tool metadata
 live from the endpoint.
 

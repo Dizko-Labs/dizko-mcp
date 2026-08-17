@@ -4,9 +4,8 @@
   "description": "Dizko live event discovery: concerts, club nights, art, comedy, and festivals across 32 live cities.",
   "status": "active",
   "repository": {
-    "url": "https://github.com/ZakKrevitt/EventChat",
-    "source": "github",
-    "subfolder": "ios/EventChat/agent-tools/eventchat-events"
+    "url": "https://github.com/Dizko-Labs/dizko-mcp",
+    "source": "github"
   },
   "version": "0.7.0",
   "websiteUrl": "https://www.dizko.app",

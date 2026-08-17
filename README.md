@@ -189,7 +189,7 @@ Example MCP client config:
   "mcpServers": {
     "eventchat-events": {
       "command": "node",
-      "args": ["/Users/zakkrevitt/EventChat/ios/EventChat/agent-tools/eventchat-events/bin/eventchat-events-mcp.js"],
+      "args": ["/absolute/path/to/dizko-mcp/bin/eventchat-events-mcp.js"],
       "env": {
         "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }
@@ -373,7 +373,7 @@ Provider adapter contract:
 
 ## Distribution Notes
 
-The public ChatGPT user surface is the hosted MCP endpoint plus OpenAI app submission. The npm package is a day-zero developer distribution path for local agents, Claude Desktop-style MCP clients, Cursor/Windsurf setups, and technical testers who can run a command. It remains marked `UNLICENSED` because this is a proprietary early-access package, not an open-source release.
+The public ChatGPT user surface is the hosted MCP endpoint plus OpenAI app submission. The npm package is the developer distribution path for local agents, Claude Desktop-style MCP clients, Cursor and Windsurf setups, and technical testers who can run a command. The source is public for inspection and issue reporting. It remains marked `UNLICENSED`, so publication does not grant a reuse license.
 
 Before publishing a new npm version:
 
