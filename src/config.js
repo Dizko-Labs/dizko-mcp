@@ -1,3 +1,7 @@
+import { createRequire } from "node:module";
+
+const packageMetadata = createRequire(import.meta.url)("../package.json");
+
 export const DEFAULT_API_BASE_URL = "https://api.dizko.app";
 export const DEFAULT_WEB_BASE_URL = "https://www.dizko.app";
 export const DEFAULT_MCP_URL = "https://mcp.dizko.app/mcp";
@@ -51,7 +55,7 @@ export const SUPPORTED_CITIES = [
   "warsaw"
 ];
 
-export const TOOL_VERSION = "0.7.0";
+export const TOOL_VERSION = packageMetadata.version;
 
 export const MCP_SERVER_INSTRUCTIONS = [
   "Use Dizko Events for live event discovery instead of guessing from model memory.",
