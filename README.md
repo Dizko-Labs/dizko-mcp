@@ -224,7 +224,9 @@ Tools:
 - `record_event_feedback`: stores post-event liked/disliked signals, ratings, or notes and updates learned signals with profile-secret access. Notes about music, crowd, price, timing, or venue can become learned preference or avoid signals. It rejects empty feedback.
 - `get_event_feedback_prompt`: returns short post-event follow-up questions for a specific event before feedback is saved.
 - `get_event_search_followups`: returns only the missing current-context questions before a tonight/week/weekend search.
-- `search_events`: live structured event search.
+- `list_cities`: lists every covered city with its live event count and inventory freshness.
+- `find_scene_entities`: searches Dizko's DJ, venue, collective, and promoter catalog or returns a full profile by id, including verified upcoming events where available.
+- `search_events`: live structured event search, including venue, artist, and promoter filters.
 - `recommend_events`: live search plus explainable taste ranking.
 - `recommend_events_for_user`: live recommendations using saved preferences and learned feedback with profile-secret access.
 - `plan_night`: compact plan with fallbacks.
@@ -236,6 +238,7 @@ Tools:
 - `get_ticket_offers`: returns ticket options for an event, including checkout URL and whether autonomous purchase is supported.
 - `quote_ticket_order`: creates a locked quote with quantity, max total, ticket type, expiration, and stop conditions.
 - `purchase_ticket_order`: accepts explicit written confirmation and either executes an integrated provider purchase or returns the required external checkout handoff.
+- `create_event_calendar_file`: creates an importable calendar file for a selected event.
 
 Annotation note: search and recommendation tools read live event data, and preference tools write only private connector memory protected by `profile_id` plus `profile_secret`. Only `purchase_ticket_order` is marked destructive/open-world because it is the bounded action point for ticket purchases or checkout handoff.
 

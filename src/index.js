@@ -35,6 +35,11 @@ export {
   searchEvents,
   getEvent,
   listCities,
+  searchScene,
+  getSceneProfile,
+  getDjInsights,
+  listPromoters,
+  getPromoter,
   buildEventQuery,
   clearEventCache,
   EventChatAPIError,
@@ -43,6 +48,7 @@ export {
 export { recommendEvents, planNight } from "./planner.js";
 export { dailyRoundup } from "./roundup.js";
 export { getArtistEvents } from "./artistEvents.js";
+export { findSceneEntities } from "./entities.js";
 export { cityPulse } from "./cityPulse.js";
 export { summarizeEvent, eventUrl } from "./format.js";
 export { TICKET_PURCHASE_POLICY } from "./tickets.js";

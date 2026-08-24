@@ -11,6 +11,7 @@ test("buildEventQuery maps structured filters to API params", () => {
     when: "weekend",
     genres: ["techno", "house"],
     vibe: "underground",
+    promoter: "Tresor",
     free: true,
     limit: 5
   }, new Date("2026-06-09T12:00:00Z"));
@@ -21,6 +22,7 @@ test("buildEventQuery maps structured filters to API params", () => {
   assert.deepEqual(params.getAll("genres"), ["techno", "house"]);
   assert.deepEqual(params.getAll("vibe"), ["underground"]);
   assert.equal(params.get("free"), "true");
+  assert.equal(params.get("promoter"), "Tresor");
   assert.equal(params.get("limit"), "5");
 });
 

@@ -49,6 +49,7 @@ export function buildEventQuery(input = {}, now = new Date()) {
     q: input.query,
     featuring: input.featuring,
     venue: input.venue,
+    promoter: input.promoter,
     // 12 by default: models rarely render more, the response carries the
     // total count, and callers page with limit/offset when they want more.
     limit: input.limit ?? 12,
@@ -83,6 +84,44 @@ export async function listCities(options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   const url = new URL("/cities", config.apiBaseUrl);
   return fetchJsonCached(url, config, options, "City coverage");
+}
+
+export async function searchScene(input = {}, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL("/scene/search", config.apiBaseUrl);
+  url.search = new URLSearchParams(Object.entries({
+    q: input.query,
+    kind: input.kind,
+    city: input.city,
+    genre: input.genre,
+    limit: input.limit ?? 10
+  }).filter(([, value]) => value !== undefined && value !== null && value !== "")).toString();
+  return fetchJsonCached(url, config, options, "Scene search");
+}
+
+export async function getSceneProfile(kind, id, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/scene/profiles/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "Scene profile");
+}
+
+export async function getDjInsights(id, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/scene/profiles/dj/${encodeURIComponent(id)}/insights`, config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "DJ insights");
+}
+
+export async function listPromoters(city, limit = 200, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/promoters/${encodeURIComponent(city)}`, config.apiBaseUrl);
+  url.searchParams.set("limit", String(limit));
+  return fetchJsonCached(url, config, options, "Promoter search");
+}
+
+export async function getPromoter(city, slug, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/promoters/${encodeURIComponent(city)}/${encodeURIComponent(slug)}`, config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "Promoter profile");
 }
 
 // In-memory response cache. Fresh entries short-circuit the network;

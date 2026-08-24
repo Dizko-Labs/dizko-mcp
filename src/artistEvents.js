@@ -3,9 +3,9 @@ import { getConfig } from "./config.js";
 import { isoDate } from "./dateRange.js";
 import { summarizeEvent } from "./format.js";
 
-// Bounded fan-out: one strict `featuring` search per artist. 8 artists
-// x default 5 events keeps the payload agent-sized; anything dropped is
-// reported, never silently truncated.
+// Bounded fan-out: one exact-name query per artist. The event API recognizes
+// catalog artist names and lets those searches see beyond the general browse
+// horizon. We still verify every returned row locally before presenting it.
 const MAX_ARTISTS = 8;
 
 export async function getArtistEvents(input = {}, options = {}) {
@@ -19,13 +19,16 @@ export async function getArtistEvents(input = {}, options = {}) {
   const results = await Promise.all(tracked.map(async (artist) => {
     const response = await searchEvents({
       city: input.city,
-      featuring: artist,
+      query: artist,
       date_from: dateFrom,
       date_to: input.date_to,
-      limit: perArtist
+      limit: Math.min(perArtist * 4, 40)
     }, { ...options, config });
-    const events = (response.events || []).map((event) => summarizeEvent(event, summaryOptions));
-    return { artist, count: response.count ?? events.length, events };
+    const events = (response.events || [])
+      .filter((event) => eventFeaturesArtist(event, artist))
+      .slice(0, perArtist)
+      .map((event) => summarizeEvent(event, summaryOptions));
+    return { artist, count: events.length, events };
   }));
 
   return {
@@ -36,6 +39,15 @@ export async function getArtistEvents(input = {}, options = {}) {
     not_found: results.filter((result) => !result.events.length).map((result) => result.artist),
     dropped_artists: artists.slice(MAX_ARTISTS)
   };
+}
+
+export function eventFeaturesArtist(event, artist) {
+  const target = normalizeName(artist);
+  if (!target) return false;
+  if ((event?.lineup || []).some((name) => normalizeName(name) === target)) return true;
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundary = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+  return boundary.test(normalizeName(event?.title)) || boundary.test(normalizeName(event?.description));
 }
 
 export function normalizeArtists(value) {
@@ -58,4 +70,8 @@ function boundedLimit(value, fallback, max) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
   return Math.min(Math.floor(parsed), max);
+}
+
+function normalizeName(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
