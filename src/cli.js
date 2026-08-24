@@ -48,7 +48,7 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
       }
       case "get": {
         const id = args[0];
-        if (!id || id.startsWith("--")) throw new Error("Usage: eventchat-events get <event-id>");
+        if (!id || id.startsWith("--")) throw new Error("Usage: dizko-events get <event-id>");
         const event = await getEvent(id);
         io.stdout.write(JSON.stringify(summarizeEvent(event, { webBaseUrl: config.webBaseUrl }), null, 2) + "\n");
         break;

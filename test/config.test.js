@@ -85,7 +85,7 @@ test("getConfig accepts the MCP upstream credential", () => {
   );
 });
 
-test("SUPPORTED_CITIES includes the live EventChat city catalog", () => {
+test("SUPPORTED_CITIES includes the live Dizko city catalog", () => {
   assert.deepEqual(SUPPORTED_CITIES, [
     "amsterdam",
     "atlanta",

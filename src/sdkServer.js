@@ -2,7 +2,7 @@ import { Server } from "@modelcontextprotocol/server";
 import { MCP_SERVER_INSTRUCTIONS, TOOL_VERSION } from "./config.js";
 import { callTool, tools } from "./tools.js";
 
-export const SERVER_INFO = { name: "eventchat-events", version: TOOL_VERSION };
+export const SERVER_INFO = { name: "dizko", version: TOOL_VERSION };
 
 // SEP-2549 cache hints for the 2026-07-28 revision. Our tool list is a
 // static array baked into the build, so it is safe for shared caches to

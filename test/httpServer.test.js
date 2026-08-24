@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHttpMcpServer } from "../src/httpServer.js";
+import { createHttpMcpServer, safeJsonRpcError } from "../src/httpServer.js";
 
 // 2026-07-28 is stateless: every request carries its revision, the client's
 // capabilities and (optionally) its identity in `_meta` instead of doing an
@@ -8,7 +8,7 @@ import { createHttpMcpServer } from "../src/httpServer.js";
 const MODERN_META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
   "io.modelcontextprotocol/clientCapabilities": {},
-  "io.modelcontextprotocol/clientInfo": { name: "eventchat-test", version: "0.0.0" }
+  "io.modelcontextprotocol/clientInfo": { name: "dizko-test", version: "0.0.0" }
 };
 
 // Modern exchanges answer with a single JSON body; the 2025-era fallback
@@ -30,7 +30,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(health.status, 200);
     assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/api\.dizko\.app https:\/\/www\.dizko\.app/);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
-    assert.deepEqual(await health.json(), { ok: true, name: "eventchat-events" });
+    assert.deepEqual(await health.json(), { ok: true, name: "dizko" });
 
     const metadata = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(metadata.status, 200);
@@ -84,14 +84,14 @@ test("HTTP MCP server exposes health and tools/list", async () => {
         params: {
           protocolVersion: "2024-11-05",
           capabilities: {},
-          clientInfo: { name: "eventchat-test", version: "0.0.0" }
+          clientInfo: { name: "dizko-test", version: "0.0.0" }
         }
       })
     });
     const initializedBody = await readRpc(initialized);
     assert.equal(initialized.status, 200);
     assert.equal(initialized.headers.get("mcp-protocol-version"), "2024-11-05");
-    assert.equal(initializedBody.result.serverInfo.name, "eventchat-events");
+    assert.equal(initializedBody.result.serverInfo.name, "dizko");
     assert.equal(typeof initializedBody.result.capabilities.tools, "object");
 
     const initializedNotification = await fetch(`http://127.0.0.1:${port}/mcp`, {
@@ -117,6 +117,50 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
     assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("HTTP error serialization never exposes internal URLs or stack details", () => {
+  const unsafe = new Error(
+    "Fetch failed for https://backend-production-958d.up.railway.app/events?city=berlin"
+  );
+  unsafe.stack = `${unsafe.message}\n    at /srv/src/api.js:42:7`;
+
+  const serialized = JSON.stringify(safeJsonRpcError(unsafe));
+
+  assert.deepEqual(safeJsonRpcError(unsafe), {
+    status: 500,
+    code: -32603,
+    message: "Internal server error."
+  });
+  assert.doesNotMatch(serialized, /railway\.app|https?:\/\/|\/srv\/|api\.js/i);
+});
+
+test("HTTP malformed requests return safe protocol errors", async () => {
+  const server = createHttpMcpServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    const malformed = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{"
+    });
+    const malformedBody = await malformed.json();
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(malformedBody.error, { code: -32700, message: "Invalid JSON request." });
+
+    const invalid = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "1.0", id: 1, method: "tools/list" })
+    });
+    const invalidBody = await invalid.json();
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(invalidBody.error, { code: -32600, message: "Invalid JSON-RPC request." });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -150,7 +194,7 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(typeof discoverBody.result.capabilities.tools, "object");
     assert.equal(
       discoverBody.result._meta["io.modelcontextprotocol/serverInfo"].name,
-      "eventchat-events"
+      "dizko"
     );
 
     // Cacheable results must carry ttlMs + cacheScope (SEP-2549).
@@ -274,7 +318,7 @@ test("HTTP MCP server redirects /install and keeps /install.html as a branded fa
   try {
     const redirect = await fetch(`http://127.0.0.1:${port}/install`, { redirect: "manual" });
     assert.equal(redirect.status, 302);
-    assert.equal(redirect.headers.get("location"), "https://www.dizko.app/mcp#install");
+    assert.equal(redirect.headers.get("location"), "https://www.dizko.app/mcp/install");
 
     const response = await fetch(`http://127.0.0.1:${port}/install.html`);
     assert.equal(response.status, 200);

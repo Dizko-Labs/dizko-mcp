@@ -181,7 +181,7 @@ async function checkDiscover() {
     Array.isArray(result.supportedVersions) && result.supportedVersions.includes("2026-07-28"),
     `server/discover did not advertise 2026-07-28 (got ${JSON.stringify(result.supportedVersions)})`
   );
-  assert(serverInfo?.name === "eventchat-events", "server/discover returned unexpected serverInfo.name");
+  assert(serverInfo?.name === "dizko", "server/discover returned unexpected serverInfo.name");
   assert(result.capabilities?.tools, "server/discover returned no tools capability");
   assertInstructions(result.instructions);
   return {
@@ -213,7 +213,7 @@ async function checkLegacyInitialize() {
       params: {
         protocolVersion: "2025-11-25",
         capabilities: {},
-        clientInfo: { name: "eventchat-submission-verifier", version: "0.0.0" }
+        clientInfo: { name: "dizko-submission-verifier", version: "0.0.0" }
       }
     })
   });
@@ -221,7 +221,7 @@ async function checkLegacyInitialize() {
   const body = await readRpcBody(response);
   const result = body.result;
   assert(!body.error, `legacy initialize error: ${body.error?.message}`);
-  assert(result?.serverInfo?.name === "eventchat-events", "legacy initialize returned unexpected serverInfo.name");
+  assert(result?.serverInfo?.name === "dizko", "legacy initialize returned unexpected serverInfo.name");
   assert(result.capabilities?.tools, "legacy initialize returned no tools capability");
   assertInstructions(result.instructions);
   return {
@@ -253,7 +253,7 @@ async function checkHealth() {
   const response = await fetchWithTimeout(`${baseUrl}/health`);
   const body = await response.json();
   assert(response.ok, `Health endpoint returned HTTP ${response.status}`);
-  assert(body.ok === true && body.name === "eventchat-events", "Health body did not match expected service metadata");
+  assert(body.ok === true && body.name === "dizko", "Health body did not match expected service metadata");
   return {
     ok: true,
     status: response.status,
@@ -569,7 +569,7 @@ const MODERN_META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
   "io.modelcontextprotocol/clientCapabilities": {},
   "io.modelcontextprotocol/clientInfo": {
-    name: "eventchat-submission-verifier",
+    name: "dizko-submission-verifier",
     version: "0.0.0"
   }
 };

@@ -73,7 +73,7 @@ test("preference tools require consent and persist saved preferences", async () 
       profile_secret: createdBody.profile_secret
     }, { preferencesPath });
     assert.equal(unconfirmedDelete.isError, true);
-    assert.match(JSON.parse(unconfirmedDelete.content[0].text).assistant_instruction, /confirm/);
+    assert.equal(JSON.parse(unconfirmedDelete.content[0].text).code, "missing_required_argument");
 
     const deleted = await callTool("delete_event_preferences", {
       profile_id: createdBody.profile.profile_id,

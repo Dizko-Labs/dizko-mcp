@@ -42,7 +42,7 @@ npm run smoke:live
 
 Expected:
 
-- `/health` returns `{"ok":true,"name":"eventchat-events"}`.
+- `/health` returns `{"ok":true,"name":"dizko"}`.
 - `npm run monitor:live` reports `ok: true`, health and metadata success, 21 tools, and at least one live read-only search result. This command does not create preference profiles, write feedback, or attempt ticket purchases.
 - `npm run smoke:live` reports `ok: true`, 21 tools, a live sample event, search follow-up questions, and feedback-prompt questions.
 
@@ -110,7 +110,7 @@ railway logs --deployment <deployment-id> --tail 120
 
 Look for:
 
-- Startup line: `eventchat-events MCP listening on http://0.0.0.0:<port>/mcp`
+- Startup line: `dizko MCP listening on http://0.0.0.0:<port>/mcp`
 - Repeated upstream API timeouts.
 - Repeated auth failures on preference tools.
 - Repeated rate-limit responses.

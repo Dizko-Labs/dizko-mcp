@@ -38,9 +38,10 @@ test("shortLinkBase honors env override and explicit linkBaseUrl", () => {
   assert.equal(shortLinkBase({ linkBaseUrl: "https://other.example.test/mcp" }), "https://other.example.test");
 });
 
-test("summarizeEvent strips null and empty fields but keeps id/title/event_url", () => {
+test("summarizeEvent strips null and empty fields but keeps id/title/event_url/pick", () => {
   const summary = summarizeEvent({ id: "evt-2", title: "Mystery" }, { env: {} });
-  assert.deepEqual(Object.keys(summary).sort(), ["event_url", "id", "title"]);
+  assert.deepEqual(Object.keys(summary).sort(), ["event_url", "id", "pick", "title"]);
+  assert.equal(summary.pick, false);
 });
 
 test("googleCalendarUrl builds a prefilled link with dates, location, and event card", () => {

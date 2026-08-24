@@ -1,4 +1,4 @@
-import { getEvent, searchEvents } from "./api.js";
+import { getEvent, listCities, searchEvents } from "./api.js";
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
@@ -43,7 +43,7 @@ const rawTools = [
   {
     name: "get_preference_onboarding",
     title: "Get Preference Onboarding",
-    description: "Use this when a user wants personalized event recommendations and Dizko needs consent-first questions before saving event preferences.",
+    description: "Use this when a user wants consent-first questions before saving event preferences.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -61,7 +61,7 @@ const rawTools = [
   {
     name: "create_event_preference_profile",
     title: "Create Event Preference Profile",
-    description: "Use this when a user explicitly agrees to save event preferences and does not already have a Dizko preference profile.",
+    description: "Use this when a user agrees to create a saved Dizko preference profile.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -69,10 +69,11 @@ const rawTools = [
       openWorldHint: false
     },
     inputSchema: {
+      ...preferenceInputDefinitions(),
       type: "object",
       properties: {
         consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
-        preferences: preferenceSchema()
+        preferences: { $ref: "#/$defs/preferences" }
       },
       required: ["consent"]
     },
@@ -81,7 +82,7 @@ const rawTools = [
   {
     name: "save_event_preferences",
     title: "Save Event Preferences",
-    description: "Use this when a consenting user already has a Dizko profile and wants to add, update, merge, or replace saved event preferences.",
+    description: "Use this when a user wants to update a saved Dizko preference profile.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -89,13 +90,14 @@ const rawTools = [
       openWorldHint: false
     },
     inputSchema: {
+      ...preferenceInputDefinitions(),
       type: "object",
       properties: {
         profile_id: { type: "string", description: "Stable user/profile id." },
         profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
         consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
         mode: { type: "string", enum: ["merge", "replace"], default: "merge" },
-        preferences: preferenceSchema()
+        preferences: { $ref: "#/$defs/preferences" }
       },
       required: ["profile_id", "profile_secret", "consent", "preferences"]
     },
@@ -104,7 +106,7 @@ const rawTools = [
   {
     name: "get_event_preferences",
     title: "Get Event Preferences",
-    description: "Use this when a user with a Dizko profile wants to view saved event preferences or learned recommendation signals.",
+    description: "Use this when a user wants to view saved and learned event preferences.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -130,7 +132,7 @@ const rawTools = [
   {
     name: "record_event_feedback",
     title: "Record Event Feedback",
-    description: "Use this when a user says whether they liked or disliked a specific event, provides a rating, or shares notes, so future Dizko recommendations can learn from that feedback.",
+    description: "Use this when a user wants Dizko to learn from their rating or notes about an event.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -160,7 +162,7 @@ const rawTools = [
   {
     name: "get_event_feedback_prompt",
     title: "Get Event Feedback Prompt",
-    description: "Use this when a user previously picked or attended a Dizko event and the assistant should ask a short post-event follow-up before recording feedback.",
+    description: "Use this when a user needs a short post-event feedback prompt.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -180,20 +182,35 @@ const rawTools = [
   {
     name: "get_event_search_followups",
     title: "Get Event Search Followups",
-    description: "Use this when a user asks for events tonight, this week, or this weekend and the assistant should ask only the missing event type, vibe, budget, area, or avoid-preference questions before searching.",
+    description: "Use this when an event search needs follow-up questions about type, vibe, budget, area, or exclusions.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false
     },
-    inputSchema: eventSearchSchema(),
+    inputSchema: searchFollowupsInputSchema(),
     outputSchema: searchFollowupsOutputSchema()
+  },
+  {
+    name: "list_cities",
+    title: "List Covered Cities",
+    description: "Use this when a user asks where Dizko has live event coverage or how fresh a city's inventory is.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
   },
   {
     name: "search_events",
     title: "Search Events",
-    description: "Use this when a user wants current events from live Dizko inventory using filters such as city, date, genre, vibe, venue, artist, neighborhood, or price.",
+    description: "Use this when a user wants live events filtered by city, date, genre, vibe, venue, artist, area, or price.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -206,7 +223,7 @@ const rawTools = [
   {
     name: "recommend_events",
     title: "Recommend Events",
-    description: "Use this when a user wants ranked event suggestions from live Dizko inventory based on the current request's taste, vibe, price, and avoid signals.",
+    description: "Use this when a user wants live events ranked by taste, vibe, price, and exclusions.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -219,7 +236,7 @@ const rawTools = [
   {
     name: "recommend_events_for_user",
     title: "Recommend Events For User",
-    description: "Use this when a user has a Dizko preference profile and wants personalized event recommendations for tonight, this week, this weekend, or another date range.",
+    description: "Use this when a user wants recommendations personalized with a saved Dizko profile.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -257,7 +274,7 @@ const rawTools = [
   {
     name: "plan_night",
     title: "Plan Night",
-    description: "Use this when a user wants a compact night-out plan with a primary live event option and fallback options from Dizko inventory.",
+    description: "Use this when a user wants a primary night-out plan with fallback events.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -270,7 +287,7 @@ const rawTools = [
   {
     name: "get_daily_roundup",
     title: "Get Daily Roundup",
-    description: "Use this when a user wants a daily digest of what is happening in a city today, tomorrow, or on a specific date: top picks plus parties, live music, art, comedy, talks, and food sections from live Dizko inventory. Ideal for recurring morning briefings; pass profile_id and profile_secret so saved, learned, and per-day (day_filters) preferences shape the picks.",
+    description: "Use this when a user wants a daily city digest with top picks and category sections, optionally personalized by saved preferences.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -283,7 +300,7 @@ const rawTools = [
   {
     name: "get_artist_events",
     title: "Get Artist Events",
-    description: "Use this when a user asks when specific DJs, performers, or comedians play next, or wants upcoming shows for the artists they follow. Pass artists explicitly, or pass only profile_id and profile_secret to use the artists saved in the profile's featuring list.",
+    description: "Use this when a user wants upcoming events for named artists or artists saved in a Dizko profile.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -296,7 +313,7 @@ const rawTools = [
   {
     name: "get_city_pulse",
     title: "Get City Pulse",
-    description: "Use this when a user asks what is hot, where the momentum is, or how busy a city's event scene looks over the coming days. Returns busiest nights, top venues, genre mix, and headline events from aggregate public inventory, every stat with evidence counts.",
+    description: "Use this when a user wants a city's busiest nights, top venues, genre mix, and headline events.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -335,7 +352,7 @@ const rawTools = [
   {
     name: "get_ticket_purchase_policy",
     title: "Get Ticket Purchase Policy",
-    description: "Use this when a user asks whether agents can buy tickets autonomously or what purchase modes Dizko, Hermes, OpenClaw, or other providers can support.",
+    description: "Use this when a user asks how Dizko agents can buy tickets.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -370,7 +387,7 @@ const rawTools = [
   {
     name: "quote_ticket_order",
     title: "Quote Ticket Order",
-    description: "Use this when a user has chosen an event and wants a locked ticket quote with quantity, max price, ticket type, and stop conditions before any purchase attempt.",
+    description: "Use this when a user wants a locked ticket quote before purchase.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -383,7 +400,7 @@ const rawTools = [
   {
     name: "purchase_ticket_order",
     title: "Purchase Ticket Order",
-    description: "Use this when the user has given explicit written confirmation for a locked ticket quote and the agent should either execute an integrated provider purchase or return the required external checkout handoff.",
+    description: "Use this when a user confirms a locked quote for purchase or checkout handoff.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -424,6 +441,7 @@ const toolInvocationStatus = {
   record_event_feedback: ["Saving event feedback", "Event feedback saved"],
   get_event_feedback_prompt: ["Preparing feedback questions", "Feedback questions ready"],
   get_event_search_followups: ["Preparing follow-up questions", "Follow-up questions ready"],
+  list_cities: ["Checking city coverage", "City coverage ready"],
   search_events: ["Searching live events", "Live events found"],
   recommend_events: ["Ranking live events", "Event recommendations ready"],
   recommend_events_for_user: ["Personalizing live events", "Personalized events ready"],
@@ -439,13 +457,39 @@ const toolInvocationStatus = {
   create_event_calendar_file: ["Creating calendar file", "Calendar file ready"]
 };
 
-export const tools = rawTools.map(withNoAuthSecurity);
+export const tools = rawTools.map(publicToolDefinition);
+
+function publicToolDefinition(tool) {
+  const { outputSchema: _outputSchema, ...definition } = tool;
+  return withNoAuthSecurity({
+    ...definition,
+    inputSchema: compactInputSchema(definition.inputSchema)
+  });
+}
+
+function compactInputSchema(value) {
+  if (Array.isArray(value)) return value.map(compactInputSchema);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => key !== "description" && key !== "default")
+    .map(([key, child]) => [key, compactInputSchema(child)]));
+}
 
 function withNoAuthSecurity(tool) {
   const securitySchemes = [{ type: "noauth" }];
   const [invoking, invoked] = toolInvocationStatus[tool.name] || ["Running tool", "Tool complete"];
+  const {
+    idempotentHint: _idempotentHint,
+    destructiveHint,
+    ...baseAnnotations
+  } = tool.annotations || {};
+  const annotations = {
+    ...baseAnnotations,
+    ...(!baseAnnotations.readOnlyHint ? { destructiveHint } : {})
+  };
   return {
     ...tool,
+    annotations,
     securitySchemes,
     _meta: {
       ...(tool._meta || {}),
@@ -457,6 +501,8 @@ function withNoAuthSecurity(tool) {
 }
 
 export async function callTool(name, input = {}, options = {}) {
+  const validationError = validateRequiredArguments(name, input);
+  if (validationError) return toolJson(validationError, true);
   const store = options.preferenceStore || new FilePreferenceStore(options.preferencesPath);
   try {
     switch (name) {
@@ -562,6 +608,8 @@ export async function callTool(name, input = {}, options = {}) {
     }
     case "get_event_search_followups":
       return toolJson(buildSearchFollowups(input));
+    case "list_cities":
+      return toolJson(await coveredCitiesPayload(options));
     case "search_events": {
       const config = { ...getConfig(options.env), ...(options.config || {}) };
       const response = await searchEvents(input, { ...options, config });
@@ -715,10 +763,96 @@ export async function callTool(name, input = {}, options = {}) {
       throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
+    if (isUnsupportedCityError(error) && input.city) {
+      return toolJson(await unsupportedCityPayload(input.city, options), true);
+    }
     const described = describeNetworkError(error, error.url);
     const retryable = error.retryable ?? (error.status != null ? isRetryableStatus(error.status) : described.retryable);
     return toolJson(publicToolError(error, { retryable, described }), true);
   }
+}
+
+function validateRequiredArguments(name, input) {
+  const tool = rawTools.find((candidate) => candidate.name === name);
+  if (!tool) return { error: "The requested tool does not exist.", code: "unknown_tool" };
+  const missing = (tool.inputSchema.required || []).filter((key) => {
+    const value = input?.[key];
+    return value === undefined || value === null || (typeof value === "string" && !value.trim());
+  });
+  if (!missing.length) return null;
+  return {
+    error: `Missing required argument${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}.`,
+    code: "missing_required_argument"
+  };
+}
+
+function isUnsupportedCityError(error) {
+  if (error?.status !== 422 || typeof error.body !== "string") return false;
+  try {
+    const body = JSON.parse(error.body);
+    return String(body?.error || body?.detail || "").toLowerCase().includes("unsupported city");
+  } catch {
+    return error.body.toLowerCase().includes("unsupported city");
+  }
+}
+
+async function coveredCitiesPayload(options = {}) {
+  const response = await listCities(options);
+  const cities = (response.live || response.cities || [])
+    .map(normalizeCoveredCity)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    count: cities.length,
+    cities,
+    assistant_instruction: "Use these live counts and freshness timestamps when explaining Dizko coverage."
+  };
+}
+
+function normalizeCoveredCity(city) {
+  const lastSuccessfulFetch = city.last_successful_fetch || city.last_scraped_at || null;
+  return {
+    slug: city.slug,
+    name: city.name,
+    country: city.country,
+    event_count: city.event_count ?? 0,
+    freshness: city.stale ? "stale" : "fresh",
+    last_successful_fetch: lastSuccessfulFetch
+  };
+}
+
+const NEAREST_COVERED_CITY = {
+  birmingham: "london",
+  brighton: "london",
+  bristol: "london",
+  cambridge: "london",
+  edinburgh: "london",
+  glasgow: "london",
+  leeds: "london",
+  liverpool: "london",
+  manchester: "london",
+  oxford: "london",
+  potsdam: "berlin"
+};
+
+async function unsupportedCityPayload(requestedCity, options = {}) {
+  let cities = [];
+  try {
+    cities = (await coveredCitiesPayload(options)).cities;
+  } catch {
+    // The original validation error remains useful even if coverage lookup fails.
+  }
+  const requested = String(requestedCity).trim();
+  const preferredSlug = NEAREST_COVERED_CITY[requested.toLowerCase()];
+  const nearest = cities.find((city) => city.slug === preferredSlug) || null;
+  return {
+    error: `${requested} is not covered by Dizko.`,
+    code: "unsupported_city",
+    requested_city: requested,
+    nearest_covered_city: nearest,
+    assistant_instruction: nearest
+      ? `Tell the user ${requested} is not covered. The nearest covered city is ${nearest.name}, with ${nearest.event_count} live events.`
+      : `Tell the user ${requested} is not covered and use list_cities to show current coverage.`
+  };
 }
 
 function publicToolError(error, { retryable }) {
@@ -894,6 +1028,41 @@ function preferenceSchema() {
   };
 }
 
+function preferenceInputDefinitions() {
+  return {
+    $defs: {
+      dayPreference: dayPreferenceSchema(),
+      preferences: {
+        type: "object",
+        properties: {
+          ...basePreferenceProperties(),
+          day_filters: {
+            type: "object",
+            propertyNames: { enum: WEEKDAY_KEYS },
+            additionalProperties: { $ref: "#/$defs/dayPreference" }
+          }
+        }
+      }
+    }
+  };
+}
+
+function basePreferenceProperties() {
+  return {
+    cities: { type: "array", items: { type: "string" } },
+    event_types: { type: "array", items: { type: "string" } },
+    genres: { type: "array", items: { type: "string" } },
+    vibe: { type: "array", items: { type: "string" } },
+    neighborhoods: { type: "array", items: { type: "string" } },
+    venues: { type: "array", items: { type: "string" } },
+    featuring: { type: "array", items: { type: "string" } },
+    avoid: { type: "array", items: { type: "string" } },
+    max_price: { type: "number" },
+    free: { type: "boolean" },
+    nightlife: { type: "boolean" }
+  };
+}
+
 function dayPreferenceSchema() {
   return {
     type: "object",
@@ -936,6 +1105,28 @@ function eventSearchSchema() {
       limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events. Raise limit or use offset to page through more." },
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
+    }
+  };
+}
+
+function searchFollowupsInputSchema() {
+  const stringList = { type: "array", items: { type: "string" } };
+  return {
+    type: "object",
+    properties: {
+      city: { type: "string" },
+      when: { type: "string" },
+      date_from: { type: "string" },
+      query: { type: "string" },
+      event_types: stringList,
+      genres: stringList,
+      vibe: stringList,
+      neighborhoods: stringList,
+      venue: { type: "string" },
+      free: { type: "boolean" },
+      price_max: { type: "number" },
+      max_price: { type: "number" },
+      avoid: stringList
     }
   };
 }
