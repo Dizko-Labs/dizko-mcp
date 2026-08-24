@@ -48,6 +48,7 @@ test("MCP lists event tools", async () => {
     "get_event_feedback_prompt",
     "get_event_search_followups",
     "list_cities",
+    "find_scene_entities",
     "search_events",
     "recommend_events",
     "recommend_events_for_user",
@@ -109,6 +110,10 @@ test("MCP tool list stays compact while preserving input contracts", async () =>
   const tools = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
 
   assert.ok(Buffer.byteLength(JSON.stringify(response)) < 19_600);
+  assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("dj"), true);
+  assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("artist"), true);
+  assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("venue"), true);
+  assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("collective"), true);
   assert.equal(tools.plan_night.inputSchema.properties.profile_id.type, "string");
   assert.deepEqual(tools.plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
   assert.equal(tools.create_event_preference_profile.inputSchema.properties.preferences.$ref, "#/$defs/preferences");

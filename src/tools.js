@@ -7,6 +7,7 @@ import { planNight, recommendEvents } from "./planner.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { getArtistEvents } from "./artistEvents.js";
 import { cityPulse } from "./cityPulse.js";
+import { findSceneEntities } from "./entities.js";
 import { resolveSingleDay, weekdayName } from "./dateRange.js";
 import {
   FilePreferenceStore,
@@ -182,7 +183,7 @@ const rawTools = [
   {
     name: "get_event_search_followups",
     title: "Get Event Search Followups",
-    description: "Use this when an event search needs follow-up questions about type, vibe, budget, area, or exclusions.",
+    description: "Use this when an event search needs follow-up questions.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -195,7 +196,7 @@ const rawTools = [
   {
     name: "list_cities",
     title: "List Covered Cities",
-    description: "Use this when a user asks where Dizko has live event coverage or how fresh a city's inventory is.",
+    description: "Use this when a user asks about Dizko city coverage or freshness.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -208,9 +209,21 @@ const rawTools = [
     }
   },
   {
+    name: "find_scene_entities",
+    title: "Find Scene Entities",
+    description: "Use this when a user asks who a DJ is or about a venue, collective, or promoter.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: sceneEntityInputSchema()
+  },
+  {
     name: "search_events",
     title: "Search Events",
-    description: "Use this when a user wants live events filtered by city, date, genre, vibe, venue, artist, area, or price.",
+    description: "Use this when a user wants filtered live events.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -287,7 +300,7 @@ const rawTools = [
   {
     name: "get_daily_roundup",
     title: "Get Daily Roundup",
-    description: "Use this when a user wants a daily city digest with top picks and category sections, optionally personalized by saved preferences.",
+    description: "Use this when a user wants a daily city event digest.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -326,7 +339,7 @@ const rawTools = [
   {
     name: "get_event",
     title: "Get Event",
-    description: "Use this when a user asks for details about a specific Dizko event id returned by search, recommendations, or a night plan.",
+    description: "Use this when a user asks for details about a Dizko event id.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -432,31 +445,6 @@ const rawTools = [
   }
 ];
 
-const toolInvocationStatus = {
-  get_preference_onboarding: ["Preparing questions", "Questions ready"],
-  create_event_preference_profile: ["Creating preference profile", "Preference profile created"],
-  save_event_preferences: ["Saving preferences", "Preferences saved"],
-  get_event_preferences: ["Reading preferences", "Preferences loaded"],
-  delete_event_preferences: ["Deleting preferences", "Preferences deleted"],
-  record_event_feedback: ["Saving event feedback", "Event feedback saved"],
-  get_event_feedback_prompt: ["Preparing feedback questions", "Feedback questions ready"],
-  get_event_search_followups: ["Preparing follow-up questions", "Follow-up questions ready"],
-  list_cities: ["Checking city coverage", "City coverage ready"],
-  search_events: ["Searching live events", "Live events found"],
-  recommend_events: ["Ranking live events", "Event recommendations ready"],
-  recommend_events_for_user: ["Personalizing live events", "Personalized events ready"],
-  plan_night: ["Planning the night", "Night plan ready"],
-  get_daily_roundup: ["Building the daily roundup", "Daily roundup ready"],
-  get_artist_events: ["Checking artist calendars", "Artist events ready"],
-  get_city_pulse: ["Reading the city pulse", "City pulse ready"],
-  get_event: ["Loading event details", "Event details loaded"],
-  get_ticket_purchase_policy: ["Loading purchase policy", "Purchase policy ready"],
-  get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
-  quote_ticket_order: ["Preparing ticket quote", "Ticket quote ready"],
-  purchase_ticket_order: ["Processing ticket order", "Ticket order processed"],
-  create_event_calendar_file: ["Creating calendar file", "Calendar file ready"]
-};
-
 export const tools = rawTools.map(publicToolDefinition);
 
 function publicToolDefinition(tool) {
@@ -477,7 +465,6 @@ function compactInputSchema(value) {
 
 function withNoAuthSecurity(tool) {
   const securitySchemes = [{ type: "noauth" }];
-  const [invoking, invoked] = toolInvocationStatus[tool.name] || ["Running tool", "Tool complete"];
   const {
     idempotentHint: _idempotentHint,
     destructiveHint,
@@ -494,8 +481,8 @@ function withNoAuthSecurity(tool) {
     _meta: {
       ...(tool._meta || {}),
       securitySchemes,
-      "openai/toolInvocation/invoking": invoking,
-      "openai/toolInvocation/invoked": invoked
+      "openai/toolInvocation/invoking": "Working",
+      "openai/toolInvocation/invoked": "Ready"
     }
   };
 }
@@ -610,6 +597,15 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson(buildSearchFollowups(input));
     case "list_cities":
       return toolJson(await coveredCitiesPayload(options));
+    case "find_scene_entities": {
+      const result = await findSceneEntities(input, options);
+      return toolJson({
+        ...result,
+        ...(!result.error ? {
+          assistant_instruction: "Treat entity facts as canonical Dizko data. For profile results, mention upcoming events and related entities only when those fields are present."
+        } : {})
+      }, Boolean(result.error));
+    }
     case "search_events": {
       const config = { ...getConfig(options.env), ...(options.config || {}) };
       const response = await searchEvents(input, { ...options, config });
@@ -768,7 +764,7 @@ export async function callTool(name, input = {}, options = {}) {
     }
     const described = describeNetworkError(error, error.url);
     const retryable = error.retryable ?? (error.status != null ? isRetryableStatus(error.status) : described.retryable);
-    return toolJson(publicToolError(error, { retryable, described }), true);
+    return toolJson(publicToolError(error, { retryable, described, entity: name === "find_scene_entities" }), true);
   }
 }
 
@@ -855,9 +851,11 @@ async function unsupportedCityPayload(requestedCity, options = {}) {
   };
 }
 
-function publicToolError(error, { retryable }) {
+function publicToolError(error, { retryable, entity = false }) {
   if (error?.status === 404) {
-    return { error: "The requested event was not found.", code: "event_not_found" };
+    return entity
+      ? { error: "The requested scene entity was not found.", code: "entity_not_found" }
+      : { error: "The requested event was not found.", code: "event_not_found" };
   }
   if (error?.status === 422) {
     return { error: "The request was not valid.", code: "invalid_request" };
@@ -1101,11 +1099,33 @@ function eventSearchSchema() {
       max_price: { type: "number", description: "Preference hint used by recommend_events and plan_night." },
       featuring: { type: "string", description: "Artist or performer name." },
       venue: { type: "string" },
+      promoter: { type: "string", description: "Promoter slug or display name." },
       avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in recommendations." },
       limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events. Raise limit or use offset to page through more." },
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
     }
+  };
+}
+
+function sceneEntityInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: ["dj", "artist", "venue", "collective", "promoter"] },
+      id: { type: "string" },
+      query: { type: "string" },
+      city: { type: "string" },
+      genre: { type: "string" },
+      date_from: { type: "string" },
+      date_to: { type: "string" },
+      limit: { type: "number", minimum: 1, maximum: 20 }
+    },
+    required: ["kind"],
+    anyOf: [
+      { required: ["id"] },
+      { required: ["query"] }
+    ]
   };
 }
 

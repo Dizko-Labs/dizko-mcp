@@ -32,7 +32,7 @@ test("artist name normalization dedupes and splits commas", () => {
   );
 });
 
-test("getArtistEvents fans out one strict featuring search per artist", async () => {
+test("getArtistEvents queries exact catalog names and rejects semantic near matches", async () => {
   const requested = [];
   const result = await getArtistEvents({
     artists: ["Ben Klock", "Nobody Playing"],
@@ -41,9 +41,15 @@ test("getArtistEvents fans out one strict featuring search per artist", async ()
     now: NOW,
     fetch: async (url) => {
       const params = new URL(url).searchParams;
-      requested.push(params.get("featuring"));
-      if (params.get("featuring") === "Ben Klock") {
-        return Response.json({ count: 1, events: [show("bk-1", "Klockworks Night", "Ben Klock")] });
+      requested.push(params.get("q"));
+      if (params.get("q") === "Ben Klock") {
+        return Response.json({
+          count: 2,
+          events: [
+            show("bk-1", "Klockworks Night", "Ben Klock"),
+            show("bk-near", "Klockworks Inspired", "Someone Else")
+          ]
+        });
       }
       return Response.json({ count: 0, events: [] });
     }
@@ -53,6 +59,7 @@ test("getArtistEvents fans out one strict featuring search per artist", async ()
   assert.equal(result.date_from, "2026-08-07");
   assert.equal(result.artists.length, 1);
   assert.equal(result.artists[0].artist, "Ben Klock");
+  assert.equal(result.artists[0].count, 1);
   assert.equal(result.artists[0].events[0].title, "Klockworks Night");
   assert.ok(result.artists[0].events[0].event_url.startsWith("https://www.dizko.app/events/"));
   assert.deepEqual(result.not_found, ["Nobody Playing"]);
