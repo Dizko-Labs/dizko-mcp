@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { tools } from "../src/tools.js";
 
 const fieldsPath = resolve(process.env.EVENTCHAT_SUBMISSION_FIELDS_PATH || "./submission-fields.json");
 const evidencePath = resolve(process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || "./submission-evidence/latest.json");
@@ -41,7 +42,7 @@ async function main() {
   assert(evidence.checks?.public_pages?.user_guide?.ok === true, "latest evidence must show user guide page ok");
   assert(fields.logo_url === `${evidence.base_url}/logo-512.png`, "logo_url must match evidence base_url");
   assert(evidence.ok === true, "latest evidence must be ok");
-  assert(evidence.checks?.tools?.count === 21, "latest evidence must show 21 tools");
+  assert(evidence.checks?.tools?.count === tools.length, `latest evidence must show ${tools.length} tools`);
   if (requireDeploymentMetadata) {
     assert(evidence.deployment?.ok === true, "latest evidence must include current deployment metadata");
     assertNonEmpty(evidence.deployment?.id, "evidence.deployment.id");
