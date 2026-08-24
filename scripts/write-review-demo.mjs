@@ -128,7 +128,7 @@ async function callTool(name, args) {
 const MODERN_META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
   "io.modelcontextprotocol/clientCapabilities": {},
-  "io.modelcontextprotocol/clientInfo": { name: "eventchat-review-demo", version: "0.0.0" }
+  "io.modelcontextprotocol/clientInfo": { name: "dizko-review-demo", version: "0.0.0" }
 };
 
 async function callRpc(method, params = undefined) {

@@ -51,7 +51,7 @@ frame-ancestors https://chatgpt.com https://chat.openai.com
 
 Update `securityHeaders()` in `src/httpServer.js` if the connector begins fetching from new domains, then rerun `npm run verify:submission`.
 
-Preference learning requires persistent storage. The current implementation uses a JSON file at `EVENTCHAT_PREFERENCES_PATH`; on Railway, mount a persistent volume at `/data` before public launch. Preference profiles use an opaque `profile_id` plus a one-time `profile_secret`; only a hash of the secret is stored. For high-traffic production, move the `FilePreferenceStore` behind Postgres/Redis or the existing EventChat backend.
+Preference learning requires persistent storage. The current implementation uses a JSON file at `EVENTCHAT_PREFERENCES_PATH`; on Railway, mount a persistent volume at `/data` before public launch. Preference profiles use an opaque `profile_id` plus a one-time `profile_secret`; only a hash of the secret is stored. For high-traffic production, move the `FilePreferenceStore` behind Postgres/Redis or the existing Dizko backend.
 
 Preference profiles are automatically pruned after `EVENTCHAT_PREFERENCE_RETENTION_DAYS`, defaulting to `730` days, whenever the preference store is accessed. Keep this aligned with the published privacy policy before submission.
 
@@ -98,12 +98,12 @@ npm run verify:submission
 ## Docker
 
 ```bash
-docker build -t eventchat-events-mcp .
+docker build -t dizko-events-mcp .
 docker run --rm -p 8787:8787 \
   -e DIZKO_API_BASE_URL=https://api.dizko.app \
   -e EVENTCHAT_WEB_BASE_URL=https://www.dizko.app \
   -v eventchat-preferences:/data \
-  eventchat-events-mcp
+  dizko-events-mcp
 ```
 
 ## ChatGPT App Review

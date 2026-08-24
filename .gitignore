@@ -1,4 +1,5 @@
 node_modules/
+*.pem
 data/
 .env
 submission-evidence/

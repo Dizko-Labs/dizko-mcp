@@ -15,7 +15,7 @@ function healthyFetch(calls = []) {
   return async (url, init = {}) => {
     const u = String(url);
     calls.push({ url: u, method: init.method || "GET" });
-    if (u.endsWith("/health")) return Response.json({ ok: true, name: "eventchat-events" });
+    if (u.endsWith("/health")) return Response.json({ ok: true, name: "dizko" });
     if (u === "https://mcp.example.test/") return Response.json({ endpoint: "/mcp" });
     if (u === "https://mcp.example.test/mcp") {
       return Response.json({ jsonrpc: "2.0", id: 1, result: { tools: [{ name: "search_events" }, { name: "get_event" }] } });

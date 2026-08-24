@@ -59,8 +59,8 @@ test("formatCliError includes code, host, url, retryability, and a doctor hint",
 });
 
 test("formatCliError keeps plain errors to a single line", () => {
-  const text = formatCliError(new Error("Usage: eventchat-events get <event-id>"));
-  assert.equal(text, "Usage: eventchat-events get <event-id>");
+  const text = formatCliError(new Error("Usage: dizko-events get <event-id>"));
+  assert.equal(text, "Usage: dizko-events get <event-id>");
 });
 
 test("help text documents the mcp, serve, and install commands", () => {

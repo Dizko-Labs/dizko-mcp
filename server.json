@@ -1,14 +1,21 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.dizko/events",
-  "description": "Dizko live event discovery: concerts, club nights, art, comedy, and festivals across 32 live cities.",
-  "status": "active",
+  "title": "Dizko",
+  "description": "Live concerts, club nights, art, comedy, and festivals from Dizko.",
   "repository": {
     "url": "https://github.com/Dizko-Labs/dizko-mcp",
     "source": "github"
   },
   "version": "0.7.0",
   "websiteUrl": "https://www.dizko.app",
+  "icons": [
+    {
+      "src": "https://mcp.dizko.app/logo-512.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
   "remotes": [
     {
       "type": "streamable-http",

@@ -31,17 +31,17 @@ const manifest = {
   icon: "icon.png",
   server: {
     type: "node",
-    entry_point: "bin/eventchat-events-mcp.js",
+    entry_point: "bin/dizko-mcp.js",
     mcp_config: {
       command: "node",
-      args: ["${__dirname}/bin/eventchat-events-mcp.js"]
+      args: ["${__dirname}/bin/dizko-mcp.js"]
     }
   },
   compatibility: {
     runtimes: { node: ">=20" }
   },
   keywords: ["events", "nightlife", "concerts", "festivals", "tickets", "mcp"],
-  license: "UNLICENSED"
+  license: "MIT"
 };
 
 rmSync(stageDir, { recursive: true, force: true });

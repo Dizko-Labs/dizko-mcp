@@ -24,7 +24,7 @@ test("expected tool count comes from the real tool registry, not a hardcoded num
 function healthyMonitorFetch({ toolCount = tools.length, events = [{ id: "evt-1", title: "Test Party" }] } = {}) {
   return async (url, init = {}) => {
     const u = String(url);
-    if (u === "https://mcp.example.test/health") return Response.json({ ok: true, name: "eventchat-events" });
+    if (u === "https://mcp.example.test/health") return Response.json({ ok: true, name: "dizko" });
     if (u === "https://mcp.example.test/") return Response.json({ endpoint: "/mcp" });
     if (u === ENDPOINT && init.method === "POST") {
       const payload = JSON.parse(init.body);

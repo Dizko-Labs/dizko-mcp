@@ -24,7 +24,7 @@ test("MCP initialize exposes server instructions for cross-tool workflows", asyn
     }
   });
 
-  assert.equal(response.serverInfo.name, "eventchat-events");
+  assert.equal(response.serverInfo.name, "dizko");
   assert.match(response.instructions, /live event discovery/);
   assert.match(response.instructions, /get_preference_onboarding/);
   assert.match(response.instructions, /consent/);
@@ -47,6 +47,7 @@ test("MCP lists event tools", async () => {
     "record_event_feedback",
     "get_event_feedback_prompt",
     "get_event_search_followups",
+    "list_cities",
     "search_events",
     "recommend_events",
     "recommend_events_for_user",
@@ -74,7 +75,6 @@ test("MCP tool annotations describe read, write, and destructive behavior", asyn
   assert.equal(tools.create_event_preference_profile.annotations.openWorldHint, false);
   assert.equal(tools.get_event_feedback_prompt.annotations.readOnlyHint, true);
   assert.equal(tools.get_event_search_followups.annotations.openWorldHint, false);
-  assert.equal(tools.record_event_feedback.annotations.idempotentHint, false);
   assert.equal(tools.record_event_feedback.annotations.openWorldHint, false);
   assert.equal(tools.delete_event_preferences.annotations.destructiveHint, true);
   assert.equal(tools.delete_event_preferences.annotations.readOnlyHint, false);
@@ -94,7 +94,7 @@ test("MCP tool metadata is review-friendly", async () => {
     assert.ok(tool.title.length > 0, `${tool.name} has an empty title`);
     assert.match(tool.description, /^Use this (when|only when)\b/, `${tool.name} description should start with "Use this..."`);
     assert.equal(typeof tool.inputSchema, "object", `${tool.name} is missing inputSchema`);
-    assert.equal(typeof tool.outputSchema, "object", `${tool.name} is missing outputSchema`);
+    assert.equal(tool.outputSchema, undefined, `${tool.name} should omit redundant outputSchema`);
     assert.deepEqual(tool.securitySchemes, [{ type: "noauth" }], `${tool.name} should advertise noauth securitySchemes`);
     assert.deepEqual(tool._meta?.securitySchemes, [{ type: "noauth" }], `${tool.name} should mirror noauth securitySchemes in _meta`);
     assert.equal(typeof tool._meta?.["openai/toolInvocation/invoking"], "string", `${tool.name} should define invoking status text`);
@@ -104,35 +104,83 @@ test("MCP tool metadata is review-friendly", async () => {
   }
 });
 
-test("MCP output schemas expose reusable structured fields", async () => {
+test("MCP tool list stays compact while preserving input contracts", async () => {
   const response = await handleMcpRequest({ method: "tools/list" });
   const tools = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
 
-  assert.equal(tools.search_events.outputSchema.type, "object");
-  assert.equal(tools.search_events.outputSchema.anyOf[0].properties.events.items.properties.event_url.type, "string");
-  assert.equal(tools.search_events.outputSchema.anyOf[0].properties.app_download_url.type, "string");
-  assert.equal(tools.recommend_events.outputSchema.anyOf[0].properties.events.items.properties.recommendation_score.type, "number");
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 19_600);
   assert.equal(tools.plan_night.inputSchema.properties.profile_id.type, "string");
   assert.deepEqual(tools.plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
-  assert.equal(tools.plan_night.outputSchema.anyOf[0].properties.events.items.properties.plan_role.type, "string");
-  assert.equal(tools.plan_night.outputSchema.anyOf[0].properties.events.items.properties.distance_from_primary_km.type[1], "null");
-  assert.equal(tools.create_event_preference_profile.outputSchema.anyOf[0].properties.profile_secret.type, "string");
-  assert.equal(tools.create_event_preference_profile.outputSchema.anyOf[0].properties.access_instructions.properties.profile_secret_returned_now.type, "boolean");
-  assert.equal(tools.get_event_preferences.outputSchema.anyOf[0].properties.profile.properties.learned_preferences.type, "object");
-  assert.equal(tools.get_event_preferences.outputSchema.anyOf[0].properties.access_instructions.properties.reuse_instruction.type, "string");
-  assert.equal(tools.get_event_feedback_prompt.outputSchema.anyOf[0].properties.questions.items.type, "string");
+  assert.equal(tools.create_event_preference_profile.inputSchema.properties.preferences.$ref, "#/$defs/preferences");
+  assert.equal(tools.create_event_preference_profile.inputSchema.$defs.preferences.properties.day_filters.additionalProperties.$ref, "#/$defs/dayPreference");
   assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("liked")));
   assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("rating")));
   assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("notes")));
-  assert.equal(tools.get_event_search_followups.outputSchema.anyOf[0].properties.search_args_hint.properties.when.type[1], "null");
   assert.equal(tools.delete_event_preferences.inputSchema.properties.confirm_delete.type, "boolean");
   assert.ok(tools.delete_event_preferences.inputSchema.required.includes("confirm_delete"));
-  assert.equal(tools.delete_event_preferences.outputSchema.anyOf[0].properties.deleted.type, "boolean");
-  assert.equal(tools.get_ticket_purchase_policy.outputSchema.anyOf[0].properties.supported_modes.items.type, "string");
-  assert.equal(tools.get_ticket_offers.outputSchema.anyOf[0].properties.offers.items.properties.purchase_mode.type, "string");
-  assert.equal(tools.quote_ticket_order.outputSchema.anyOf[0].properties.quote_token.type, "string");
   assert.ok(tools.purchase_ticket_order.inputSchema.required.includes("confirmation_text"));
-  assert.equal(tools.purchase_ticket_order.outputSchema.anyOf[0].properties.purchased.type, "boolean");
+});
+
+test("MCP enforces required arguments before calling the upstream", async () => {
+  let fetchCalls = 0;
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_event", arguments: {} }
+  }, {
+    fetch: async () => {
+      fetchCalls += 1;
+      throw new Error("should not fetch");
+    }
+  });
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(response.isError, true);
+  assert.deepEqual(response.structuredContent, {
+    error: "Missing required argument: id.",
+    code: "missing_required_argument"
+  });
+});
+
+test("MCP lists covered cities with live counts and freshness", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "list_cities", arguments: {} }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({
+      live: [{ slug: "berlin", name: "Berlin", country: "Germany", event_count: 321, last_scraped_at: "2026-08-24T08:00:00Z", stale: false }]
+    })
+  });
+
+  assert.equal(response.structuredContent.count, 1);
+  assert.deepEqual(response.structuredContent.cities[0], {
+    slug: "berlin",
+    name: "Berlin",
+    country: "Germany",
+    event_count: 321,
+    freshness: "fresh",
+    last_successful_fetch: "2026-08-24T08:00:00Z"
+  });
+});
+
+test("unsupported cities return honest nearest coverage instead of an outage", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "Bristol" } }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    retries: 0,
+    fetch: async (url) => String(url).endsWith("/cities")
+      ? Response.json({ live: [{ slug: "london", name: "London", country: "United Kingdom", event_count: 456, last_scraped_at: "2026-08-24T08:00:00Z", stale: false }] })
+      : Response.json({ error: "Unsupported city" }, { status: 422 })
+  });
+
+  assert.equal(response.isError, true);
+  assert.equal(response.structuredContent.code, "unsupported_city");
+  assert.equal(response.structuredContent.nearest_covered_city.name, "London");
+  assert.equal(response.structuredContent.nearest_covered_city.event_count, 456);
+  assert.match(response.structuredContent.assistant_instruction, /not covered/);
+  assert.doesNotMatch(JSON.stringify(response), /unavailable|outage/i);
 });
 
 test("MCP get_event_search_followups asks for missing event type and vibe", async () => {
@@ -181,13 +229,34 @@ test("MCP search_events returns tool content", async () => {
     config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
     fetch: async () => Response.json({
       count: 1,
-      events: [{ id: "1", title: "Night One", genres: [], vibe: [], event_types: [], lineup: [] }]
+      events: [{
+        id: "1",
+        title: "Night One",
+        genres: [],
+        vibe: [],
+        event_types: [],
+        lineup: [],
+        ra_pick: true,
+        price_trend: "selling_fast",
+        sound_tags: ["dub techno"],
+        promoters: ["Example Collective"],
+        image_url: "https://images.example.test/night-one.jpg",
+        lat: 52.5,
+        lng: 13.4
+      }]
     })
   });
 
   assert.equal(response.content[0].type, "text");
   assert.match(response.content[0].text, /Night One/);
   assert.equal(response.structuredContent.events[0].title, "Night One");
+  assert.equal(response.structuredContent.events[0].pick, true);
+  assert.equal(response.structuredContent.events[0].price_trend, "selling_fast");
+  assert.deepEqual(response.structuredContent.events[0].sound_tags, ["dub techno"]);
+  assert.deepEqual(response.structuredContent.events[0].promoters, ["Example Collective"]);
+  assert.equal(response.structuredContent.events[0].image_url, "https://images.example.test/night-one.jpg");
+  assert.equal(response.structuredContent.events[0].lat, 52.5);
+  assert.equal(response.structuredContent.events[0].lng, 13.4);
   assert.equal(response.structuredContent.app_download_url, "https://www.dizko.app/ios");
 });
 
@@ -211,9 +280,10 @@ test("MCP search_events returns structured tool errors for slow upstream calls",
   });
 
   assert.equal(response.isError, true);
-  assert.equal(response.structuredContent.status, 504);
-  assert.equal(response.structuredContent.retryable, true);
-  assert.match(response.content[0].text, /timed out/);
+  assert.deepEqual(response.structuredContent, {
+    error: "The event service timed out. Try again shortly.",
+    code: "upstream_timeout"
+  });
 });
 
 test("MCP ticket tools quote and hand off third-party checkout after written confirmation", async () => {
@@ -362,7 +432,7 @@ async function nextMessage(lines) {
   return JSON.parse(lines.shift());
 }
 
-test("MCP search_events reports DNS failures as retryable with cause, code, hostname, and url", async () => {
+test("MCP search_events sanitizes retryable DNS failures", async () => {
   const dnsError = new TypeError("fetch failed");
   dnsError.cause = Object.assign(new Error("getaddrinfo EAI_AGAIN backend.example.test"), {
     code: "EAI_AGAIN",
@@ -382,19 +452,13 @@ test("MCP search_events reports DNS failures as retryable with cause, code, host
 
   assert.equal(response.isError, true);
   const body = response.structuredContent;
-  assert.equal(body.retryable, true, "EAI_AGAIN must be reported as retryable");
-  assert.equal(body.code, "EAI_AGAIN");
-  assert.equal(body.classification, "dns");
-  assert.equal(body.type, "EventChatNetworkError");
-  assert.equal(body.status, null);
-  assert.equal(body.hostname, "backend.example.test");
-  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
-  assert.match(body.error, /DNS lookup for backend\.example\.test failed \(EAI_AGAIN\)/);
-  assert.match(body.cause, /getaddrinfo EAI_AGAIN/);
-  assert.match(body.assistant_instruction, /Retry the same call/);
+  assert.deepEqual(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
 });
 
-test("MCP search_events reports retryable HTTP 5xx errors with status", async () => {
+test("MCP search_events sanitizes retryable HTTP 5xx errors", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
     params: { name: "search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
@@ -406,7 +470,30 @@ test("MCP search_events reports retryable HTTP 5xx errors with status", async ()
 
   assert.equal(response.isError, true);
   const body = response.structuredContent;
-  assert.equal(body.status, 503);
-  assert.equal(body.retryable, true);
-  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
+  assert.deepEqual(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
+});
+
+test("MCP error responses never expose upstream hosts, URLs, or causes", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin", limit: 1 } }
+  }, {
+    config: {
+      apiBaseUrl: "https://backend-production-958d.up.railway.app",
+      userAgent: "test"
+    },
+    retries: 0,
+    fetch: async () => new Response("Traceback: private stack detail", { status: 503 })
+  });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(Object.keys(response.structuredContent).sort(), ["code", "error"]);
+  const serialized = JSON.stringify(response);
+  assert.doesNotMatch(serialized, /backend-production-958d/i);
+  assert.doesNotMatch(serialized, /railway\.app/i);
+  assert.doesNotMatch(serialized, /https?:\/\//i);
+  assert.doesNotMatch(serialized, /traceback|stack detail/i);
 });

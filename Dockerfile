@@ -19,4 +19,4 @@ ENV EVENTCHAT_MCP_PORT=8787
 ENV EVENTCHAT_PREFERENCES_PATH=/data/preferences.json
 
 EXPOSE 8787
-CMD ["node", "./bin/eventchat-events-http.js"]
+CMD ["node", "./bin/dizko-http.js"]

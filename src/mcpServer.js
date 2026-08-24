@@ -27,7 +27,7 @@ export async function handleMcpRequest(request, options = {}) {
     return {
       protocolVersion: request.params?.protocolVersion || "2025-11-25",
       capabilities: { tools: {} },
-      serverInfo: { name: "eventchat-events", version: TOOL_VERSION },
+      serverInfo: { name: "dizko", version: TOOL_VERSION },
       instructions: MCP_SERVER_INSTRUCTIONS
     };
   case "tools/list":
@@ -48,18 +48,18 @@ function complete(result, cacheHint) {
     ...(cacheHint || {}),
     _meta: {
       ...(result._meta || {}),
-      [SERVER_INFO_META_KEY]: { name: "eventchat-events", version: TOOL_VERSION }
+      [SERVER_INFO_META_KEY]: { name: "dizko", version: TOOL_VERSION }
     }
   };
 }
 
 // Serves MCP over stdio with newline-delimited JSON-RPC framing, answering
 // both the 2026-07-28 revision and 2025-era openings from one definition.
-// Resolves once stdin closes so `bin/eventchat-events-mcp.js` can await it.
+// Resolves once stdin closes so `bin/dizko-mcp.js` can await it.
 export function runMcpServer({ input = process.stdin, output = process.stdout } = {}) {
   const handle = serveStdio(() => createSdkMcpServer(), {
     transport: stdioTransport(input, output),
-    onerror: (error) => process.stderr.write(`eventchat-events MCP error: ${error.message}\n`)
+    onerror: (error) => process.stderr.write(`dizko MCP error: ${error.message}\n`)
   });
 
   return new Promise((resolve) => {

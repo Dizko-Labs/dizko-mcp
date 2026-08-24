@@ -26,7 +26,7 @@ export function createHttpMcpServer(options = {}) {
   // The factory runs once per request - nothing is retained between calls,
   // which is what the stateless core requires.
   const mcpHandler = toNodeHandler(createMcpHandler(() => createSdkMcpServer(options), {
-    onerror: (error) => process.stderr.write(`eventchat-events MCP error: ${error.message}\n`)
+    onerror: (error) => process.stderr.write(`dizko MCP error: ${error.message}\n`)
   }));
 
   return http.createServer(async (request, response) => {
@@ -39,13 +39,13 @@ export function createHttpMcpServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/health") {
-        sendJson(response, 200, { ok: true, name: "eventchat-events" }, corsHeaders(request, settings));
+        sendJson(response, 200, { ok: true, name: "dizko" }, corsHeaders(request, settings));
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/") {
         sendJson(response, 200, {
-          name: "eventchat-events",
+          name: "dizko",
           transport: "mcp-http",
           endpoint: "/mcp",
           health: "/health",
@@ -68,7 +68,7 @@ export function createHttpMcpServer(options = {}) {
       if (request.method === "GET" && url.pathname === "/install") {
         response.writeHead(302, {
           ...corsHeaders(request, settings),
-          Location: "https://www.dizko.app/mcp#install"
+          Location: "https://www.dizko.app/mcp/install"
         });
         response.end();
         return;
@@ -162,13 +162,31 @@ export function createHttpMcpServer(options = {}) {
       validateJsonRpcPayload(payload);
       await mcpHandler(request, response, payload);
     } catch (error) {
-      sendJson(response, 400, {
+      const safeError = safeJsonRpcError(error);
+      sendJson(response, safeError.status, {
         jsonrpc: "2.0",
         id: null,
-        error: { code: -32700, message: error.message }
+        error: { code: safeError.code, message: safeError.message }
       }, corsHeaders(request, settings));
     }
   });
+}
+
+export function safeJsonRpcError(error) {
+  if (error instanceof SyntaxError) {
+    return { status: 400, code: -32700, message: "Invalid JSON request." };
+  }
+  if (error?.message === "Request body too large") {
+    return { status: 413, code: -32600, message: "Request body too large." };
+  }
+  if ([
+    "Invalid JSON-RPC request",
+    "Unsupported JSON-RPC version",
+    "Missing JSON-RPC method"
+  ].includes(error?.message)) {
+    return { status: 400, code: -32600, message: "Invalid JSON-RPC request." };
+  }
+  return { status: 500, code: -32603, message: "Internal server error." };
 }
 
 export function runHttpMcpServer(env = process.env) {
@@ -176,7 +194,7 @@ export function runHttpMcpServer(env = process.env) {
   const host = env.HOST || env.EVENTCHAT_MCP_HOST || "0.0.0.0";
   const server = createHttpMcpServer();
   server.listen(port, host, () => {
-    process.stderr.write(`eventchat-events MCP listening on http://${host}:${port}/mcp\n`);
+    process.stderr.write(`dizko MCP listening on http://${host}:${port}/mcp\n`);
   });
   return server;
 }

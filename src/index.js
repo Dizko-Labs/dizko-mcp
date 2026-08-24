@@ -34,6 +34,7 @@ export {
 export {
   searchEvents,
   getEvent,
+  listCities,
   buildEventQuery,
   clearEventCache,
   EventChatAPIError,

@@ -8,7 +8,7 @@ beforeEach(() => clearEventCache());
 test("public library entry exposes the stable agent-integration surface", () => {
   for (const name of [
     "tools", "callTool",
-    "searchEvents", "getEvent", "recommendEvents", "planNight", "dailyRoundup", "summarizeEvent",
+    "searchEvents", "getEvent", "listCities", "recommendEvents", "planNight", "dailyRoundup", "summarizeEvent",
     "getConfig", "SUPPORTED_CITIES", "TOOL_VERSION", "MCP_SERVER_INSTRUCTIONS",
     "EventChatAPIError", "EventChatNetworkError",
     "handleMcpRequest", "createSdkMcpServer", "createHttpMcpServer"
@@ -16,7 +16,7 @@ test("public library entry exposes the stable agent-integration surface", () => 
     assert.ok(name in lib, `missing export: ${name}`);
   }
   assert.equal(Array.isArray(lib.tools), true);
-  assert.equal(lib.tools.length, 21);
+  assert.equal(lib.tools.length, 22);
   assert.equal(typeof lib.callTool, "function");
 });
 

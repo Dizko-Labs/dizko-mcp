@@ -79,6 +79,12 @@ export async function getEvent(id, options = {}) {
   return fetchJsonCached(url, config, options, "Event lookup");
 }
 
+export async function listCities(options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL("/cities", config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "City coverage");
+}
+
 // In-memory response cache. Fresh entries short-circuit the network;
 // expired entries are kept for a stale window and served only when the
 // upstream fails with a retryable (network/5xx) error, so a backend blip
@@ -167,7 +173,8 @@ async function fetchApi(url, config, options, label) {
         signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Accept: "application/json",
-          "User-Agent": config.userAgent
+          "User-Agent": config.userAgent,
+          ...(config.upstreamSecret ? { "X-Dizko-MCP-Secret": config.upstreamSecret } : {})
         }
       });
     } catch (error) {

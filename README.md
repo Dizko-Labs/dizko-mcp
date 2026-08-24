@@ -107,8 +107,8 @@ and explicit written confirmation before the adapter is invoked. See
 This package exposes Dizko's live event inventory to agents and humans:
 
 - `dizko-events`: a CLI for quick searches, ranked recommendations, night plans, client install, and diagnostics.
-- `dizko-events mcp` (alias `eventchat-events-mcp`): a stdio MCP server for local developer clients.
-- `dizko-events serve` (alias `eventchat-events-http`): an HTTP MCP server for hosted connectors/apps.
+- `dizko-events mcp` (binary `dizko-events-mcp`): a stdio MCP server for local developer clients.
+- `dizko-events serve` (binary `dizko-events-http`): an HTTP MCP server for hosted connectors/apps.
 - Agentic ticket tools for ticket offers, locked quotes, written confirmation, checkout handoff, and future Hermes/OpenClaw/Dizko purchase adapters.
 
 ## Why This Beats Normal Chat
@@ -139,17 +139,17 @@ Or install the early-access developer package:
 
 ```bash
 npm install -g dizko-events
-eventchat-events search --city berlin --when weekend --genres techno --limit 5
+dizko-events search --city berlin --when weekend --genres techno --limit 5
 ```
 
 From this repository:
 
 ```bash
-node ./bin/eventchat-events.js search --city berlin --when weekend --genres techno --limit 5
-node ./bin/eventchat-events.js recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
-node ./bin/eventchat-events.js plan --city london --when weekend --event-types party --avoid mainstream
-node ./bin/eventchat-events.js cities
-node ./bin/eventchat-events.js doctor
+node ./bin/dizko.js search --city berlin --when weekend --genres techno --limit 5
+node ./bin/dizko.js recommend --city new-york --when tonight --vibe underground,intimate --max-price 30
+node ./bin/dizko.js plan --city london --when weekend --event-types party --avoid mainstream
+node ./bin/dizko.js cities
+node ./bin/dizko.js doctor
 ```
 
 `doctor` checks DNS resolution, the API health endpoint, the hosted MCP endpoint (health, metadata, tools/list), and one small live search, reporting the underlying cause of any failure. Run it first whenever a search fails.
@@ -173,13 +173,13 @@ Transient network failures (`EAI_AGAIN`, `ETIMEDOUT`, `ECONNRESET`, `ENOTFOUND`,
 Run the stdio MCP server from npm:
 
 ```bash
-npm exec --yes --package dizko-events -- eventchat-events-mcp
+npm exec --yes --package dizko-events -- dizko-events-mcp
 ```
 
 Or from this repository:
 
 ```bash
-node ./bin/eventchat-events-mcp.js
+node ./bin/dizko-mcp.js
 ```
 
 Example MCP client config:
@@ -187,9 +187,9 @@ Example MCP client config:
 ```json
 {
   "mcpServers": {
-    "eventchat-events": {
+    "dizko": {
       "command": "node",
-      "args": ["/absolute/path/to/dizko-mcp/bin/eventchat-events-mcp.js"],
+      "args": ["/absolute/path/to/dizko-mcp/bin/dizko-mcp.js"],
       "env": {
         "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }
@@ -205,7 +205,7 @@ Example MCP client config using npm:
   "mcpServers": {
     "dizko-events": {
       "command": "npm",
-      "args": ["exec", "--yes", "--package", "dizko-events", "--", "eventchat-events-mcp"],
+      "args": ["exec", "--yes", "--package", "dizko-events", "--", "dizko-events-mcp"],
       "env": {
         "DIZKO_API_BASE_URL": "https://api.dizko.app"
       }
@@ -252,7 +252,7 @@ Retention note: saved preference profiles are automatically pruned after the con
 For normal users, publish a hosted MCP endpoint rather than asking them to run a local command.
 
 ```bash
-PORT=8787 node ./bin/eventchat-events-http.js
+PORT=8787 node ./bin/dizko-http.js
 ```
 
 Endpoints:
@@ -373,7 +373,7 @@ Provider adapter contract:
 
 ## Distribution Notes
 
-The public ChatGPT user surface is the hosted MCP endpoint plus OpenAI app submission. The npm package is the developer distribution path for local agents, Claude Desktop-style MCP clients, Cursor and Windsurf setups, and technical testers who can run a command. The source is public for inspection and issue reporting. It remains marked `UNLICENSED`, so publication does not grant a reuse license.
+The public ChatGPT user surface is the hosted MCP endpoint plus OpenAI app submission. The npm package is the developer distribution path for local agents, Claude Desktop-style MCP clients, Cursor and Windsurf setups, and technical testers who can run a command. The source is available under the MIT License for inspection, reuse, and issue reporting.
 
 Before publishing a new npm version:
 

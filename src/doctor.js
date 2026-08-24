@@ -110,7 +110,7 @@ async function mcpToolsCheck(endpoint, fetchImpl, timeoutMs) {
           _meta: {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
             "io.modelcontextprotocol/clientCapabilities": {},
-            "io.modelcontextprotocol/clientInfo": { name: "eventchat-doctor", version: TOOL_VERSION }
+            "io.modelcontextprotocol/clientInfo": { name: "dizko-doctor", version: TOOL_VERSION }
           }
         }
       }),

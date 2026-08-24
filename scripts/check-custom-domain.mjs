@@ -2,7 +2,7 @@ import { resolve4, resolve6, resolveCname } from "node:dns/promises";
 import { expectedToolCount } from "../src/liveChecks.js";
 
 const domain = process.env.DIZKO_CUSTOM_DOMAIN || process.env.EVENTCHAT_CUSTOM_DOMAIN || "mcp.dizko.app";
-const expectedServerName = "eventchat-events";
+const expectedServerName = "dizko";
 const endpointPath = "/mcp";
 
 async function main() {
@@ -19,7 +19,7 @@ async function main() {
       _meta: {
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": { name: "eventchat-domain-check", version: "0.0.0" }
+        "io.modelcontextprotocol/clientInfo": { name: "dizko-domain-check", version: "0.0.0" }
       }
     }
   });

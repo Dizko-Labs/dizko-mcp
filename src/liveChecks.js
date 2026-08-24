@@ -96,7 +96,7 @@ export async function fetchJson(url, { fetchImpl = fetch, timeoutMs = 10_000, ch
 const MODERN_META = {
   "io.modelcontextprotocol/protocolVersion": "2026-07-28",
   "io.modelcontextprotocol/clientCapabilities": {},
-  "io.modelcontextprotocol/clientInfo": { name: "eventchat-live-checks", version: TOOL_VERSION }
+  "io.modelcontextprotocol/clientInfo": { name: "dizko-live-checks", version: TOOL_VERSION }
 };
 
 export async function rpcCall(endpoint, method, params = undefined, options = {}) {
@@ -137,7 +137,7 @@ export async function runMonitorChecks(options = {}) {
   const checks = {
     health: await runCheck("health", `${base}/health`, async () => {
       const { status, body } = await fetchJson(`${base}/health`, { fetchImpl, timeoutMs, check: "health" });
-      if (body?.ok !== true || body?.name !== "eventchat-events") {
+      if (body?.ok !== true || body?.name !== "dizko") {
         throw new LiveCheckError("Health endpoint responded but did not report ok/name", {
           check: "health",
           classification: "bad_response",

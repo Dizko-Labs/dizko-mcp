@@ -141,7 +141,7 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 ## Pre-Submission Checklist
 
 - Public HTTPS MCP endpoint is deployed and reachable.
-- `/health` returns `{"ok":true,"name":"eventchat-events"}`.
+- `/health` returns `{"ok":true,"name":"dizko"}`.
 - Tool list and descriptions are final.
 - Tool annotations correctly label read-only, write, destructive, and open-world behavior.
 - Tool descriptors include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`.
