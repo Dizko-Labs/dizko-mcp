@@ -21,6 +21,7 @@ const requiredTools = [
   "record_event_feedback",
   "get_event_feedback_prompt",
   "get_event_search_followups",
+  "list_cities",
   "search_events",
   "recommend_events",
   "recommend_events_for_user",
@@ -33,16 +34,17 @@ const requiredTools = [
 ];
 
 const requiredAnnotations = {
-  search_events: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  get_event: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  list_cities: { readOnlyHint: true, openWorldHint: false },
+  search_events: { readOnlyHint: true, openWorldHint: false },
+  get_event: { readOnlyHint: true, openWorldHint: false },
   create_event_preference_profile: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   save_event_preferences: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   record_event_feedback: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-  get_event_feedback_prompt: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  get_event_search_followups: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  get_event_feedback_prompt: { readOnlyHint: true, openWorldHint: false },
+  get_event_search_followups: { readOnlyHint: true, openWorldHint: false },
   delete_event_preferences: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-  get_ticket_offers: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  quote_ticket_order: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  get_ticket_offers: { readOnlyHint: true, openWorldHint: false },
+  quote_ticket_order: { readOnlyHint: true, openWorldHint: false },
   purchase_ticket_order: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
 };
 
@@ -341,7 +343,7 @@ async function checkTools() {
     assert(typeof tool.title === "string" && tool.title.length > 0, `${tool.name} missing title`);
     assert(/^Use this (when|only when)\b/.test(tool.description || ""), `${tool.name} description should start with "Use this..."`);
     assert(tool.inputSchema && typeof tool.inputSchema === "object", `${tool.name} missing inputSchema`);
-    assert(tool.outputSchema && typeof tool.outputSchema === "object", `${tool.name} missing outputSchema`);
+    assert(tool.outputSchema === undefined, `${tool.name} should omit redundant outputSchema`);
     assert(JSON.stringify(tool.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must advertise noauth securitySchemes`);
     assert(JSON.stringify(tool._meta?.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must mirror noauth securitySchemes in _meta`);
     assert(typeof tool._meta?.["openai/toolInvocation/invoking"] === "string", `${tool.name} missing openai/toolInvocation/invoking`);
@@ -350,26 +352,13 @@ async function checkTools() {
     assert(tool._meta["openai/toolInvocation/invoked"].length <= 64, `${tool.name} invoked status exceeds 64 chars`);
   }
 
-  assert(toolsByName.search_events.outputSchema?.anyOf?.[0]?.properties?.events?.items?.properties?.event_url?.type === "string", "search_events outputSchema missing event_url");
-  assert(toolsByName.recommend_events.outputSchema?.anyOf?.[0]?.properties?.events?.items?.properties?.recommendation_score?.type === "number", "recommend_events outputSchema missing recommendation_score");
-  assert(toolsByName.recommend_events_for_user.outputSchema?.anyOf?.[0]?.properties?.personalization?.properties?.applied_preferences?.type === "object", "recommend_events_for_user outputSchema missing personalization.applied_preferences");
-  assert(toolsByName.create_event_preference_profile.outputSchema?.anyOf?.[0]?.properties?.profile_secret?.type === "string", "create_event_preference_profile outputSchema missing profile_secret");
-  assert(toolsByName.create_event_preference_profile.outputSchema?.anyOf?.[0]?.properties?.access_instructions?.properties?.profile_secret_returned_now?.type === "boolean", "create_event_preference_profile outputSchema missing access_instructions.profile_secret_returned_now");
-  assert(toolsByName.get_event_preferences.outputSchema?.anyOf?.[0]?.properties?.profile?.properties?.learned_preferences?.type === "object", "get_event_preferences outputSchema missing learned_preferences");
-  assert(toolsByName.get_event_preferences.outputSchema?.anyOf?.[0]?.properties?.access_instructions?.properties?.reuse_instruction?.type === "string", "get_event_preferences outputSchema missing access_instructions.reuse_instruction");
-  assert(toolsByName.get_event_feedback_prompt.outputSchema?.anyOf?.[0]?.properties?.questions?.items?.type === "string", "get_event_feedback_prompt outputSchema missing questions");
+  assert(Buffer.byteLength(JSON.stringify(response), "utf8") < 19_600, "tools/list exceeds the 19,600-byte result budget");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("liked")), "record_event_feedback inputSchema must accept liked as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("rating")), "record_event_feedback inputSchema must accept rating as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("notes")), "record_event_feedback inputSchema must accept notes as a feedback signal");
-  assert(toolsByName.get_event_search_followups.outputSchema?.anyOf?.[0]?.properties?.search_args_hint?.properties?.when?.type?.includes("null"), "get_event_search_followups outputSchema missing nullable search_args_hint.when");
   assert(toolsByName.delete_event_preferences.inputSchema?.properties?.confirm_delete?.type === "boolean", "delete_event_preferences inputSchema missing confirm_delete");
   assert(toolsByName.delete_event_preferences.inputSchema?.required?.includes("confirm_delete"), "delete_event_preferences inputSchema must require confirm_delete");
-  assert(toolsByName.delete_event_preferences.outputSchema?.anyOf?.[0]?.properties?.deleted?.type === "boolean", "delete_event_preferences outputSchema missing deleted");
-  assert(toolsByName.get_ticket_purchase_policy.outputSchema?.anyOf?.[0]?.properties?.supported_modes?.items?.type === "string", "get_ticket_purchase_policy outputSchema missing supported_modes");
-  assert(toolsByName.get_ticket_offers.outputSchema?.anyOf?.[0]?.properties?.offers?.items?.properties?.purchase_mode?.type === "string", "get_ticket_offers outputSchema missing purchase_mode");
-  assert(toolsByName.quote_ticket_order.outputSchema?.anyOf?.[0]?.properties?.quote_token?.type === "string", "quote_ticket_order outputSchema missing quote_token");
   assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("confirmation_text"), "purchase_ticket_order inputSchema must require confirmation_text");
-  assert(toolsByName.purchase_ticket_order.outputSchema?.anyOf?.[0]?.properties?.purchased?.type === "boolean", "purchase_ticket_order outputSchema missing purchased");
 
   for (const [toolName, annotations] of Object.entries(requiredAnnotations)) {
     const tool = toolsByName[toolName];
@@ -384,7 +373,7 @@ async function checkTools() {
     count: response.tools.length,
     names: toolNames,
     titles: Object.fromEntries(response.tools.map((tool) => [tool.name, tool.title])),
-    output_schema_tools: response.tools.map((tool) => tool.name),
+    output_schema_tools: response.tools.filter((tool) => tool.outputSchema).map((tool) => tool.name),
     annotation_samples: Object.fromEntries(Object.keys(requiredAnnotations).map((name) => [name, toolsByName[name].annotations]))
   };
 }
@@ -540,7 +529,7 @@ async function checkRateLimitHeaders() {
   assert(response.ok, `Rate-limit header check failed: HTTP ${response.status}`);
   assertSecurityHeaders(response, "/mcp");
   const headers = assertRateLimitHeaders(response, "/mcp");
-  const body = await response.json();
+  const body = await readRpcBody(response);
   assert(!body.error, `Rate-limit header check returned RPC error: ${body.error?.message}`);
   return {
     ok: true,
