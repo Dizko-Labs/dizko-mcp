@@ -1,4 +1,4 @@
-import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
+import { getEvent, searchEvents } from "./api.js";
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
@@ -717,21 +717,27 @@ export async function callTool(name, input = {}, options = {}) {
   } catch (error) {
     const described = describeNetworkError(error, error.url);
     const retryable = error.retryable ?? (error.status != null ? isRetryableStatus(error.status) : described.retryable);
-    return toolJson({
-      error: error instanceof EventChatAPIError ? error.message : described.message,
-      type: error.name || "Error",
-      code: error.code ?? described.code ?? null,
-      status: error.status ?? null,
-      hostname: error.hostname ?? described.hostname ?? null,
-      url: error.url ?? null,
-      classification: error.classification ?? described.classification ?? null,
-      cause: described.cause ?? null,
-      retryable,
-      assistant_instruction: retryable
-        ? "This was a temporary network or upstream failure, not bad input. Retry the same call once or twice before changing anything; if it keeps failing, tell the user Dizko's live event inventory is temporarily unreachable."
-        : "Tell the user Dizko's live event inventory was unavailable for this request, then offer to retry with narrower filters such as city, date, event type, vibe, or limit."
-    }, true);
+    return toolJson(publicToolError(error, { retryable, described }), true);
   }
+}
+
+function publicToolError(error, { retryable }) {
+  if (error?.status === 404) {
+    return { error: "The requested event was not found.", code: "event_not_found" };
+  }
+  if (error?.status === 422) {
+    return { error: "The request was not valid.", code: "invalid_request" };
+  }
+  if (error?.status === 401 || error?.status === 403) {
+    return { error: "The event service refused the request.", code: "upstream_auth_failed" };
+  }
+  if (error?.code === "ETIMEDOUT" || error?.classification === "timeout") {
+    return { error: "The event service timed out. Try again shortly.", code: "upstream_timeout" };
+  }
+  if (retryable) {
+    return { error: "The event service is temporarily unavailable. Try again shortly.", code: "upstream_unavailable" };
+  }
+  return { error: "The request could not be completed.", code: "request_failed" };
 }
 
 export function toolJson(value, isError = false) {

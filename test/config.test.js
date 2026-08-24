@@ -78,6 +78,13 @@ test("getConfig allows zero retries", () => {
   assert.equal(getConfig({ EVENTCHAT_API_RETRIES: "0" }).apiRetries, 0);
 });
 
+test("getConfig accepts the MCP upstream credential", () => {
+  assert.equal(
+    getConfig({ DIZKO_MCP_UPSTREAM_SECRET: "secret" }).upstreamSecret,
+    "secret"
+  );
+});
+
 test("SUPPORTED_CITIES includes the live EventChat city catalog", () => {
   assert.deepEqual(SUPPORTED_CITIES, [
     "amsterdam",

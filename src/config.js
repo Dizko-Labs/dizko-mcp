@@ -87,6 +87,7 @@ export function getConfig(env = process.env) {
     apiTimeoutMs: positiveNumber(env.DIZKO_API_TIMEOUT_MS || env.EVENTCHAT_API_TIMEOUT_MS, 8000),
     apiRetries: nonNegativeNumber(env.DIZKO_API_RETRIES || env.EVENTCHAT_API_RETRIES, 2),
     apiRetryBaseDelayMs: positiveNumber(env.DIZKO_API_RETRY_BASE_DELAY_MS || env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),
+    upstreamSecret: env.DIZKO_MCP_UPSTREAM_SECRET || env.EVENTCHAT_MCP_UPSTREAM_SECRET || "",
     // Event inventory updates on a 6h scrape cadence, so a short response
     // cache is risk-free. 0 disables. Stale window: how long an expired
     // entry may still be served when the upstream fails (resilience).

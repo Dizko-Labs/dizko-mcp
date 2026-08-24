@@ -167,7 +167,8 @@ async function fetchApi(url, config, options, label) {
         signal: AbortSignal.timeout(timeoutMs),
         headers: {
           Accept: "application/json",
-          "User-Agent": config.userAgent
+          "User-Agent": config.userAgent,
+          ...(config.upstreamSecret ? { "X-Dizko-MCP-Secret": config.upstreamSecret } : {})
         }
       });
     } catch (error) {

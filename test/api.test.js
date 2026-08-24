@@ -50,6 +50,26 @@ test("searchEvents calls /events and returns JSON", async () => {
   assert.match(calls[0], /city=paris/);
 });
 
+test("searchEvents authenticates private upstream requests without exposing the secret in the URL", async () => {
+  let requestUrl;
+  let requestHeaders;
+  await searchEvents({ city: "berlin" }, {
+    config: {
+      apiBaseUrl: "http://backend.railway.internal:8000",
+      userAgent: "test",
+      upstreamSecret: "private-mcp-secret"
+    },
+    fetch: async (url, init) => {
+      requestUrl = String(url);
+      requestHeaders = init.headers;
+      return Response.json({ events: [], count: 0 });
+    }
+  });
+
+  assert.equal(requestHeaders["X-Dizko-MCP-Secret"], "private-mcp-secret");
+  assert.doesNotMatch(requestUrl, /private-mcp-secret/);
+});
+
 test("searchEvents times out slow upstream calls", async () => {
   await assert.rejects(
     searchEvents({ city: "berlin" }, {

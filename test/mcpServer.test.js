@@ -211,9 +211,10 @@ test("MCP search_events returns structured tool errors for slow upstream calls",
   });
 
   assert.equal(response.isError, true);
-  assert.equal(response.structuredContent.status, 504);
-  assert.equal(response.structuredContent.retryable, true);
-  assert.match(response.content[0].text, /timed out/);
+  assert.deepEqual(response.structuredContent, {
+    error: "The event service timed out. Try again shortly.",
+    code: "upstream_timeout"
+  });
 });
 
 test("MCP ticket tools quote and hand off third-party checkout after written confirmation", async () => {
@@ -362,7 +363,7 @@ async function nextMessage(lines) {
   return JSON.parse(lines.shift());
 }
 
-test("MCP search_events reports DNS failures as retryable with cause, code, hostname, and url", async () => {
+test("MCP search_events sanitizes retryable DNS failures", async () => {
   const dnsError = new TypeError("fetch failed");
   dnsError.cause = Object.assign(new Error("getaddrinfo EAI_AGAIN backend.example.test"), {
     code: "EAI_AGAIN",
@@ -382,19 +383,13 @@ test("MCP search_events reports DNS failures as retryable with cause, code, host
 
   assert.equal(response.isError, true);
   const body = response.structuredContent;
-  assert.equal(body.retryable, true, "EAI_AGAIN must be reported as retryable");
-  assert.equal(body.code, "EAI_AGAIN");
-  assert.equal(body.classification, "dns");
-  assert.equal(body.type, "EventChatNetworkError");
-  assert.equal(body.status, null);
-  assert.equal(body.hostname, "backend.example.test");
-  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
-  assert.match(body.error, /DNS lookup for backend\.example\.test failed \(EAI_AGAIN\)/);
-  assert.match(body.cause, /getaddrinfo EAI_AGAIN/);
-  assert.match(body.assistant_instruction, /Retry the same call/);
+  assert.deepEqual(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
 });
 
-test("MCP search_events reports retryable HTTP 5xx errors with status", async () => {
+test("MCP search_events sanitizes retryable HTTP 5xx errors", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
     params: { name: "search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
@@ -406,7 +401,30 @@ test("MCP search_events reports retryable HTTP 5xx errors with status", async ()
 
   assert.equal(response.isError, true);
   const body = response.structuredContent;
-  assert.equal(body.status, 503);
-  assert.equal(body.retryable, true);
-  assert.match(body.url, /^https:\/\/backend\.example\.test\/events\?/);
+  assert.deepEqual(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
+});
+
+test("MCP error responses never expose upstream hosts, URLs, or causes", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin", limit: 1 } }
+  }, {
+    config: {
+      apiBaseUrl: "https://backend-production-958d.up.railway.app",
+      userAgent: "test"
+    },
+    retries: 0,
+    fetch: async () => new Response("Traceback: private stack detail", { status: 503 })
+  });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(Object.keys(response.structuredContent).sort(), ["code", "error"]);
+  const serialized = JSON.stringify(response);
+  assert.doesNotMatch(serialized, /backend-production-958d/i);
+  assert.doesNotMatch(serialized, /railway\.app/i);
+  assert.doesNotMatch(serialized, /https?:\/\//i);
+  assert.doesNotMatch(serialized, /traceback|stack detail/i);
 });
