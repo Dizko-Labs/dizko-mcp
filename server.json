@@ -7,7 +7,7 @@
     "url": "https://github.com/Dizko-Labs/dizko-mcp",
     "source": "github"
   },
-  "version": "0.7.1",
+  "version": "0.7.2",
   "websiteUrl": "https://www.dizko.app",
   "icons": [
     {
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "dizko-events",
-      "version": "0.7.1",
+      "version": "0.7.2",
       "transport": {
         "type": "stdio"
       },

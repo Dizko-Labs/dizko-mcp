@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import test from "node:test";
 import {
   DEFAULT_API_BASE_URL,
@@ -9,6 +10,12 @@ import {
   TOOL_VERSION,
   getConfig
 } from "../src/config.js";
+
+const packageMetadata = createRequire(import.meta.url)("../package.json");
+
+test("TOOL_VERSION matches package metadata", () => {
+  assert.equal(TOOL_VERSION, packageMetadata.version);
+});
 
 test("getConfig returns shared defaults for every surface", () => {
   const config = getConfig({});
