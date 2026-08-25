@@ -413,3 +413,74 @@ test("a kind:artist request is unchanged and carries no alias field", async () =
   assert.equal(result.kind_canonical, undefined);
   assert.equal(result.entities[0].kind, "artist");
 });
+
+function promotersOptions(promoters, extra = {}) {
+  return {
+    ...OPTIONS,
+    fetch: async () => Response.json({ city: "berlin", city_slug: "berlin", count: promoters.length, promoters, ...extra })
+  };
+}
+
+const BERLIN_PROMOTERS = [
+  { slug: "mini-mal-elektrokneipe", name: "mini.mal elektrokneipe", upcoming_count: 59, genres: ["minimal"] },
+  { slug: "d-edge", name: "D-EDGE", upcoming_count: 4, genres: ["house"] },
+  { slug: "sensorium", name: "Sensorium", upcoming_count: 20, genres: ["techno"] }
+];
+
+test("promoter search folds punctuation, so \"d edge\" finds D-EDGE", async () => {
+  const result = await findSceneEntities(
+    { kind: "promoter", city: "berlin", query: "d edge" },
+    promotersOptions(BERLIN_PROMOTERS)
+  );
+
+  assert.equal(result.count, 1);
+  assert.equal(result.entities[0].name, "D-EDGE");
+});
+
+test("a city Dizko indexes no promoters for reports a coverage gap, not a failed query", async () => {
+  const result = await findSceneEntities(
+    { kind: "promoter", city: "lagos", query: "anything" },
+    promotersOptions([], { city: "lagos", city_slug: "lagos" })
+  );
+
+  assert.equal(result.count, 0);
+  assert.equal(result.no_match, true);
+  assert.equal(result.evidence.promoters_scanned, 0);
+  assert.match(result.data_note, /coverage gap/);
+  // Nothing to suggest, so no misleading "did you mean".
+  assert.equal(result.nearest_matches, undefined);
+});
+
+test("a query matching none of a populated city says how many it scanned", async () => {
+  const result = await findSceneEntities(
+    { kind: "promoter", city: "berlin", query: "zzzznope" },
+    promotersOptions(BERLIN_PROMOTERS)
+  );
+
+  assert.equal(result.no_match, true);
+  assert.equal(result.evidence.promoters_scanned, 3);
+  assert.match(result.data_note, /out of 3 scanned/);
+  assert.equal(result.nearest_matches.length, 3);
+});
+
+test("a genre filter that excludes everything is named as the reason", async () => {
+  const result = await findSceneEntities(
+    { kind: "promoter", city: "berlin", query: "anything", genre: "polka" },
+    promotersOptions(BERLIN_PROMOTERS)
+  );
+
+  assert.equal(result.no_match, true);
+  assert.match(result.data_note, /tagged with genre "polka"/);
+  assert.equal(result.nearest_matches, undefined);
+});
+
+test("a truncated promoter list says the match was partial", async () => {
+  const result = await findSceneEntities(
+    { kind: "promoter", city: "berlin", query: "sensorium" },
+    // count exceeds the returned page: the 200 ceiling truncated the city.
+    promotersOptions(BERLIN_PROMOTERS, { count: 240 })
+  );
+
+  assert.equal(result.count, 1);
+  assert.match(result.data_note, /first 3 of 240 promoters/);
+});

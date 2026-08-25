@@ -60,21 +60,56 @@ async function searchEntities(kind, input, options) {
     if (!String(input.city || "").trim()) {
       return entityError("Promoter search requires a city", "missing_city");
     }
-    const response = await listPromoters(input.city, 200, options);
-    const needle = normalizeText(query);
+    // 200 is the endpoint's maximum; asking for more is a 422, not a
+    // larger page. `count` tells us whether that ceiling truncated the city.
+    const PROMOTER_PAGE_MAX = 200;
+    const response = await listPromoters(input.city, PROMOTER_PAGE_MAX, options);
+    const city = response.city || input.city;
+    const promoters = response.promoters || [];
     const genre = normalizeText(input.genre);
-    const entities = (response.promoters || [])
-      .filter((item) => !needle || normalizeText(`${item.name} ${item.slug}`).includes(needle))
-      .filter((item) => !genre || (item.genres || []).some((value) => normalizeText(value).includes(genre)))
+    const pool = promoters.filter((item) => !genre
+      || (item.genres || []).some((value) => normalizeText(value).includes(genre)));
+    const matches = pool.filter((item) => promoterMatchesQuery(item, query));
+    const entities = matches
       .slice(0, limit)
-      .map((item) => promoterSummary(item, response.city || input.city));
+      .map((item) => promoterSummary(item, city));
+    const truncated = Number(response.count) > promoters.length;
+    if (entities.length) {
+      return compactObject({
+        mode: "search",
+        kind,
+        query,
+        city,
+        count: entities.length,
+        entities,
+        evidence: { promoters_scanned: promoters.length },
+        data_note: truncated
+          ? `Matched against the first ${promoters.length} of ${response.count} promoters indexed in ${city}.`
+          : undefined
+      });
+    }
+    // Three different empty results used to look identical. Say which one
+    // this is: a city Dizko indexes no promoters for at all, a genre filter
+    // that excluded everything, or a query that matched none of them.
     return {
       mode: "search",
       kind,
       query,
-      city: response.city || input.city,
-      count: entities.length,
-      entities
+      city,
+      count: 0,
+      no_match: true,
+      entities: [],
+      evidence: { promoters_scanned: promoters.length },
+      ...(pool.length ? {
+        nearest_matches: pool
+          .slice(0, 3)
+          .map((item) => ({ id: item.slug, name: item.name, upcoming_count: item.upcoming_count ?? 0 }))
+      } : {}),
+      data_note: promoters.length === 0
+        ? `Dizko indexes no promoters in ${city} at all, so this is a coverage gap rather than a failed query. Other kinds may still have data for this city.`
+        : pool.length === 0
+          ? `None of the ${promoters.length} promoters indexed in ${city} are tagged with genre "${input.genre}".`
+          : `No promoter in ${city} matches "${query}", out of ${pool.length} scanned. Entries under nearest_matches are that city's busiest promoters, not matches.`
     };
   }
 
@@ -480,6 +515,30 @@ function sceneProfileSummary(profile, kind) {
     dizko_url: dizkoUrl,
     links
   });
+}
+
+// Promoter search is a local filter over one city's list - there is no
+// promoter index upstream to query. Compare on folded text so punctuation and
+// accents cannot hide a match: "d edge" has to find "D-EDGE".
+function promoterMatchesQuery(promoter, query) {
+  const needle = foldForMatch(query);
+  if (!needle) return true;
+  const haystack = `${foldForMatch(promoter.name)} ${foldForMatch(promoter.slug)}`;
+  if (haystack.includes(needle)) return true;
+  // Fall back to all-terms-present, so word order and extra words between
+  // them still match.
+  const terms = needle.split(" ").filter(Boolean);
+  return terms.length > 1 && terms.every((term) => haystack.includes(term));
+}
+
+function foldForMatch(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function promoterSummary(profile, fallbackCity) {
