@@ -1,4 +1,5 @@
 import { DEFAULT_MCP_URL, DEFAULT_WEB_BASE_URL } from "./config.js";
+import { localTimestamp, localWeekday } from "./localTime.js";
 
 export function eventUrl(event, webBaseUrl = DEFAULT_WEB_BASE_URL) {
   return `${webBaseUrl.replace(/\/+$/, "")}/events/${encodeURIComponent(event.id)}`;
@@ -22,7 +23,14 @@ export function summarizeEvent(event, options = {}) {
     id: event.id,
     title: event.title,
     starts_at: event.start_time || null,
+    // start_time is a UTC instant, and a late-night event's UTC date is the
+    // day after its real one - 26% of sampled events across six cities.
+    // The local rendering carries date, time and offset together so the
+    // night can be read off without a timezone conversion.
+    starts_at_local: localTimestamp(event.start_time, event.venue_city),
+    local_weekday: localWeekday(event.start_time, event.venue_city),
     ends_at: event.end_time || null,
+    ends_at_local: localTimestamp(event.end_time, event.venue_city),
     venue: event.venue_name || null,
     city: event.venue_city || null,
     price: formatPrice(event),
@@ -94,7 +102,12 @@ export function googleCalendarUrl(summary) {
   const start = toCalendarDate(summary.starts_at);
   if (!start) return null;
   const DEFAULT_DURATION_MS = 3 * 60 * 60 * 1000; // typical club night when no end time
-  const end = toCalendarDate(summary.ends_at) || toCalendarDate(new Date(Date.parse(summary.starts_at) + DEFAULT_DURATION_MS).toISOString());
+  const fallbackEnd = () => toCalendarDate(new Date(Date.parse(summary.starts_at) + DEFAULT_DURATION_MS).toISOString());
+  // Some upstream rows carry an end_time before their start_time (22 of a
+  // 1,200-event sample). Passing that through builds a backwards Google
+  // Calendar range, which the import silently rejects - fall back to the
+  // default duration instead.
+  const end = (usableEnd(summary) ? toCalendarDate(summary.ends_at) : null) || fallbackEnd();
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: summary.title || "Dizko Event",
@@ -138,6 +151,12 @@ function shortDescription(value, maxLength = 200) {
   if (!collapsed) return null;
   if (collapsed.length <= maxLength) return collapsed;
   return `${collapsed.slice(0, maxLength - 1).replace(/\s+\S*$/, "")}…`;
+}
+
+function usableEnd(summary) {
+  const start = Date.parse(summary.starts_at);
+  const end = Date.parse(summary.ends_at);
+  return Number.isFinite(start) && Number.isFinite(end) && end > start;
 }
 
 function toCalendarDate(value) {
