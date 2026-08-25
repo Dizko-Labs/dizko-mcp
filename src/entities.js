@@ -136,28 +136,122 @@ async function getEntityProfile(kind, id, input, options) {
 
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   const city = input.city || profile.cities?.[0];
-  const response = await searchEvents({
-    city,
-    venue: profile.name,
-    date_from: input.date_from,
-    date_to: input.date_to,
-    limit: 50
-  }, { ...options, config });
-  const venueKey = normalizeText(profile.name);
-  const upcomingEvents = (response.events || [])
-    .filter((event) => normalizeText(event.venue_name) === venueKey)
+  // The events API matches `venue` as a substring of venue_name, and scene
+  // profile names rarely spell a venue the way its listings do ("Berghain /
+  // Panorama Bar" vs "Berghain | Panorama Bar | Saule"). Query the full name
+  // first, then fall back to the profile name's distinctive lead segment.
+  let matchedQuery = null;
+  let events = [];
+  for (const venueQuery of venueQueryTerms(profile.name)) {
+    const response = await searchEvents({
+      city,
+      venue: venueQuery,
+      date_from: input.date_from,
+      date_to: input.date_to,
+      limit: 50
+    }, { ...options, config });
+    const candidates = (response.events || []).filter((event) => venueNameMatches(profile.name, event.venue_name));
+    if (candidates.length) {
+      matchedQuery = venueQuery;
+      events = candidates;
+      break;
+    }
+  }
+  const upcomingEvents = events
     .slice(0, boundedLimit(input.limit, 10, 20))
     .map((event) => summarizeEvent(event, {
       webBaseUrl: config.webBaseUrl,
       linkBaseUrl: config.mcpUrl
     }));
-  return {
+  const matchedVenueNames = [...new Set(events.map((event) => event.venue_name).filter(Boolean))];
+  return compactObject({
     mode: "profile",
     kind,
     entity,
     returned_event_count: upcomingEvents.length,
-    upcoming_events: upcomingEvents
-  };
+    // Listing venue strings the join accepted, so a caller can see which
+    // real-world spelling backs the count instead of trusting it blind.
+    matched_venue_names: matchedVenueNames,
+    venue_query: matchedQuery,
+    upcoming_events: upcomingEvents,
+    data_note: upcomingEvents.length
+      ? undefined
+      : "Dizko has no upcoming indexed events matching this venue profile."
+  });
+}
+
+// Query terms to try against the events API's substring `venue` filter, most
+// specific first: the full profile name, then each separator-delimited
+// segment that still carries a distinctive token.
+export function venueQueryTerms(name) {
+  const full = String(name || "").trim();
+  if (!full) return [];
+  const terms = [full];
+  for (const segment of full.split(VENUE_SEGMENT_SEPARATOR)) {
+    const trimmed = segment.trim();
+    if (!trimmed || normalizeText(trimmed) === normalizeText(full)) continue;
+    if (!distinctiveTokens(trimmed).length) continue;
+    if (!terms.some((term) => normalizeText(term) === normalizeText(trimmed))) terms.push(trimmed);
+  }
+  return terms;
+}
+
+// True when a scene profile name and an event's venue_name denote the same
+// room. Venue strings differ across sources by separator, diacritics, and how
+// many rooms they enumerate, so compare them a room at a time: "Berghain /
+// Panorama Bar" and "Berghain | Panorama Bar | Saule" share rooms, while
+// "Berghain" and "Berghain Kantine" are one string apart but two venues.
+export function venueNameMatches(profileName, eventVenueName) {
+  const profileSegments = venueSegmentKeys(profileName);
+  const eventSegments = new Set(venueSegmentKeys(eventVenueName));
+  if (!profileSegments.length || !eventSegments.size) return false;
+  return profileSegments.some((segment) => eventSegments.has(segment));
+}
+
+// Room separators. Venue strings enumerate rooms with these; a plain space
+// does not separate rooms, which is why "Berghain Kantine" stays one segment.
+// Commas are deliberately excluded: they qualify a venue rather than list its
+// rooms, so "Kantine, Berghain" must not match the Berghain profile.
+const VENUE_SEGMENT_SEPARATOR = /\s*[/|·•\-\u2013\u2014]+\s*/;
+
+// Each room in a venue string reduced to its distinctive tokens, so that
+// equal rooms compare equal across spellings. Segments that carry no
+// distinctive token ("Bar", "Berlin") are dropped rather than matched on.
+function venueSegmentKeys(value) {
+  const keys = [];
+  for (const segment of String(value || "").split(VENUE_SEGMENT_SEPARATOR)) {
+    const key = distinctiveTokens(segment).join(" ");
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+// Words that carry no venue identity on their own. Dropping them keeps
+// "Tresor" matching its "Tresor Berlin" listings without letting a profile
+// called "The Loft Bar" match every other bar in the city.
+const GENERIC_VENUE_TOKENS = new Set([
+  "the", "a", "an", "and", "bar", "club", "venue", "room", "rooms", "hall",
+  "lounge", "stage", "floor", "space", "berlin", "london", "nyc"
+]);
+
+function distinctiveTokens(value) {
+  return [...new Set(
+    normalizeVenueText(value)
+      .split(" ")
+      .filter((token) => token.length > 1 && !GENERIC_VENUE_TOKENS.has(token))
+  )];
+}
+
+// Case-, accent-, and punctuation-insensitive form used for venue comparison
+// only; normalizeText stays the plain lowercase/whitespace helper.
+function normalizeVenueText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function sceneProfileSummary(profile, kind) {
