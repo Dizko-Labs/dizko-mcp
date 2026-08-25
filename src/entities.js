@@ -56,19 +56,135 @@ async function searchEntities(kind, input, options) {
   const response = await searchScene({
     query,
     kind: SCENE_KIND[kind],
+    // Ask for headroom: duplicates of one entity across sources collapse
+    // into a single result, so a raw `limit` would under-fill the page.
+    limit: Math.min(limit * 2, 40),
     city: input.city,
-    genre: input.genre,
-    limit
+    genre: input.genre
   }, options);
+  const entities = rankSceneResults(response.items || [], kind).slice(0, limit);
   return {
     mode: "search",
     kind,
     query,
     city: input.city || null,
-    count: response.count ?? response.items?.length ?? 0,
+    count: entities.length,
     total_indexed: response.total_indexed ?? null,
-    entities: (response.items || []).map((profile) => sceneProfileSummary(profile, kind))
+    entities: entities.map(({ profile, source, canonical, mergedSources }) => compactObject({
+      ...sceneProfileSummary(profile, kind),
+      source,
+      // Emitted only when true: `source` already tells a caller when a
+      // result is a third-party stub.
+      canonical: canonical || undefined,
+      merged_sources: mergedSources
+    }))
   };
+}
+
+// Dizko's own profiles are the ranking target: they carry the bio, genres,
+// capacity and links an agent actually needs, while Wikidata and OSM
+// contribute thin stubs of the same places. Upstream ranks on text and
+// semantic match alone, so a stub named exactly "Berghain" outranks the
+// native "Berghain / Panorama Bar" profile. Fold duplicates into the
+// canonical record and give it a bounded boost.
+export function rankSceneResults(items, kind) {
+  const groups = [];
+  for (const profile of items) {
+    if (!profile?.name) continue;
+    const entry = {
+      profile,
+      source: sceneSource(profile),
+      canonical: isCanonicalProfile(profile),
+      score: Number(profile.score) || 0,
+      mergedSources: []
+    };
+    const existing = groups.find((group) => sameSceneEntity(group, entry, kind));
+    if (!existing) {
+      groups.push(entry);
+      continue;
+    }
+    mergeSceneDuplicate(existing, entry);
+  }
+  // A modest multiplier, not an absolute precedence: it flips the near-ties
+  // that duplicate stubs create without letting a weakly-matching native
+  // profile jump a stub that is genuinely the better answer.
+  const CANONICAL_BOOST = 1.25;
+  return groups
+    .map((group) => ({ ...group, ranked: group.score * (group.canonical ? CANONICAL_BOOST : 1) }))
+    .sort((a, b) => b.ranked - a.ranked);
+}
+
+// Two results describe one entity when their names agree. Venue names vary
+// by room enumeration across sources, so they compare room-wise; other
+// kinds compare on the normalized name.
+function sameSceneEntity(a, b, kind) {
+  if (a.profile.id === b.profile.id) return true;
+  if (kind === "venue") return venueNameMatches(a.profile.name, b.profile.name);
+  return normalizeText(a.profile.name) === normalizeText(b.profile.name);
+}
+
+// Keeps the canonical record as the surviving one, backfills only the fields
+// it is missing, and records which sources were folded in so a caller can
+// still see that a third-party entry existed.
+function mergeSceneDuplicate(existing, duplicate) {
+  const preferDuplicate = !existing.canonical && duplicate.canonical;
+  const winner = preferDuplicate ? duplicate : existing;
+  const loser = preferDuplicate ? existing : duplicate;
+  // Read the loser before `existing` is overwritten with the winner - when
+  // the duplicate wins, `existing` and `loser` are the same object.
+  const loserProfile = loser.profile;
+  const loserSource = loser.source;
+  const score = Math.max(existing.score, duplicate.score);
+
+  existing.profile = { ...winner.profile };
+  existing.source = winner.source;
+  existing.canonical = winner.canonical;
+  existing.score = score;
+
+  for (const field of MERGEABLE_PROFILE_FIELDS) {
+    const value = loserProfile[field];
+    const current = existing.profile[field];
+    if (value === undefined || value === null) continue;
+    if (current === undefined || current === null || (Array.isArray(current) && !current.length)) {
+      existing.profile[field] = value;
+    }
+  }
+  if (loserSource && loserSource !== existing.source && !existing.mergedSources.includes(loserSource)) {
+    existing.mergedSources.push(loserSource);
+  }
+}
+
+// Only descriptive fields cross over when duplicates merge. Identity and
+// provenance (id, name, source_url, profile_url) stay the winner's, so a
+// merged result never claims a stub's id or cites a stub as its source.
+const MERGEABLE_PROFILE_FIELDS = [
+  "cities", "regions", "country", "neighborhood", "genres", "bio",
+  "typical_capacity", "founded", "website_url", "soundcloud_url",
+  "resident_advisor_url", "instagram_url"
+];
+
+// Dizko's own catalog ids are plain slugs; imported stubs are namespaced by
+// their origin, and source_url names the origin directly.
+function sceneSource(profile) {
+  const id = String(profile.id || "");
+  if (id.startsWith("wd-")) return "wikidata";
+  if (id.startsWith("osm-")) return "openstreetmap";
+  const host = hostnameOf(profile.source_url);
+  if (host.endsWith("wikidata.org")) return "wikidata";
+  if (host.endsWith("openstreetmap.org")) return "openstreetmap";
+  return "dizko";
+}
+
+function isCanonicalProfile(profile) {
+  return sceneSource(profile) === "dizko";
+}
+
+function hostnameOf(value) {
+  try {
+    return new URL(String(value)).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 async function getEntityProfile(kind, id, input, options) {

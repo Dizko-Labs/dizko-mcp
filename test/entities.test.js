@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { clearEventCache } from "../src/api.js";
-import { findSceneEntities, venueNameMatches, venueQueryTerms } from "../src/entities.js";
+import { findSceneEntities, rankSceneResults, venueNameMatches, venueQueryTerms } from "../src/entities.js";
 import { callTool } from "../src/tools.js";
 
 const OPTIONS = {
@@ -247,4 +247,78 @@ test("venue profiles with no indexed events say so instead of returning a bare z
 
   assert.equal(result.returned_event_count, 0);
   assert.match(result.data_note, /no upcoming indexed events/);
+});
+
+function sceneItem(id, name, score, extra = {}) {
+  return { id, kind: "venue", name, cities: ["Berlin"], score, ...extra };
+}
+
+test("canonical Dizko profiles outrank thin third-party stubs of the same place", () => {
+  const ranked = rankSceneResults([
+    sceneItem("wd-q136975", "Berghain", 0.0653, { source_url: "https://www.wikidata.org/wiki/Q136975" }),
+    sceneItem("osm-way-286165789", "Berghain Kantine", 0.0648, { source_url: "https://www.openstreetmap.org/way/286165789" }),
+    sceneItem("berghain", "Berghain / Panorama Bar", 0.0635, { profile_url: "https://greenroom.dance/venue/berghain" })
+  ], "venue");
+
+  // The stub named exactly "Berghain" folds into the native profile...
+  assert.equal(ranked.length, 2);
+  assert.equal(ranked[0].profile.id, "berghain");
+  assert.equal(ranked[0].source, "dizko");
+  assert.deepEqual(ranked[0].mergedSources, ["wikidata"]);
+  // ...while Berghain Kantine stays its own venue.
+  assert.equal(ranked[1].profile.id, "osm-way-286165789");
+  assert.equal(ranked[1].source, "openstreetmap");
+});
+
+test("merging a duplicate keeps the canonical identity and only backfills descriptions", () => {
+  const [merged] = rankSceneResults([
+    sceneItem("wd-q136975", "Berghain", 0.07, {
+      source_url: "https://www.wikidata.org/wiki/Q136975",
+      website_url: "https://www.berghain.berlin/en/",
+      country: "Germany"
+    }),
+    sceneItem("berghain", "Berghain / Panorama Bar", 0.06, {
+      profile_url: "https://greenroom.dance/venue/berghain",
+      country: null
+    })
+  ], "venue");
+
+  assert.equal(merged.profile.id, "berghain");
+  assert.equal(merged.profile.name, "Berghain / Panorama Bar");
+  // Provenance never crosses over from the stub...
+  assert.equal(merged.profile.source_url, undefined);
+  assert.equal(merged.profile.profile_url, "https://greenroom.dance/venue/berghain");
+  // ...but a field the canonical record lacks is filled in.
+  assert.equal(merged.profile.website_url, "https://www.berghain.berlin/en/");
+  assert.equal(merged.profile.country, "Germany");
+});
+
+test("the canonical boost is bounded, so a far better stub still wins", () => {
+  const ranked = rankSceneResults([
+    sceneItem("wd-q30941469", "Zhuhai Opera House", 0.065, { source_url: "https://www.wikidata.org/wiki/Q30941469" }),
+    sceneItem("ohm", "OHM", 0.016, { profile_url: "https://greenroom.dance/venue/ohm" })
+  ], "venue");
+
+  assert.equal(ranked[0].profile.id, "wd-q30941469");
+  assert.equal(ranked[1].profile.id, "ohm");
+});
+
+test("scene search reports source and canonical flags per entity", async () => {
+  const result = await findSceneEntities({ kind: "venue", query: "Berghain" }, {
+    ...OPTIONS,
+    fetch: async () => Response.json({
+      count: 2,
+      total_indexed: 109724,
+      items: [
+        sceneItem("wd-q136975", "Berghain", 0.0653, { source_url: "https://www.wikidata.org/wiki/Q136975" }),
+        sceneItem("berghain", "Berghain / Panorama Bar", 0.0635, { profile_url: "https://greenroom.dance/venue/berghain" })
+      ]
+    })
+  });
+
+  assert.equal(result.count, 1);
+  assert.equal(result.entities[0].id, "berghain");
+  assert.equal(result.entities[0].source, "dizko");
+  assert.equal(result.entities[0].canonical, true);
+  assert.deepEqual(result.entities[0].merged_sources, ["wikidata"]);
 });
