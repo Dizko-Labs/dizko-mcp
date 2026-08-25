@@ -21,11 +21,30 @@ export async function findSceneEntities(input = {}, options = {}) {
   if (!kind) {
     return entityError("kind must be artist, venue, collective, or promoter", "invalid_entity_kind");
   }
-  if (input.id) return getEntityProfile(kind, String(input.id).trim(), input, options);
-  if (!String(input.query || "").trim()) {
-    return entityError("Pass an entity id or a search query", "missing_entity_lookup");
-  }
-  return searchEntities(kind, input, options);
+  const result = input.id
+    ? await getEntityProfile(kind, String(input.id).trim(), input, options)
+    : !String(input.query || "").trim()
+      ? entityError("Pass an entity id or a search query", "missing_entity_lookup")
+      : await searchEntities(kind, input, options);
+  return answerInRequestedKind(result, input.kind, kind);
+}
+
+// "dj" and "artist" are the same kind internally, and everything downstream
+// works in the canonical "artist". Answering a kind:"dj" call with
+// kind:"artist" reads as the server having silently searched something else,
+// so the caller's own word is echoed back and the canonical name is named
+// explicitly rather than substituted in silence.
+function answerInRequestedKind(result, requestedKind, canonicalKind) {
+  const requested = normalizeText(requestedKind);
+  if (!result || result.error || !requested || requested === canonicalKind) return result;
+  const relabel = (entity) => (entity && entity.kind === canonicalKind ? { ...entity, kind: requested } : entity);
+  return {
+    ...result,
+    kind: requested,
+    kind_canonical: canonicalKind,
+    ...(result.entity ? { entity: relabel(result.entity) } : {}),
+    ...(result.entities ? { entities: result.entities.map(relabel) } : {})
+  };
 }
 
 async function searchEntities(kind, input, options) {

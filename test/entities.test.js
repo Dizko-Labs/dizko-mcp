@@ -390,3 +390,26 @@ test("the index size is reported as an all-kinds figure, not a per-kind count", 
   assert.equal(result.total_indexed_all_kinds, 109724);
   assert.equal(result.total_indexed, undefined);
 });
+
+test("a kind:dj request is answered in the caller's own word", async () => {
+  const result = await findSceneEntities({ kind: "dj", query: "Nina Kraviz" }, sceneSearchOptions([
+    { id: "nina-kraviz", kind: "dj", name: "Nina Kraviz", score: 0.0656, matched_text: true }
+  ]));
+
+  assert.equal(result.kind, "dj");
+  // The alias is named rather than applied silently.
+  assert.equal(result.kind_canonical, "artist");
+  assert.equal(result.entities[0].kind, "dj");
+  // The canonical kind still drives the URL shape.
+  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/djs/nina-kraviz");
+});
+
+test("a kind:artist request is unchanged and carries no alias field", async () => {
+  const result = await findSceneEntities({ kind: "artist", query: "Nina Kraviz" }, sceneSearchOptions([
+    { id: "nina-kraviz", kind: "dj", name: "Nina Kraviz", score: 0.0656, matched_text: true }
+  ]));
+
+  assert.equal(result.kind, "artist");
+  assert.equal(result.kind_canonical, undefined);
+  assert.equal(result.entities[0].kind, "artist");
+});

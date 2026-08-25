@@ -1112,7 +1112,11 @@ function sceneEntityInputSchema() {
   return {
     type: "object",
     properties: {
-      kind: { type: "string", enum: ["dj", "artist", "venue", "collective", "promoter"] },
+      kind: {
+        type: "string",
+        enum: ["dj", "artist", "venue", "collective", "promoter"],
+        description: "Entity kind to look up. \"dj\" and \"artist\" are the same kind and search the same index; whichever word you pass is echoed back in the response, with kind_canonical naming the internal kind when they differ."
+      },
       id: { type: "string" },
       query: { type: "string" },
       city: { type: "string" },
