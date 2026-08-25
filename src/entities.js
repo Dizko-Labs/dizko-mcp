@@ -84,7 +84,7 @@ async function searchEntities(kind, input, options) {
       // must see an empty list, not a missing key it might treat as an error.
       entities: [],
       ...(nearest.length ? { nearest_matches: nearest } : {}),
-      total_indexed: response.total_indexed ?? null,
+      total_indexed_all_kinds: response.total_indexed ?? null,
       data_note: `No indexed ${kind} matches "${query}". Entries under nearest_matches are the closest names in the index, not matches - offer them as a "did you mean", never as an answer.`
     };
   }
@@ -94,7 +94,10 @@ async function searchEntities(kind, input, options) {
     query,
     city: input.city || null,
     count: confident.length,
-    total_indexed: response.total_indexed ?? null,
+    // Deliberately not `total_indexed`: upstream reports one figure for the
+    // whole scene index and repeats it for every kind, so a per-kind name
+    // invites a caller to claim there are 109,724 venues.
+    total_indexed_all_kinds: response.total_indexed ?? null,
     entities: confident.map(({ profile, source, canonical, mergedSources }) => compactObject({
       ...sceneProfileSummary(profile, kind),
       source,
