@@ -379,3 +379,14 @@ test("an upstream without matched_text falls back to the score floor", async () 
   ]));
   assert.equal(unmatched.no_match, true);
 });
+
+test("the index size is reported as an all-kinds figure, not a per-kind count", async () => {
+  // Upstream returns the same 109,724 for every kind, so the field name has
+  // to stop a caller inferring "109,724 venues".
+  const result = await findSceneEntities({ kind: "venue", query: "Berghain" }, sceneSearchOptions([
+    { id: "berghain", kind: "venue", name: "Berghain / Panorama Bar", score: 0.0635, matched_text: true }
+  ]));
+
+  assert.equal(result.total_indexed_all_kinds, 109724);
+  assert.equal(result.total_indexed, undefined);
+});
