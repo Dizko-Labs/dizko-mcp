@@ -8,6 +8,7 @@ import {
 } from "./api.js";
 import { getConfig } from "./config.js";
 import { getArtistEvents } from "./artistEvents.js";
+import { browseSceneEntities } from "./sceneBrowse.js";
 import { summarizeEvent } from "./format.js";
 
 const SCENE_KIND = {
@@ -21,12 +22,17 @@ export async function findSceneEntities(input = {}, options = {}) {
   if (!kind) {
     return entityError("kind must be artist, venue, collective, or promoter", "invalid_entity_kind");
   }
-  const result = input.id
-    ? await getEntityProfile(kind, String(input.id).trim(), input, options)
-    : !String(input.query || "").trim()
-      ? entityError("Pass an entity id or a search query", "missing_entity_lookup")
-      : await searchEntities(kind, input, options);
+  const result = await lookupSceneEntities(kind, input, options);
   return answerInRequestedKind(result, input.kind, kind);
+}
+
+async function lookupSceneEntities(kind, input, options) {
+  if (input.id) return getEntityProfile(kind, String(input.id).trim(), input, options);
+  if (String(input.query || "").trim()) return searchEntities(kind, input, options);
+  // No entity named, but a city given: answer "who's big in Sao Paulo"
+  // rather than refusing for want of a lookup key.
+  if (String(input.city || "").trim()) return browseSceneEntities(kind, input, options);
+  return entityError("Pass an entity id, a search query, or a city to browse the city's top entities", "missing_entity_lookup");
 }
 
 // "dj" and "artist" are the same kind internally, and everything downstream
