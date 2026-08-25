@@ -62,23 +62,76 @@ async function searchEntities(kind, input, options) {
     city: input.city,
     genre: input.genre
   }, options);
-  const entities = rankSceneResults(response.items || [], kind).slice(0, limit);
+  const ranked = rankSceneResults(response.items || [], kind);
+  const confident = ranked.filter(isConfidentSceneMatch).slice(0, limit);
+  // Below the confidence floor the index has nothing for this query, and the
+  // rows upstream returned are the nearest vectors rather than answers.
+  // Saying so beats handing back ten plausible-looking names.
+  if (!confident.length) {
+    const nearest = ranked.slice(0, 3).map(({ profile }) => compactObject({
+      id: profile.id,
+      name: profile.name,
+      relevance: roundRelevance(profile.score)
+    }));
+    return {
+      mode: "search",
+      kind,
+      query,
+      city: input.city || null,
+      count: 0,
+      no_match: true,
+      // Always present and always empty here: a caller reading `entities`
+      // must see an empty list, not a missing key it might treat as an error.
+      entities: [],
+      ...(nearest.length ? { nearest_matches: nearest } : {}),
+      total_indexed: response.total_indexed ?? null,
+      data_note: `No indexed ${kind} matches "${query}". Entries under nearest_matches are the closest names in the index, not matches - offer them as a "did you mean", never as an answer.`
+    };
+  }
   return {
     mode: "search",
     kind,
     query,
     city: input.city || null,
-    count: entities.length,
+    count: confident.length,
     total_indexed: response.total_indexed ?? null,
-    entities: entities.map(({ profile, source, canonical, mergedSources }) => compactObject({
+    entities: confident.map(({ profile, source, canonical, mergedSources }) => compactObject({
       ...sceneProfileSummary(profile, kind),
       source,
       // Emitted only when true: `source` already tells a caller when a
       // result is a third-party stub.
       canonical: canonical || undefined,
-      merged_sources: mergedSources
+      merged_sources: mergedSources,
+      relevance: roundRelevance(profile.score),
+      semantic_similarity: roundRelevance(profile.semantic_similarity),
+      match: profile.matched_text ? "name" : "semantic"
     }))
   };
+}
+
+// Upstream fuses a text retriever and a semantic one with reciprocal rank
+// fusion, so a hit only the semantic side found scores 1/(60+rank) - about
+// 0.0164 at rank 1, and never more. Every nonsense query we sampled tops out
+// at exactly that value with matched_text false, while every real or
+// descriptive query clears 0.049 with matched_text true. The floor sits in
+// that gap: above it means two retrievers agreed, which no query without a
+// real match can reach.
+const SCENE_RELEVANCE_FLOOR = 0.02;
+
+function isConfidentSceneMatch(entry) {
+  if (entry.profile.matched_text === true) return true;
+  if (entry.profile.matched_text === false) return false;
+  // matched_text is a newer field. Fall back to the score when there is one,
+  // and trust an upstream that scores nothing at all rather than suppressing
+  // every result it returns.
+  if (!Number.isFinite(Number(entry.profile.score))) return true;
+  return entry.score >= SCENE_RELEVANCE_FLOOR;
+}
+
+function roundRelevance(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.round(parsed * 10_000) / 10_000;
 }
 
 // Dizko's own profiles are the ranking target: they carry the bio, genres,

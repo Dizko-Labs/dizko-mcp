@@ -322,3 +322,60 @@ test("scene search reports source and canonical flags per entity", async () => {
   assert.equal(result.entities[0].canonical, true);
   assert.deepEqual(result.entities[0].merged_sources, ["wikidata"]);
 });
+
+function sceneSearchOptions(items) {
+  return {
+    ...OPTIONS,
+    fetch: async () => Response.json({ count: items.length, total_indexed: 109724, items })
+  };
+}
+
+test("scene search reports a relevance signal per hit", async () => {
+  const result = await findSceneEntities({ kind: "artist", query: "Nina Kraviz" }, sceneSearchOptions([
+    { id: "nina-kraviz", kind: "dj", name: "Nina Kraviz", score: 0.0656, semantic_similarity: 0.7189, matched_text: true },
+    { id: "nina-rabe", kind: "dj", name: "Nina Rabe", score: 0.0588, semantic_similarity: 0.5753, matched_text: true }
+  ]));
+
+  assert.equal(result.count, 2);
+  assert.equal(result.entities[0].relevance, 0.0656);
+  assert.equal(result.entities[0].semantic_similarity, 0.7189);
+  assert.equal(result.entities[0].match, "name");
+});
+
+test("a query with no real match returns nothing rather than plausible names", async () => {
+  // What the live index returns for nonsense: the semantic retriever's
+  // nearest vectors, all at the reciprocal-rank floor with no text match.
+  const result = await findSceneEntities({ kind: "artist", query: "zzzqqq nonexistent" }, sceneSearchOptions([
+    { id: "bugged", kind: "dj", name: "Bugged", score: 0.0164, semantic_similarity: 0.6207, matched_text: false },
+    { id: "critical-error-404", kind: "dj", name: "CRITICAL ERROR 404", score: 0.0161, semantic_similarity: 0.6179, matched_text: false },
+    { id: "t-error-404", kind: "dj", name: "T_error 404", score: 0.0159, semantic_similarity: 0.6153, matched_text: false }
+  ]));
+
+  assert.equal(result.count, 0);
+  assert.equal(result.no_match, true);
+  assert.deepEqual(result.entities, []);
+  assert.deepEqual(result.nearest_matches.map((item) => item.name), ["Bugged", "CRITICAL ERROR 404", "T_error 404"]);
+  assert.match(result.data_note, /never as an answer/);
+});
+
+test("descriptive queries stay above the confidence floor", async () => {
+  const result = await findSceneEntities({ kind: "artist", query: "dark hypnotic warehouse techno" }, sceneSearchOptions([
+    { id: "hypnotic-inc", kind: "dj", name: "HYPNOTIC INC.", score: 0.0643, semantic_similarity: 0.6911, matched_text: true }
+  ]));
+
+  assert.equal(result.no_match, undefined);
+  assert.equal(result.count, 1);
+  assert.equal(result.entities[0].match, "name");
+});
+
+test("an upstream without matched_text falls back to the score floor", async () => {
+  const matched = await findSceneEntities({ kind: "artist", query: "Nina Kraviz" }, sceneSearchOptions([
+    { id: "nina-kraviz", kind: "dj", name: "Nina Kraviz", score: 0.0656 }
+  ]));
+  assert.equal(matched.count, 1);
+
+  const unmatched = await findSceneEntities({ kind: "artist", query: "zzzqqq" }, sceneSearchOptions([
+    { id: "bugged", kind: "dj", name: "Bugged", score: 0.0164 }
+  ]));
+  assert.equal(unmatched.no_match, true);
+});
