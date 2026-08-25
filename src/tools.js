@@ -1119,8 +1119,9 @@ function sceneEntityInputSchema() {
       },
       id: { type: "string" },
       query: { type: "string" },
-      city: { type: "string" },
+      city: { type: "string", description: "Scopes a search. On its own, with no id and no query, it browses that city's top entities by counted appearances in the event inventory - use it for \"who's big in Sao Paulo\"." },
       genre: { type: "string" },
+      event_types: { type: "array", items: { type: "string" }, description: "Browse mode only: restrict the ranking to these event types, e.g. [\"party\"] to exclude theatre and talks." },
       date_from: { type: "string" },
       date_to: { type: "string" },
       limit: { type: "number", minimum: 1, maximum: 20 }
@@ -1128,7 +1129,8 @@ function sceneEntityInputSchema() {
     required: ["kind"],
     anyOf: [
       { required: ["id"] },
-      { required: ["query"] }
+      { required: ["query"] },
+      { required: ["city"] }
     ]
   };
 }
