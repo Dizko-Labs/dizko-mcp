@@ -395,6 +395,51 @@ test("MCP purchase_ticket_order rejects vague confirmation", async () => {
   assert.match(purchase.structuredContent.error, /buy or purchase/);
 });
 
+test("MCP purchase_ticket_order sanitizes failed provider responses", async () => {
+  const options = {
+    fetch: async () => Response.json({
+      id: "event-1",
+      title: "Club Night",
+      ticket_url: "https://tickets.example.test/event-1",
+      source: "hermes",
+      genres: [],
+      vibe: [],
+      event_types: [],
+      lineup: []
+    }),
+    now: new Date("2026-06-10T12:00:00Z"),
+    ticketPurchaseProvider: {
+      canPurchase: () => true,
+      purchase: async () => ({
+        purchased: false,
+        status: "https://backend-production-958d.up.railway.app failed",
+        receipt_url: "https://backend-production-958d.up.railway.app/debug",
+        provider_response: { error: "Traceback: private upstream body" }
+      })
+    }
+  };
+  const quote = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "quote_ticket_order", arguments: { event_id: "event-1", quantity: 1 } }
+  }, options);
+
+  const purchase = await handleMcpRequest({
+    method: "tools/call",
+    params: {
+      name: "purchase_ticket_order",
+      arguments: {
+        quote_token: quote.structuredContent.quote_token,
+        confirmation_text: "Yes, buy 1 ticket for Club Night."
+      }
+    }
+  }, options);
+
+  assert.equal(purchase.structuredContent.purchased, false);
+  assert.equal(purchase.structuredContent.status, "purchase_failed");
+  assert.equal(purchase.structuredContent.error, "Ticket purchase could not be completed.");
+  assert.doesNotMatch(JSON.stringify(purchase), /backend-production-958d|railway\.app|traceback|private upstream body/i);
+});
+
 test("MCP stdio serves newline-delimited JSON-RPC on the 2026-07-28 revision", async () => {
   const input = new PassThrough();
   const output = new PassThrough();

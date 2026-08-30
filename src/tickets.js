@@ -169,6 +169,15 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     idempotency_key: input.idempotency_key || quote.quote_id
   });
 
+  if (!result?.purchased) {
+    return {
+      purchased: false,
+      status: "purchase_failed",
+      error: "Ticket purchase could not be completed.",
+      quote
+    };
+  }
+
   return {
     purchased: Boolean(result.purchased),
     status: result.status || "purchase_attempted",
@@ -183,8 +192,7 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
         receipt_url: result.receipt_url || null
       })
       : null),
-    quote,
-    provider_response: result.provider_response || null
+    quote
   };
 }
 
