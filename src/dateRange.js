@@ -47,7 +47,9 @@ export function resolveDateRange(preset, now = new Date()) {
       const tomorrow = new Date(today.getTime() + ONE_DAY_MS);
       return { date_from: isoDate(tomorrow), date_to: isoDate(tomorrow) };
     }
-    case "weekend": {
+    case "weekend":
+    case "this weekend":
+    case "this-weekend": {
       const day = today.getUTCDay();
       const fridayOffset = (5 - day + 7) % 7;
       const friday = new Date(today.getTime() + fridayOffset * ONE_DAY_MS);
