@@ -1653,11 +1653,7 @@ function ticketPurchaseOutputSchema() {
       confirmation_prompt: { type: "string" },
       assistant_instruction: { type: "string" },
       delivery_email: nullableString(),
-      calendar_event: calendarEventSchema(),
-      provider_response: {
-        type: ["object", "null"],
-        additionalProperties: true
-      }
+      calendar_event: calendarEventSchema()
     },
     required: ["purchased", "status"]
   });
