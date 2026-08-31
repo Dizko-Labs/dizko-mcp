@@ -73,8 +73,21 @@ export function describeNetworkError(error, url) {
   };
 }
 
+// Hostnames of private deployment infrastructure (Railway internal
+// networking, *.internal) are operational details, not user-facing
+// information: error strings are shown to end users and agent clients,
+// so the human message names the service instead. The structured
+// `hostname` field keeps the real value for logs and diagnostics.
+const INTERNAL_HOST_SUFFIXES = [".up.railway.app", ".railway.internal", ".internal"];
+
+export function isInternalHostname(hostname) {
+  if (typeof hostname !== "string") return false;
+  const lower = hostname.toLowerCase();
+  return INTERNAL_HOST_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
 function humanNetworkMessage({ classification, code, hostname, root, error }) {
-  const host = hostname || "the server";
+  const host = isInternalHostname(hostname) ? "the Dizko API" : hostname || "the server";
   switch (classification) {
     case "dns":
       return `DNS lookup for ${host} failed (${code}). This is usually a temporary resolver or network issue - retry shortly, check your network/VPN/DNS, or override the endpoint via environment variables.`;

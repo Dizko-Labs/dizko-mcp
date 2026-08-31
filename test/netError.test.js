@@ -84,3 +84,21 @@ test("non-network errors stay non-retryable and keep their message", () => {
   assert.equal(described.classification, "network");
   assert.equal(described.message, "Unsupported date preset: someday");
 });
+
+test("internal deployment hostnames are masked in user-facing messages only", async () => {
+  const { isInternalHostname } = await import("../src/netError.js");
+  assert.equal(isInternalHostname("eventchat-events-mcp-production.up.railway.app"), true);
+  assert.equal(isInternalHostname("db.railway.internal"), true);
+  assert.equal(isInternalHostname("cache.internal"), true);
+  assert.equal(isInternalHostname("api.dizko.app"), false);
+  assert.equal(isInternalHostname(null), false);
+
+  const described = describeNetworkError(
+    undiciDnsError("ENOTFOUND", "eventchat-events-mcp-production.up.railway.app"),
+    "https://eventchat-events-mcp-production.up.railway.app/events"
+  );
+  assert.doesNotMatch(described.message, /railway/i);
+  assert.match(described.message, /the Dizko API/);
+  // Structured fields keep the real hostname for logs and diagnostics.
+  assert.equal(described.hostname, "eventchat-events-mcp-production.up.railway.app");
+});
