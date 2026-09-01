@@ -109,7 +109,10 @@ test("MCP tool list stays compact while preserving input contracts", async () =>
   const response = await handleMcpRequest({ method: "tools/list" });
   const tools = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
 
-  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 19_600);
+  // Raised from 19,600 to fund the event-tool descriptions: the five
+  // overlapping event tools could not be told apart from their schemas at
+  // the old ceiling, which left only ~136 bytes of headroom between them.
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 20_400);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("dj"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("artist"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("venue"), true);

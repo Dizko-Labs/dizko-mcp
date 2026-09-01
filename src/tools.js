@@ -223,7 +223,7 @@ const rawTools = [
   {
     name: "search_events",
     title: "Search Events",
-    description: "Use this when a user wants filtered live events.",
+    description: "Use this when a user wants live events matching filters, listed in backend order with no taste ranking. query is hybrid-ranked over event embeddings, so pass natural-language intent directly. Prefer recommend_events when the user wants advice on what to pick.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -236,7 +236,7 @@ const rawTools = [
   {
     name: "recommend_events",
     title: "Recommend Events",
-    description: "Use this when a user wants live events ranked by taste, vibe, price, and exclusions.",
+    description: "Use this when a user wants search_events results reordered by taste stated in this conversation - genres, vibe, budget, avoidances - each returned with a recommendation_score and reasons. Prefer recommend_events_for_user when a saved profile exists.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -249,7 +249,7 @@ const rawTools = [
   {
     name: "recommend_events_for_user",
     title: "Recommend Events For User",
-    description: "Use this when a user wants recommendations personalized with a saved Dizko profile.",
+    description: "Use this when a saved Dizko profile should rank the results, applying stored preferences and feedback learned across past sessions rather than only this conversation. Requires profile_id and profile_secret; without both, use recommend_events.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -287,7 +287,7 @@ const rawTools = [
   {
     name: "plan_night",
     title: "Plan Night",
-    description: "Use this when a user wants a primary night-out plan with fallback events.",
+    description: "Use this when a user wants one night's itinerary rather than a list to browse: one primary event plus fallbacks that are nearby or later, each tagged with plan_role and distance_from_primary_km.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -300,7 +300,7 @@ const rawTools = [
   {
     name: "get_daily_roundup",
     title: "Get Daily Roundup",
-    description: "Use this when a user wants a daily city event digest.",
+    description: "Use this when a user wants a whole day surveyed rather than a query answered - a briefing, morning update or scheduled check-in - returned as ranked top_picks plus events grouped into typed sections.",
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,

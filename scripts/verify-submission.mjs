@@ -352,7 +352,7 @@ async function checkTools() {
     assert(tool._meta["openai/toolInvocation/invoked"].length <= 64, `${tool.name} invoked status exceeds 64 chars`);
   }
 
-  assert(Buffer.byteLength(JSON.stringify(response), "utf8") < 19_600, "tools/list exceeds the 19,600-byte result budget");
+  assert(Buffer.byteLength(JSON.stringify(response), "utf8") < 20_400, "tools/list exceeds the 20,400-byte result budget");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("liked")), "record_event_feedback inputSchema must accept liked as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("rating")), "record_event_feedback inputSchema must accept rating as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("notes")), "record_event_feedback inputSchema must accept notes as a feedback signal");
