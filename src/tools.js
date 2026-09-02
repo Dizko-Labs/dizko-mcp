@@ -6,6 +6,7 @@ import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, recommendEvents } from "./planner.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { getArtistEvents } from "./artistEvents.js";
+import { getArtistPage } from "./artistPage.js";
 import { cityPulse } from "./cityPulse.js";
 import { findSceneEntities } from "./entities.js";
 import { resolveSingleDay, weekdayName } from "./dateRange.js";
@@ -322,6 +323,18 @@ const rawTools = [
     },
     inputSchema: artistEventsInputSchema(),
     outputSchema: artistEventsOutputSchema()
+  },
+  {
+    name: "get_artist_page",
+    title: "Get Artist Page",
+    description: "Use this when a user wants an artist's Dizko page or a specific published mix or set. Returns the page embeds with stable block ids for deep links.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    inputSchema: artistPageInputSchema()
   },
   {
     name: "get_city_pulse",
@@ -720,6 +733,24 @@ export async function callTool(name, input = {}, options = {}) {
         ].join("\n")
       });
     }
+    case "get_artist_page": {
+      const result = await getArtistPage(input, options);
+      if (!result.published) {
+        return toolJson({
+          ...result,
+          assistant_instruction: "The artist has no published Dizko page (or the handle is invalid). Answer from the directory profile instead and fall back to the artist's SoundCloud or Resident Advisor link when the user wants music. Do not present a Dizko page link."
+        });
+      }
+      return toolJson({
+        ...result,
+        page_url: `https://www.dizko.app/${result.handle}`,
+        assistant_instruction: [
+          "Link the artist's Dizko page (page_url) when the user asks about the artist or their music.",
+          "When the user asks for a specific mix or set, match it against embeds by title (and provider when named). On a match, deep-link page_url + '?mix=' + encodeURIComponent(embed.id) - the page opens scrolled to that mix, highlighted.",
+          "When no embed matches, link page_url plain and name the embeds that do exist, or fall back to the artist's SoundCloud."
+        ].join("\n")
+      });
+    }
     case "get_city_pulse":
       return toolJson({
         ...await cityPulse(input, options),
@@ -1105,6 +1136,17 @@ function eventSearchSchema() {
       offset: { type: "number", default: 0 },
       result_limit: { type: "number", default: 10 }
     }
+  };
+}
+
+function artistPageInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      handle: { type: "string" }
+    },
+    required: ["handle"],
+    additionalProperties: false
   };
 }
 
