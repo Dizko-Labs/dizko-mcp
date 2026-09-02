@@ -111,6 +111,21 @@ export async function getDjDirectoryProfile(id, options = {}) {
   return fetchJsonCached(url, config, options, "DJ directory profile");
 }
 
+export async function getPublicArtistPage(handle, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/artist-pages/public/for-artist/${encodeURIComponent(handle)}`, config.apiBaseUrl);
+  const response = await fetchApi(url, config, options, "Public artist page");
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new EventChatAPIError(`Public artist page failed with HTTP ${response.status}`, {
+      status: response.status,
+      body: await safeText(response),
+      url: String(url)
+    });
+  }
+  return response.json();
+}
+
 export async function getDjInsights(id, options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   const url = new URL(`/scene/profiles/dj/${encodeURIComponent(id)}/insights`, config.apiBaseUrl);

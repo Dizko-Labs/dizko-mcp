@@ -49,6 +49,7 @@ export {
 export { recommendEvents, planNight } from "./planner.js";
 export { dailyRoundup } from "./roundup.js";
 export { getArtistEvents } from "./artistEvents.js";
+export { getArtistPage } from "./artistPage.js";
 export { findSceneEntities } from "./entities.js";
 export { cityPulse } from "./cityPulse.js";
 export { summarizeEvent, eventUrl } from "./format.js";
