@@ -198,6 +198,18 @@ function directoryProfileFields(profile) {
   });
 }
 
+// Public artist URLs are the camelCase directory handle (capitals encode the
+// id's word breaks): /NinaKraviz, not a slug. Keep in sync with the web.
+function artistHandle(artistId) {
+  return String(artistId || "")
+    .trim()
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join("");
+}
+
 function sceneProfileSummary(profile, kind) {
   const links = compactObject({
     profile: profile.profile_url,
@@ -208,7 +220,7 @@ function sceneProfileSummary(profile, kind) {
     source: profile.source_url
   });
   const dizkoUrl = kind === "artist"
-    ? `https://www.dizko.app/djs/${encodeURIComponent(profile.id)}`
+    ? `https://www.dizko.app/${encodeURIComponent(artistHandle(profile.id))}`
     : kind === "collective"
       ? `https://www.dizko.app/collectives/${encodeURIComponent(profile.id)}`
       : null;
