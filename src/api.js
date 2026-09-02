@@ -105,6 +105,12 @@ export async function getSceneProfile(kind, id, options = {}) {
   return fetchJsonCached(url, config, options, "Scene profile");
 }
 
+export async function getDjDirectoryProfile(id, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL(`/scene/directory/djs/${encodeURIComponent(id)}`, config.apiBaseUrl);
+  return fetchJsonCached(url, config, options, "DJ directory profile");
+}
+
 export async function getDjInsights(id, options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   const url = new URL(`/scene/profiles/dj/${encodeURIComponent(id)}/insights`, config.apiBaseUrl);

@@ -1,6 +1,6 @@
 {
   "name": "dizko-events",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "mcpName": "app.dizko/events",
   "description": "CLI and MCP server for live Dizko event discovery.",
   "type": "module",

@@ -602,7 +602,7 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson({
         ...result,
         ...(!result.error ? {
-          assistant_instruction: "Treat entity facts as canonical Dizko data. For profile results, mention upcoming events and related entities only when those fields are present."
+          assistant_instruction: "Treat entity facts as canonical Dizko data. For profile results, use upcoming events, mixes, appearances, press clips and related entities only when those fields are present. Identify the latest mix by published_at. Link to dizko_url when present."
         } : {})
       }, Boolean(result.error));
     }

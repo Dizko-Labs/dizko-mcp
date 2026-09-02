@@ -84,6 +84,32 @@ test("DJ profiles include insights and exact upcoming appearances", async () => 
           ]
         });
       }
+      if (parsed.pathname === "/scene/directory/djs/nina-kraviz") {
+        return Response.json({
+          dj: {
+            id: "nina-kraviz",
+            name: "Nina Kraviz",
+            experience_level: "headliner",
+            event_types: ["club night", "festival"],
+            venues_played: ["Nitsa"],
+            mixes: [{
+              id: "mix-1",
+              title: "Live at Nitsa",
+              url: "https://soundcloud.com/nina/live-at-nitsa",
+              published_at: "2026-08-20T10:00:00Z",
+              duration: "01:20:00"
+            }],
+            appearances: [{
+              id: "ra-1",
+              title: "Nina Kraviz at Nitsa",
+              date: "2026-10-09T22:00:00Z",
+              city: "Barcelona",
+              venue: "Nitsa",
+              event_url: "https://ra.co/events/ra-1"
+            }]
+          }
+        });
+      }
       return Response.json({
         id: "nina-kraviz",
         name: "Nina Kraviz",
@@ -97,6 +123,9 @@ test("DJ profiles include insights and exact upcoming appearances", async () => 
   assert.equal(eventQuery.searchParams.get("q"), "Nina Kraviz");
   assert.equal(eventQuery.searchParams.get("featuring"), null);
   assert.equal(result.entity.name, "Nina Kraviz");
+  assert.equal(result.entity.experience_level, "headliner");
+  assert.equal(result.entity.mixes[0].title, "Live at Nitsa");
+  assert.equal(result.entity.appearances[0].venue, "Nitsa");
   assert.equal(result.insights.upcoming_events, 1);
   assert.equal(result.upcoming_events.length, 1);
   assert.equal(result.upcoming_events[0].title, "OFFWEEK Festival");

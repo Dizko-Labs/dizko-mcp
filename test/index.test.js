@@ -9,7 +9,7 @@ test("public library entry exposes the stable agent-integration surface", () => 
   for (const name of [
     "tools", "callTool",
     "searchEvents", "getEvent", "listCities", "recommendEvents", "planNight", "dailyRoundup", "summarizeEvent",
-    "searchScene", "getSceneProfile", "getDjInsights", "listPromoters", "getPromoter", "findSceneEntities",
+    "searchScene", "getSceneProfile", "getDjDirectoryProfile", "getDjInsights", "listPromoters", "getPromoter", "findSceneEntities",
     "getConfig", "SUPPORTED_CITIES", "TOOL_VERSION", "MCP_SERVER_INSTRUCTIONS",
     "EventChatAPIError", "EventChatNetworkError",
     "handleMcpRequest", "createSdkMcpServer", "createHttpMcpServer"

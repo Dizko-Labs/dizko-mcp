@@ -1,4 +1,5 @@
 import {
+  getDjDirectoryProfile,
   getDjInsights,
   getPromoter,
   getSceneProfile,
@@ -107,7 +108,7 @@ async function getEntityProfile(kind, id, input, options) {
   }
 
   if (kind === "artist") {
-    const [insights, calendar] = await Promise.all([
+    const [insights, calendar, directory] = await Promise.all([
       getDjInsights(id, options),
       getArtistEvents({
         artists: [profile.name],
@@ -115,12 +116,17 @@ async function getEntityProfile(kind, id, input, options) {
         date_from: input.date_from,
         date_to: input.date_to,
         limit_per_artist: boundedLimit(input.limit, 8, 10)
-      }, options)
+      }, options),
+      getDjDirectoryProfile(id, options).catch(() => null)
     ]);
+    const pageProfile = directory?.dj || null;
     return {
       mode: "profile",
       kind,
-      entity,
+      entity: {
+        ...entity,
+        ...directoryProfileFields(pageProfile)
+      },
       insights: {
         indexed_events: insights.indexed_events ?? 0,
         upcoming_events: insights.upcoming_events ?? 0,
@@ -158,6 +164,38 @@ async function getEntityProfile(kind, id, input, options) {
     returned_event_count: upcomingEvents.length,
     upcoming_events: upcomingEvents
   };
+}
+
+function directoryProfileFields(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  return compactObject({
+    experience_level: profile.experience_level,
+    event_types: profile.event_types || [],
+    venues_played: profile.venues_played || [],
+    mixes: (profile.mixes || []).slice(0, 8).map((mix) => compactObject({
+      id: mix.id,
+      title: mix.title,
+      url: mix.url,
+      published_at: mix.published_at,
+      duration: mix.duration,
+      artwork_url: mix.artwork_url
+    })),
+    appearances: (profile.appearances || []).slice(0, 40).map((appearance) => compactObject({
+      id: appearance.id,
+      title: appearance.title,
+      date: appearance.date,
+      city: appearance.city,
+      venue: appearance.venue,
+      event_url: appearance.event_url,
+      is_festival: appearance.is_festival
+    })),
+    press_clips: (profile.press_clips || []).slice(0, 12).map((clip) => compactObject({
+      title: clip.title,
+      publication: clip.publication,
+      url: clip.url,
+      published_at: clip.published_at
+    }))
+  });
 }
 
 function sceneProfileSummary(profile, kind) {

@@ -37,6 +37,7 @@ export {
   listCities,
   searchScene,
   getSceneProfile,
+  getDjDirectoryProfile,
   getDjInsights,
   listPromoters,
   getPromoter,
