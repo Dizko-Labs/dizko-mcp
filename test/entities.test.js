@@ -57,7 +57,7 @@ test("scene entity search exposes canonical DJs", async () => {
   assert.equal(requested.searchParams.get("kind"), "dj");
   assert.equal(requested.searchParams.get("q"), "Nina Kraviz");
   assert.equal(result.entities[0].name, "Nina Kraviz");
-  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/djs/nina-kraviz");
+  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
 });
 
 test("DJ profiles include insights and exact upcoming appearances", async () => {
