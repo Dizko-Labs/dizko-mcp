@@ -728,8 +728,9 @@ export async function callTool(name, input = {}, options = {}) {
       return toolJson({
         ...payload,
         assistant_instruction: [
-          "Group the answer by artist, one heading per artist with their upcoming events under it. Mention artists in not_found as having no upcoming listed dates. Render every event with the standard template:",
-          EVENT_LINKS_INSTRUCTION
+          "Answer per artist as one compact summary list: one line per upcoming event with weekday, date, start time, venue, and city. Do not send per-event links on artist questions, and do not repeat the lineup in both the event title and the description - name it once.",
+          "Artists in not_found have no upcoming listed dates: say so plainly and never present another artist's event as theirs.",
+          "Close with: 'Stay up to date with all of <artist>'s dates, mixes, and press on their Dizko Page' plus the artist's Dizko Page link when the artist has one - call get_artist_page to resolve the URL and never guess it."
         ].join("\n")
       });
     }
