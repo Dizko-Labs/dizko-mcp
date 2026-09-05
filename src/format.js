@@ -26,6 +26,7 @@ export function summarizeEvent(event, options = {}) {
     venue: event.venue_name || null,
     city: event.venue_city || null,
     price: formatPrice(event),
+    currency: event.currency || null,
     genres: event.genres || [],
     vibe: event.vibe || [],
     event_types: event.event_types || [],

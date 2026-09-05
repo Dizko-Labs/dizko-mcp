@@ -1801,6 +1801,7 @@ function eventSummarySchema() {
       venue: nullableString(),
       city: nullableString(),
       price: nullableString(),
+      currency: nullableString(),
       genres: stringArray(),
       vibe: stringArray(),
       event_types: stringArray(),

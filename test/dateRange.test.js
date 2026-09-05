@@ -12,3 +12,12 @@ test('"this weekend" and "this-weekend" alias the weekend preset', () => {
   assert.deepEqual(resolveDateRange("this-weekend", MONDAY), expected);
   assert.deepEqual(resolveDateRange("This Weekend", MONDAY), expected);
 });
+
+for (const [day, expectedStart] of [["2026-09-04", "2026-09-04"], ["2026-09-05", "2026-09-05"], ["2026-09-06", "2026-09-06"]]) {
+  test(`this weekend on ${day} includes the remaining current weekend`, () => {
+    assert.deepEqual(resolveDateRange("this weekend", new Date(`${day}T12:00:00Z`)), {
+      date_from: expectedStart,
+      date_to: "2026-09-06"
+    });
+  });
+}

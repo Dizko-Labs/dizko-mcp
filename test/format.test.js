@@ -86,3 +86,12 @@ test("summarizeEvent includes a collapsed, truncated one-line description", () =
   assert.equal(summarizeEvent({ ...EVENT, description: "  \n " }, { env: {} }).description, undefined);
   assert.equal(summarizeEvent({ ...EVENT, description: undefined }, { env: {} }).description, undefined);
 });
+
+test("event summaries preserve currency for paid and free events", () => {
+  const paid = summarizeEvent({ ...EVENT, price_min: 30, currency: "BRL" });
+  assert.equal(paid.currency, "BRL");
+  assert.equal(paid.price, "BRL30");
+  const free = summarizeEvent({ ...EVENT, price_min: 0, currency: "USD" });
+  assert.equal(free.currency, "USD");
+  assert.equal(free.price, "free");
+});

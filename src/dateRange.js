@@ -51,6 +51,10 @@ export function resolveDateRange(preset, now = new Date()) {
     case "this weekend":
     case "this-weekend": {
       const day = today.getUTCDay();
+      if (day === 0 || day === 6) {
+        const sunday = new Date(today.getTime() + (day === 6 ? ONE_DAY_MS : 0));
+        return { date_from: isoDate(today), date_to: isoDate(sunday) };
+      }
       const fridayOffset = (5 - day + 7) % 7;
       const friday = new Date(today.getTime() + fridayOffset * ONE_DAY_MS);
       const sunday = new Date(friday.getTime() + 2 * ONE_DAY_MS);
