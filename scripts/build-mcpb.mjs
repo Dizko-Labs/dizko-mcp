@@ -1,11 +1,13 @@
-// Builds a Dizko Events one-click Claude Desktop extension bundle.
-// extension bundle (MCPB, formerly DXT). The stdio MCP server has zero
-// npm dependencies, so the bundle is just the manifest plus bin/ + src/
-// + package.json (required for "type": "module").
+// Builds a Dizko Events one-click Claude Desktop extension bundle (MCPB,
+// formerly DXT): the manifest plus bin/ + src/ + a minimal package.json
+// (required for "type": "module"). The stdio entry point imports
+// @modelcontextprotocol/server, so the host must be able to resolve the
+// package's runtime dependencies.
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CITY_TABLE } from "../src/cities.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -18,8 +20,10 @@ const manifest = {
   name: "dizko-events",
   display_name: "Dizko Events",
   version: pkg.version,
-  description: "Live event discovery: concerts, club nights, art, comedy, and festivals across 32 live cities.",
-  long_description: "Search and get recommendations from Dizko's live event inventory (Resident Advisor, Dice, Eventbrite, Luma, and city calendars). Includes consent-first preference profiles, night planning, ticket-offer lookup, and calendar files. No account or API key required.",
+  // The city count comes from the same table the server uses, so the bundle
+  // description cannot drift from coverage.
+  description: `Live event discovery: concerts, club nights, art, comedy, and festivals across ${CITY_TABLE.length} cities.`,
+  long_description: "Search and get recommendations from Dizko's live event inventory (Resident Advisor, Dice, Eventbrite, Luma, and city calendars), with every time in the city's local timezone. Includes DJ, venue and promoter lookups, daily city roundups, night planning, consent-first preference profiles, ticket-offer lookup, and calendar files. No account or API key required.",
   author: {
     name: "Dizko",
     email: "support@dizko.app",

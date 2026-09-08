@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { tools } from "../src/tools.js";
+import { prompts, tools } from "../src/tools.js";
 
 const fieldsPath = resolve(process.env.EVENTCHAT_SUBMISSION_FIELDS_PATH || "./submission-fields.json");
 const evidencePath = resolve(process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || "./submission-evidence/latest.json");
@@ -51,6 +51,7 @@ async function main() {
     assert(evidence.deployment?.skipped === true || evidence.deployment?.ok === true, "latest evidence must explicitly skip or include deployment metadata");
   }
   assert(evidence.checks?.preference_memory?.note_feedback_learned === true, "latest evidence must show note-derived feedback learning");
+  assert(evidence.checks?.tools?.output_schema_tools?.length === 0, "latest evidence must show no outputSchema is served");
 
   assertArray(fields.discovery_phrases, "discovery_phrases", 5);
   assertArray(fields.review_test_prompts, "review_test_prompts", 5);
@@ -140,13 +141,13 @@ function assertPacketMatches(packet, fields, evidence) {
     "feedback learning",
     "empty feedback",
     "preference deletion",
-    "21 tool descriptors"
+    `${tools.length} tool descriptors`
   ]) {
     assert(packet.includes(phrase), `OPENAI_SUBMISSION_PACKET.md must mention ${phrase}`);
   }
 
   const packetLower = packet.toLowerCase();
-  for (const phrase of ["consent", "profile_secret", "only a hash", "delete_event_preferences", "confirm_delete", "learned avoid", "gps coordinates", "full chat transcripts", "24 months", "30 days"]) {
+  for (const phrase of ["consent", "profile_secret", "only a hash", "dizko_delete_profile", "confirm_delete", "learned avoid", "gps coordinates", "full chat transcripts", "24 months", "30 days"]) {
     assert(packetLower.includes(phrase), `OPENAI_SUBMISSION_PACKET.md privacy section must cover ${phrase}`);
   }
 
@@ -163,17 +164,12 @@ function assertPacketMatches(packet, fields, evidence) {
 }
 
 function assertAuditMatches(audit, fields, evidence) {
+  // Every served tool and prompt name must be accounted for in the audit, so
+  // the list comes from the registry rather than being retyped here.
   for (const value of [
     fields.mcp_endpoint,
-    "get_preference_onboarding",
-    "create_event_preference_profile",
-    "save_event_preferences",
-    "record_event_feedback",
-    "get_event_feedback_prompt",
-    "delete_event_preferences",
-    "get_ticket_offers",
-    "quote_ticket_order",
-    "purchase_ticket_order",
+    ...tools.map((tool) => tool.name),
+    ...prompts.map((prompt) => prompt.name),
     "Server-level MCP instructions",
     "Retention timelines",
     "automatically prunes inactive profiles",

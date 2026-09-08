@@ -179,6 +179,26 @@ The command uses the same profile-secret verification as the MCP tools. It exits
 - `DIZKO_MCP_UPSTREAM_SECRET` (alias `EVENTCHAT_MCP_UPSTREAM_SECRET`) is sent to the Dizko API as `X-Dizko-MCP-Secret`.
 - The rate limiter allows `EVENTCHAT_MCP_RATE_LIMIT_MAX` requests (default `600`) per `EVENTCHAT_MCP_RATE_LIMIT_WINDOW_MS` (default `60000`) per client IP on `/mcp` and the `/e/` short links. Hosted assistants call from shared egress addresses, so add their prefixes to `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` (comma-separated IP prefixes) if legitimate traffic sees 429s. `EVENTCHAT_MCP_RATE_LIMIT_DISABLED=true` turns the limiter off and is not for production.
 
+## Script Environment
+
+The verification scripts read these knobs in addition to the shared `DIZKO_*` settings in `README.md`. All are optional.
+
+| Variable | Script | Default |
+| --- | --- | --- |
+| `DIZKO_MCP_URL` (alias `EVENTCHAT_MCP_URL`) | all live scripts | `https://mcp.dizko.app/mcp` |
+| `EVENTCHAT_SMOKE_TIMEOUT_MS`, `EVENTCHAT_SMOKE_CITY` | `smoke-live.mjs` | `15000`, `berlin` |
+| `EVENTCHAT_MONITOR_TIMEOUT_MS`, `EVENTCHAT_MONITOR_CITY` | `monitor-live.mjs` | `10000`, `berlin` |
+| `EVENTCHAT_MONITOR_TOOL_COUNT` | `monitor-live.mjs` | the package's tool registry size |
+| `EVENTCHAT_VERIFY_TIMEOUT_MS`, `EVENTCHAT_COMPANY_URL` | `verify-submission.mjs` | `15000`, `https://www.dizko.app` |
+| `EVENTCHAT_RAILWAY_SERVICE`, `EVENTCHAT_CAPTURE_DEPLOYMENT_METADATA` | `verify-submission.mjs` | `eventchat-events-mcp`; `false` skips the Railway lookup |
+| `EVENTCHAT_SUBMISSION_EVIDENCE_PATH` | `verify-submission.mjs` (write), `validate-submission-fields.mjs`, `write-submission-summary.mjs` | unset = print only; `./submission-evidence/latest.json` for readers |
+| `EVENTCHAT_SUBMISSION_SUMMARY_PATH` | `write-submission-summary.mjs` | `./submission-evidence/latest-summary.md` |
+| `EVENTCHAT_SUBMISSION_FIELDS_PATH`, `EVENTCHAT_SECURITY_POLICY_PATH`, `EVENTCHAT_SUBMISSION_PACKET_PATH`, `EVENTCHAT_SUBMISSION_AUDIT_PATH` | `validate-submission-fields.mjs` | the checked-in files |
+| `EVENTCHAT_REQUIRE_DEPLOYMENT_METADATA` | `validate-submission-fields.mjs` | `true`; `false` accepts evidence that skipped Railway |
+| `EVENTCHAT_REVIEW_DEMO_PATH` | `write-review-demo.mjs` | `./submission-evidence/review-demo.md` |
+| `DIZKO_CUSTOM_DOMAIN` (alias `EVENTCHAT_CUSTOM_DOMAIN`) | `check-custom-domain.mjs` | `mcp.dizko.app` |
+| `EVENTCHAT_PROFILE_ID`, `EVENTCHAT_PROFILE_SECRET`, `DIZKO_PREFERENCES_PATH` (alias `EVENTCHAT_PREFERENCES_PATH`) | `delete-preference-profile.mjs` | flags `--profile-id`, `--profile-secret`, `--preferences-path` take precedence |
+
 ## Incident Response
 
 For endpoint outage:

@@ -105,7 +105,7 @@ export function createHttpMcpServer(options = {}) {
 
       if (
         request.method === "GET"
-        && ["/download/dizko-events.mcpb", "/download/uplayground-events.mcpb"].includes(url.pathname)
+        && url.pathname === "/download/dizko-events.mcpb"
       ) {
         await sendMcpbBundle(response, corsHeaders(request, settings));
         return;

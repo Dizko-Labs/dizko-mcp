@@ -49,7 +49,7 @@ export function formatDoctorReport(report) {
   lines.push("");
   lines.push(report.ok
     ? "All checks passed."
-    : "Some checks failed. Transient DNS/network failures usually clear on retry; persistent ones may need EVENTCHAT_API_BASE_URL / EVENTCHAT_MCP_URL overrides or a network/VPN/DNS fix.");
+    : "Some checks failed. Transient DNS/network failures usually clear on retry; persistent ones may need DIZKO_API_BASE_URL / DIZKO_MCP_URL overrides or a network/VPN/DNS fix.");
   return lines.join("\n");
 }
 

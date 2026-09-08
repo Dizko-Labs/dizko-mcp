@@ -213,7 +213,7 @@ The server lists 19 tools (the count comes from `tools.length` in `src/tools.js`
 Discovery:
 
 - `dizko_search_events`: search live events in one city and timeframe. Use for any "what's on" request that names a city, a venue, an artist, or a timeframe. Filters you pass (`genres`, `vibe`, `event_types`, `neighborhoods`, `venue`, `featuring`, `promoter`, `free`, `pride`, `price_min`, `price_max`) are hard filters; `avoid` and `max_price` are ranking hints. `count` is the total matching; page with `limit`/`offset`.
-- `dizko_plan_night`: a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Same filters as search.
+- `dizko_plan_night`: a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Same filters as search; `city` may be omitted when a profile with a saved home city is given.
 - `dizko_daily_roundup`: one-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. `compact=true` gives a short push-style digest. Built for "what's happening today" and scheduled briefings.
 - `dizko_city_pulse`: aggregate read of a city's scene over 1-14 days: busiest nights, top venues, genre mix, headline events and free-event count, every stat with evidence counts. Public inventory only.
 - `dizko_get_event`: full detail for one event id (local times, venue and address, price, lineup, set times, artist socials, image, coordinates, links). Search results already contain what the render template needs, so only call it for an id the user gave you.
