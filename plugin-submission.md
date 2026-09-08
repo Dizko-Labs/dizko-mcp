@@ -28,8 +28,7 @@ Find current concerts, parties, nightlife, festivals, and cultural events from D
 
 ## Long Description
 
-Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, consent-based saved preferences, current-context follow-up questions, and post-event feedback learning.
-Ticket tools can show ticket offers, create locked quotes, require explicit written confirmation, and hand off third-party checkout. Autonomous purchase is only available when a bounded provider adapter such as Hermes, OpenClaw, Dizko Checkout, a partner ticketing API, or delegated payment is configured.
+Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across 47 cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, promoter, price, and event type, then returns verifiable event links, ticket URLs, and local times. It also looks up DJs, venues, and promoters with their upcoming dates, and gives daily city roundups and city trend reads. Recommendation tools include explainable taste ranking, compact night plans with fallbacks, consent-based saved preferences with per-weekday day filters, and post-event feedback learning. Ticket tools can show offers, create signed quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.
 
 ## Discovery Phrases
 
@@ -39,8 +38,10 @@ Ticket tools can show ticket offers, create locked quotes, require explicit writ
 - Plan a night out in New York with underground music.
 - Find free cultural events in Paris.
 - Show events at a specific venue.
+- Who is this DJ and when do they play next?
 - Remember what kind of events I like and recommend something for this weekend.
 - I went to that event yesterday; I liked the music but not the crowd.
+- Give me a Dizko roundup of everything happening in Berlin today.
 
 ## MCP Endpoint
 
@@ -100,31 +101,37 @@ http://127.0.0.1:8787/mcp
 
 ## Tools
 
-- `get_preference_onboarding`: Return consent-first questions the assistant should ask before saving a user's event preferences.
-- `create_event_preference_profile`: Create an opaque preference profile after consent so the assistant can remember a stable profile id and private profile secret for future recommendations.
-- `save_event_preferences`: Save or update a user's event preferences after explicit consent and profile-secret access.
-- `get_event_preferences`: Read saved and learned event preferences with profile-secret access.
-- `delete_event_preferences`: Delete a user's saved preferences and feedback history with profile-secret access and explicit confirmation.
-- `record_event_feedback`: Record post-event feedback with profile-secret access so recommendations learn over time; rejects empty feedback unless liked/disliked, rating, or notes are supplied.
-- `get_event_feedback_prompt`: Ask short post-event follow-up questions for a returned event before recording feedback.
-- `get_event_search_followups`: Ask only the missing event type, vibe, budget, area, or avoidance questions before searching tonight/week/weekend events.
-- `search_events`: Search live Dizko event inventory with structured filters.
-- `recommend_events`: Search and rank events for a user's taste, returning explainable recommendation reasons.
-- `recommend_events_for_user`: Recommend events using saved preferences, learned feedback signals, profile-secret access, and the current night/week request.
-- `plan_night`: Build a compact event plan with a primary option and fallbacks.
-- `get_event`: Fetch detail for a specific Dizko event id.
-- `get_ticket_purchase_policy`: Explain purchase modes, safety rules, and provider requirements.
-- `get_ticket_offers`: Return ticket options and whether autonomous purchase is supported for a specific event.
-- `quote_ticket_order`: Create a locked quote with quantity, max total, ticket type, expiration, and stop conditions.
-- `purchase_ticket_order`: Require explicit written confirmation, then either execute an integrated provider purchase or return external checkout handoff.
+All 19 tools, in `tools/list` order (descriptions summarize `src/tools.js`):
+
+- `dizko_search_events`: Search live Dizko events in one city and timeframe; the call for any "what's on" request. Filters are hard; `avoid` and `max_price` are ranking hints; a profile ranks by saved taste without filtering.
+- `dizko_plan_night`: Build a night plan for one city and date: a primary event, a nearby fallback, a later fallback, and alternates.
+- `dizko_daily_roundup`: One-day digest for a city: top picks plus category sections, personalized with a profile, `compact` for push-style digests.
+- `dizko_city_pulse`: Aggregate read of a city's scene over 1-14 days: busiest nights, top venues, genre mix, headline events, free-event count, all with evidence counts.
+- `dizko_get_event`: Full detail for one event id.
+- `dizko_list_cities`: Live coverage with status (live, unlocking, early), event count, timezone and freshness.
+- `dizko_find_artist`: Look up a DJ or artist by name, or by id for the full profile including upcoming events and the published Dizko page.
+- `dizko_find_venue`: Look up a club or venue by name or id, with upcoming events at that venue.
+- `dizko_find_promoter`: Look up a promoter, collective or party crew, with upcoming events.
+- `dizko_artist_events`: Upcoming shows grouped by artist for up to 8 named artists, optionally scoped to a city; tracks the profile's saved artists when none are named.
+- `dizko_create_profile`: Create a private preference profile after explicit consent; returns `profile_id` and a one-time `profile_secret`.
+- `dizko_update_profile`: Add to or replace saved preferences with `profile_id`, `profile_secret` and consent.
+- `dizko_get_profile`: Read saved preferences, learned taste and feedback count.
+- `dizko_delete_profile`: Delete saved preferences and feedback history with `confirm_delete: true` after user confirmation.
+- `dizko_record_feedback`: Store post-event feedback (liked, 1-5 rating, notes) and update learned taste; rejects empty feedback.
+- `dizko_ticket_offers`: Ticket options for one event, including checkout link and whether autonomous purchase is supported, plus the purchase policy.
+- `dizko_quote_tickets`: Create a signed, time-limited quote and the exact confirmation text to ask for.
+- `dizko_purchase_tickets`: Execute a quoted order after explicit written confirmation, or return the external checkout handoff.
+- `dizko_calendar_file`: Build an importable `.ics` calendar entry for one event.
+
+Prompts (`prompts/list`): `dizko_onboarding` (consent-first questions before `dizko_create_profile`), `dizko_search_followups` (optional clarifying questions for a broad search), `dizko_post_event_feedback` (questions before `dizko_record_feedback`), `dizko_ticket_policy` (the ticket safety rules).
 
 ## Privacy Notes
 
-The public version does not require personal accounts for basic event search. Preference learning is opt-in: the assistant asks whether Dizko may save preferences before calling `create_event_preference_profile` or `save_event_preferences`. New users receive an opaque `upg_...` profile id and a private `ups_...` profile secret that the assistant can remember for future recommendations. The creation response also returns `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions. The raw secret is returned once and stored only as a hash by the MCP service. Stored data can include a profile id, hashed profile secret, event preferences, liked/disliked event feedback, ratings, notes, event ids, timestamps, and derived learned taste signals. Users can request deletion through `delete_event_preferences`, which requires `confirm_delete: true` after the user confirms the Dizko-only deletion scope. Search location is limited to user-provided city, neighborhood, venue, or event-area filters. Do not collect GPS coordinates, street addresses, full chat transcripts, or agent prompts unless the tool schemas, privacy policy, and submission packet are explicitly updated and re-reviewed.
+The public version does not require personal accounts for basic event search. Preference learning is opt-in: the assistant asks whether Dizko may save preferences before calling `dizko_create_profile` or `dizko_update_profile`. New users receive an opaque `dzk_...` profile id and a private `dzs_...` profile secret that the assistant can remember for future recommendations. The creation response also returns `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions. The raw secret is returned once and stored only as a hash by the MCP service. Stored data can include a profile id, hashed profile secret, event preferences, liked/disliked event feedback, ratings, notes, event ids, timestamps, and derived learned taste signals. Users can request deletion through `dizko_delete_profile`, which requires `confirm_delete: true` after the user confirms the Dizko-only deletion scope. Search location is limited to user-provided city, neighborhood, venue, or event-area filters; `origin_lat`/`origin_lng` are only accepted for distance sorting when the user supplies them. Do not collect GPS coordinates on the user's behalf, street addresses, full chat transcripts, or agent prompts unless the tool schemas, privacy policy, and submission packet are explicitly updated and re-reviewed.
 
 Saved preference profiles and feedback are retained until user deletion or 24 months of inactivity, whichever comes first. The preference store automatically prunes inactive profiles after the configured retention window, defaulting to 730 days. Technical logs and diagnostics are normally retained for up to 30 days unless needed longer for abuse, security, fraud, reliability, or support investigations.
 
-Positive feedback promotes matching genres, vibes, event types, and venues. Notes such as "liked the music," "too crowded," "too expensive," or "too late" can become learned preference or avoid signals. Negative feedback is converted into learned avoid signals so future recommendations can explain when an event was penalized for a disliked tag.
+Learning rules: a like promotes the event's genres, vibe, event types, venue and promoters. A dislike marks the venue and promoter and only penalizes genres when the notes blame the music; genres need two negative signals before becoming an avoid rule. Notes such as "liked the music," "too crowded," "too expensive," or "too late" become learned preference or avoid signals. A term the user saved as a preference is never learned negative. Saved and learned taste rank results; they never hide events.
 
 ## Review Test Prompts
 
@@ -133,26 +140,28 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 1. Find five techno events in Berlin this weekend.
 2. Recommend a low-cost night out in London tonight with intimate or underground vibes.
 3. Plan a Saturday night in New York with a concert first and a late party fallback.
-4. Get details for an event id returned by search.
-5. Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.
-6. Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.
-7. Delete my Dizko saved event preferences and feedback history.
+4. Who is Nina Kraviz and when does she play next?
+5. Get details for an event id returned by search.
+6. Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.
+7. Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.
+8. Delete my Dizko saved event preferences and feedback history.
 
 ## Pre-Submission Checklist
 
 - Public HTTPS MCP endpoint is deployed and reachable.
-- `/health` returns `{"ok":true,"name":"dizko"}`.
+- `/health` returns `{"ok":true,"name":"dizko","version":"<version>"}`.
 - Tool list and descriptions are final.
 - Tool annotations correctly label read-only, write, destructive, and open-world behavior.
 - Tool descriptors include ChatGPT invocation status text in `_meta["openai/toolInvocation/invoking"]` and `_meta["openai/toolInvocation/invoked"]`.
-- Search and preference tools use `openWorldHint: false`; `purchase_ticket_order` is destructive/open-world because it is the bounded action point for ticket purchase or checkout handoff.
-- Tool descriptors include `outputSchema` for structured event, recommendation, profile, feedback, deletion, and error responses.
-- Tonight/week/weekend discovery includes a dedicated current-context follow-up prompt tool before searching.
-- Post-event learning includes a dedicated follow-up prompt tool before saving feedback.
+- Search, entity and preference tools use `openWorldHint: false`; `dizko_delete_profile` is destructive; `dizko_purchase_tickets` is destructive/open-world because it is the bounded action point for ticket purchase or checkout handoff.
+- Tool descriptors intentionally omit `outputSchema`; every result is returned as `structuredContent` plus a JSON text block, and the verifier asserts no `outputSchema` is served.
+- Every input parameter has a description and defaults are served in the schema.
+- The server advertises the `prompts` capability with `dizko_onboarding`, `dizko_search_followups`, `dizko_post_event_feedback`, and `dizko_ticket_policy`; clarifying questions before a broad search are conversational and optional.
 - Profile creation returns `access_instructions` so users can reuse their profile in clients that do not persist connector state automatically.
-- Preference storage has a persistent backing store or mounted volume.
+- Preference storage has a persistent backing store or mounted volume (single replica).
+- `DIZKO_QUOTE_SIGNING_SECRET` is set on the hosted deployment.
 - CSP is defined for the MCP service and allows only the exact current fetch/image domains.
-- `/mcp` responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; the default limit is generous enough for ChatGPT review traffic.
+- `/mcp` responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`; the default limit (600/min per IP) is generous enough for ChatGPT review traffic.
 - Privacy policy describes saved preferences, feedback, retention, and deletion.
 - Test prompts produce accurate, relevant results on ChatGPT web and mobile.
 - Privacy policy URL and support URL are ready.
@@ -166,15 +175,15 @@ See `golden-prompts.md` for the fuller direct, indirect, and negative prompt set
 Capture these from the actual ChatGPT connector flow before submitting:
 
 - Connector setup screen showing the hosted MCP endpoint connected.
-- Tool list or tool-call details showing Dizko Events exposes 21 tools.
+- Tool list or tool-call details showing all 19 `dizko_*` tools.
 - Live search result for a current event prompt, including at least one event URL.
-- Current-context follow-up flow before a tonight/week/weekend search.
+- Clarifying questions asked conversationally before a broad tonight/week/weekend search, followed by one search call.
 - Consent-first preference onboarding before saving preferences.
 - Personalized recommendation after creating or reusing a preference profile.
-- Post-event feedback prompt and successful feedback recording.
+- Post-event feedback questions and successful feedback recording.
 - Preference deletion flow scoped to Dizko connector data.
 
-Run this command before submitting to generate a JSON evidence report for the reachable endpoint, current Railway deployment metadata, public pages, logo, CSP/security headers, tool list, tool annotations, output schemas, live search, and preference-memory flow:
+Run this command before submitting to generate a JSON evidence report for the reachable endpoint, current Railway deployment metadata, public pages, logo, CSP/security headers, tool list, tool annotations, prompts, live search, and preference-memory flow:
 
 ```bash
 npm run verify:submission
@@ -186,7 +195,7 @@ To also save that evidence as a local review artifact:
 npm run verify:submission:write
 ```
 
-This writes `submission-evidence/latest.json` with the exact production endpoint, current Railway deployment id and image digest, check timestamp, public-page/security-header results, tool metadata, rate-limit headers, live search sample, current-context follow-up check, feedback-prompt check, and preference-memory create/read/feedback/delete flow. The folder is intentionally gitignored because each run contains timestamps and live sample ids.
+This writes `submission-evidence/latest.json` with the exact production endpoint, current Railway deployment id and image digest, check timestamp, public-page/security-header results, tool metadata, rate-limit headers, live search sample, prompt checks, and the preference-memory create/read/feedback/delete flow. The folder is intentionally gitignored because each run contains timestamps and live sample ids.
 
 To generate both the raw JSON evidence and a human-readable submission summary for the dashboard handoff:
 

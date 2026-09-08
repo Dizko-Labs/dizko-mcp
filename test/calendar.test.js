@@ -140,7 +140,7 @@ test("ics_filename is a safe ASCII name derived from the title", () => {
   assert.equal(buildCalendarEvent(EVENT, { now: NOW }).ics_filename, "Loone-with-Gegen.ics");
   assert.equal(buildCalendarEvent({ ...EVENT, title: "Loone with Gegen [FREE ENTRY]" }, { now: NOW }).ics_filename, "Loone-with-Gegen-FREE-ENTRY.ics");
   assert.equal(buildCalendarEvent({ ...EVENT, title: "Röyksopp Café Night" }, { now: NOW }).ics_filename, "Royksopp-Cafe-Night.ics");
-  assert.equal(buildCalendarEvent({ ...EVENT, title: "  --Ünderground / Größe--  " }, { now: NOW }).ics_filename, "Underground-Grose.ics");
+  assert.equal(buildCalendarEvent({ ...EVENT, title: "  --Ünderground / Café--  " }, { now: NOW }).ics_filename, "Underground-Cafe.ics");
   assert.equal(buildCalendarEvent({ ...EVENT, title: "" }, { now: NOW }).ics_filename, "event.ics");
 });
 

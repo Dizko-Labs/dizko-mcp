@@ -345,10 +345,19 @@ export function updateLearnedSignals(learned = {}, feedback, saved = {}) {
       increment(next, "vibe", event.vibe, weight);
     }
   }
+  // Note signals add at most one unit per key per feedback: when the
+  // like/dislike weight already covered a key, the note does not count again.
+  const coveredByWeight = new Set(weight > 0
+    ? ["genres", "vibe", "event_types", "venues", "promoters"]
+    : weight < 0
+      ? ["venues", "promoters", ...(noteSignals.blamesMusic ? ["genres", "event_types"] : []), ...(noteSignals.blamesVibe ? ["vibe"] : [])]
+      : []);
   for (const signal of noteSignals.positive) {
+    if (weight > 0 && coveredByWeight.has(signal.key)) continue;
     increment(next, signal.key, signal.values, 1);
   }
   for (const signal of noteSignals.negative) {
+    if (weight < 0 && coveredByWeight.has(signal.key)) continue;
     increment(next, signal.key, signal.values, -1);
   }
   floorSavedTerms(next, saved);
@@ -386,8 +395,13 @@ export function extractNoteSignals(notes, event = {}) {
 
   // "not bad", "not too bad", "wasn't bad" are mild praise, not negation.
   text = text.replace(/\b(?:not|wasn'?t|was not|isn'?t)\s+(?:too\s+|that\s+|so\s+)?(?:bad|terrible|awful|the worst)\b/g, " okay ");
+  // "not great", "wasn't good" are negations, not praise.
+  text = text.replace(/\b(?:not|wasn'?t|was not|isn'?t|never)\s+(?:so\s+|that\s+|very\s+|really\s+|as\s+)?(?:great|good|amazing|brilliant|incredible|fantastic|excellent|solid|perfect)\b/g, " bad ");
 
-  const near = (a, b) => new RegExp(`\\b${a}\\b.{0,24}\\b${b}\\b`).test(text);
+  // Judge each clause on its own so "good venue but the music was bad" does
+  // not read as praise for the music.
+  const clauses = text.split(/[,.;!?]+|\b(?:but|however|though|although|except|whereas)\b/).map((clause) => clause.trim()).filter(Boolean);
+  const near = (a, b) => clauses.some((clause) => new RegExp(`\\b${a}\\b.{0,18}\\b${b}\\b`).test(clause));
   const likesMusic = near(PRAISE, MUSIC) || near(MUSIC, PRAISE);
   const likesVibe = near(PRAISE, VIBE) || near(VIBE, PRAISE);
   const likesPlace = near(PRAISE, PLACE) || near(PLACE, PRAISE);

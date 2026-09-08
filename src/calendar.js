@@ -106,7 +106,7 @@ export function escapeIcs(value) {
     .replace(/\\/g, "\\\\")
     .replace(/\r?\n/g, "\\n")
     .replace(/,/g, "\\,")
-    .replace(/;/g, "\;");
+    .replace(/;/g, "\\;");
 }
 
 function sanitizeFilename(value) {

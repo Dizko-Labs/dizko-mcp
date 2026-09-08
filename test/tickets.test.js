@@ -73,7 +73,18 @@ test("quote tokens round-trip and are payload.signature", () => {
   const token = encodeQuoteToken(QUOTE, SECRET);
   assert.equal(token.split(".").length, 2, "exactly one dot");
   assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-  assert.deepEqual(decodeQuoteToken(token, SECRET), QUOTE);
+
+  // The constant stop_conditions list is not signed into the token (it keeps
+  // the token short) and is restored verbatim on decode.
+  const { stop_conditions } = quoteTicketOrder(paidEvent(), { quantity: 1 }, { quoteSigningSecret: SECRET }).quote;
+  assert.ok(Array.isArray(stop_conditions) && stop_conditions.length >= 5);
+  assert.deepEqual(decodeQuoteToken(token, SECRET), { ...QUOTE, stop_conditions });
+  assert.equal(encodeQuoteToken({ ...QUOTE, stop_conditions: ["edited"] }, SECRET), token, "stop_conditions never affect the signature");
+  const payload = JSON.parse(Buffer.from(token.split(".")[0], "base64url").toString("utf8"));
+  assert.ok(!("stop_conditions" in payload));
+
+  const full = { ...QUOTE, stop_conditions };
+  assert.deepEqual(decodeQuoteToken(encodeQuoteToken(full, SECRET), SECRET), full, "a real quote round-trips exactly");
 });
 
 test("a tampered payload is rejected as invalid_quote_token", () => {

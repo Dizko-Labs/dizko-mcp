@@ -49,8 +49,13 @@ test("nearestCoveredCity picks the closest covered city within 700 km", () => {
 });
 
 test("nearestCoveredCity only considers cities that are live-covered", () => {
-  assert.equal(nearestCoveredCity("Hamburg", ["london"]).slug, "london");
-  assert.equal(nearestCoveredCity("Hamburg", []), null);
+  // Brussels is ~320 km from London and ~650 km from Berlin: both qualify,
+  // so coverage alone decides.
+  assert.equal(nearestCoveredCity("Brussels", ["berlin", "london"]).slug, "london");
+  assert.equal(nearestCoveredCity("Brussels", ["berlin"]).slug, "berlin");
+  assert.equal(nearestCoveredCity("Brussels", []), null);
+  assert.equal(nearestCoveredCity("Hamburg", ["london"]), null, "London is 721 km from Hamburg, outside the 700 km default");
+  assert.equal(nearestCoveredCity("Hamburg", ["london"], { maxKm: 800 }).slug, "london");
 });
 
 test("CITY_TABLE has 47 unique slugs with valid IANA timezones", () => {

@@ -28,13 +28,22 @@ Please include:
 
 Do not include another person's profile secret, private notes, or personal data in the report. For ordinary support, deletion, or account/privacy help, use `support@dizko.app` or `privacy@dizko.app`.
 
+## Security Posture
+
+- The hosted endpoint is a public read API. CORS is `*` by default (`EVENTCHAT_MCP_ALLOWED_ORIGINS` narrows it) and the server performs no Origin or Host validation on `/mcp`, so with no bearer token any web page can call the discovery tools cross-origin. That is acceptable for public event inventory; anything that writes is protected by the profile secret, not by the transport.
+- Profile writes (`dizko_update_profile`, `dizko_record_feedback`, `dizko_delete_profile`) and reads (`dizko_get_profile`) require both `profile_id` and `profile_secret`; the service stores only a hash of the secret and compares it in constant time.
+- Short links under `/e/<id>/cal|map|ics` are intentionally public: they bypass `EVENTCHAT_MCP_BEARER_TOKEN` when one is configured, but they share the `/mcp` rate limiter and expose only public event data.
+- `EVENTCHAT_ALLOW_LEGACY_PROFILE_IDS=true` disables secret checks for legacy profiles that have no stored secret hash. It must stay unset (off) in production.
+- Ticket quote tokens are HMAC-signed with `DIZKO_QUOTE_SIGNING_SECRET` (alias `EVENTCHAT_QUOTE_SIGNING_SECRET`), so quantity, max total, purchase mode and checkout URL cannot be edited between quote and purchase. Set it on hosted deployments; the per-process fallback secret is only safe for a single instance and invalidates outstanding quotes on restart.
+- `DIZKO_MCP_UPSTREAM_SECRET` and `EVENTCHAT_MCP_BEARER_TOKEN` are deployment secrets and never appear in tool output.
+
 ## Operational Safeguards
 
 - Preference profiles require explicit consent before creation or updates.
 - Profile access requires both `profile_id` and private `profile_secret`; the service stores only a hash of the secret.
-- Deletion is exposed through the destructive `delete_event_preferences` tool and removes saved connector preferences and feedback for the profile only when `confirm_delete: true` is supplied after user confirmation.
-- Ticket purchase is exposed through the destructive/open-world `purchase_ticket_order` boundary. It requires a locked quote and explicit written confirmation; third-party-only checkout links must not be represented as completed purchases.
-- Public MCP traffic is rate-limited and emits `X-RateLimit-*` headers.
+- Deletion is exposed through the destructive `dizko_delete_profile` tool and removes saved connector preferences and feedback for the profile only when `confirm_delete: true` is supplied after user confirmation.
+- Ticket purchase is exposed through the destructive/open-world `dizko_purchase_tickets` boundary. It requires a signed quote and explicit written confirmation (the words buy/purchase plus the quantity and max total); third-party-only checkout links must not be represented as completed purchases.
+- Public MCP traffic is rate-limited per client IP (`EVENTCHAT_MCP_RATE_LIMIT_MAX`, default 600 per minute) and emits `X-RateLimit-*` headers; `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` whitelists known shared egress ranges.
 - The hosted endpoint serves restrictive CSP, referrer-policy, and content-type headers.
 - Submission verification should be run before public review:
 

@@ -404,7 +404,7 @@ Shared by every surface (`src/config.js`):
 | `DIZKO_API_CACHE_TTL_MS` | `300000` | `EVENTCHAT_API_CACHE_TTL_MS` | Upstream response cache; `0` disables. |
 | `DIZKO_API_CACHE_STALE_MS` | `3600000` | `EVENTCHAT_API_CACHE_STALE_MS` | How long an expired cache entry may be served while the upstream fails. |
 | `DIZKO_USER_AGENT` | `DizkoEventsTool/<version>` | `EVENTCHAT_USER_AGENT` | User agent sent upstream. |
-| `DIZKO_MCP_UPSTREAM_SECRET` | unset | `EVENTCHAT_MCP_UPSTREAM_SECRET` | Shared secret presented to the Dizko API by the hosted deployment. |
+| `DIZKO_MCP_UPSTREAM_SECRET` | unset | `EVENTCHAT_MCP_UPSTREAM_SECRET` | Shared secret the hosted deployment sends to the Dizko API as the `X-Dizko-MCP-Secret` header. |
 
 Tickets, preferences (`src/tickets.js`, `src/preferences.js`):
 

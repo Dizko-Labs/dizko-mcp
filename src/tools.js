@@ -125,7 +125,6 @@ const rawTools = [
         profile_secret: { type: "string" },
         fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS } }
       },
-      required: ["city"],
       dependentRequired: { profile_id: ["profile_secret"], profile_secret: ["profile_id"] }
     }
   },
@@ -667,12 +666,16 @@ const handlers = {
     const profileAccess = await optionalProfile(context, input);
     if (profileAccess.error) return profileAccess.error;
     const profile = profileAccess.profile;
-    const timezone = cityTimezone(input.city) || "UTC";
+    const city = input.city || profile?.preferences?.cities?.[0];
+    if (!city) {
+      throw new ToolInputError("Pass a city for the night plan.", { field: "city", hint: "Example: { city: 'new york', when: 'saturday' }. A profile with a saved city can omit it." });
+    }
+    const timezone = cityTimezone(city) || "UTC";
     const singleDay = resolveSingleDay(input, options.now, timezone);
     const hints = profile
       ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
       : rankingHintsFromRequest(input);
-    const plan = await planNight({ ...input, preferences: hints }, { ...options, config });
+    const plan = await planNight({ ...input, city, preferences: hints }, { ...options, config });
     return {
       ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
       timezone,
