@@ -102,7 +102,8 @@ function coerceAndCheck(schema, value, path, root, errors) {
       });
       if (!satisfied) {
         const needs = schema.anyOf.map((branch) => (branch.required || []).join("+")).filter(Boolean);
-        errors.push({ field: path || null, message: `Provide at least one of: ${needs.join(", ")}.` });
+        const firstField = schema.anyOf[0]?.required?.[0] || null;
+        errors.push({ field: path ? `${path}.${firstField || ""}`.replace(/\.$/, "") : firstField, message: `Provide at least one of: ${needs.join(", ")}.` });
       }
     }
     coerced = out;

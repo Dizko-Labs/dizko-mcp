@@ -106,7 +106,7 @@ export function localTimes(event, timezone) {
   if (start) {
     when = formatWhen(start, zone);
     if (end && endLocal.slice(0, 10) !== startLocal.slice(0, 10) && end.getTime() - start.getTime() > 24 * 3600e3) {
-      when += ` → ${formatWhen(end, zone, { timeOnly: false })}`;
+      when += ` → ${formatWhen(end, zone)}`;
     }
   }
   return {

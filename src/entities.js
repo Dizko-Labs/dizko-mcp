@@ -146,7 +146,10 @@ function splitAppearances(appearances, today) {
     is_festival: appearance.is_festival
   }));
   const upcoming = rows.filter((row) => row.date && row.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-  const past = rows.filter((row) => !row.date || row.date < today).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const past = [
+    ...rows.filter((row) => row.date && row.date < today).sort((a, b) => b.date.localeCompare(a.date)),
+    ...rows.filter((row) => !row.date)
+  ];
   return compactObject({
     upcoming_appearances: upcoming.slice(0, UPCOMING_APPEARANCES_CAP),
     upcoming_appearances_count: upcoming.length,
@@ -270,7 +273,7 @@ export async function findPromoter(input = {}, options = {}) {
   const needle = normalizeText(query);
   const genre = normalizeText(input.genre);
   const [collectives, promoters] = await Promise.all([
-    input.kind === "promoter" ? Promise.resolve({ items: [] }) : searchScene({ query, kind: "collective", city: input.city, genre: input.genre, limit }, options).catch(() => ({ items: [] })),
+    input.kind === "promoter" ? Promise.resolve({ items: [] }) : searchScene({ query, kind: "collective", genre: input.genre, limit }, options).catch(() => ({ items: [] })),
     input.city && input.kind !== "collective" ? listPromoters(input.city, 200, options).catch(() => ({ promoters: [] })) : Promise.resolve({ promoters: [] })
   ]);
   const promoterRows = (promoters.promoters || [])
@@ -371,14 +374,19 @@ function isConfidentMatch(query, entities) {
   return top === needle || needle.includes(top) || top.includes(needle);
 }
 
+// A promoter row (has event listings) wins over a collective row with the
+// same name: its id and URL are the ones that lead to upcoming events.
 function mergeByName(rows) {
   const seen = new Map();
   for (const row of rows) {
     const key = normalizeText(row.name);
-    if (!seen.has(key)) seen.set(key, row);
-    else seen.set(key, { ...seen.get(key), ...row, kind: "promoter" });
+    const existing = seen.get(key);
+    if (!existing) { seen.set(key, row); continue; }
+    const promoter = existing.kind === "promoter" ? existing : row.kind === "promoter" ? row : null;
+    const other = promoter === existing ? row : existing;
+    seen.set(key, promoter ? { ...other, ...promoter, kind: "promoter", collective_id: other.kind === "collective" ? other.id : undefined } : { ...existing, ...row });
   }
-  return [...seen.values()];
+  return [...seen.values()].map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
 }
 
 function kindFromScene(kind) {
