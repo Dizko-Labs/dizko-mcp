@@ -1,8 +1,8 @@
 {
   "name": "dizko-events",
-  "version": "0.7.6",
+  "version": "0.8.0",
   "mcpName": "app.dizko/events",
-  "description": "CLI and MCP server for live Dizko event discovery.",
+  "description": "CLI and MCP server for live Dizko event, DJ, venue and promoter discovery.",
   "type": "module",
   "main": "src/index.js",
   "exports": {
@@ -62,7 +62,7 @@
     "monitor:live": "node ./scripts/monitor-live.mjs",
     "build:mcpb": "node ./scripts/build-mcpb.mjs",
     "preflight:submission": "npm test && npm run smoke:live && npm run verify:submission:bundle && npm run verify:submission:fields",
-    "test": "node --test"
+    "test": "node --import ./test/setup.mjs --test"
   },
   "engines": {
     "node": ">=20"

@@ -1,6 +1,6 @@
 import { StdioServerTransport, serveStdio } from "@modelcontextprotocol/server/stdio";
 import { MCP_SERVER_INSTRUCTIONS, TOOL_VERSION } from "./config.js";
-import { callTool, tools } from "./tools.js";
+import { callTool, getPrompt, prompts, tools } from "./tools.js";
 import { CACHE_HINTS, createSdkMcpServer } from "./sdkServer.js";
 
 // Protocol revisions this server answers on the modern (stateless) path.
@@ -18,7 +18,7 @@ export async function handleMcpRequest(request, options = {}) {
   case "server/discover":
     return complete({
       supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
-      capabilities: { tools: {} },
+      capabilities: { tools: {}, prompts: {} },
       instructions: MCP_SERVER_INSTRUCTIONS
     }, CACHE_HINTS["server/discover"]);
   case "initialize":
@@ -26,7 +26,7 @@ export async function handleMcpRequest(request, options = {}) {
     // stateless path carries the version in _meta instead.
     return {
       protocolVersion: request.params?.protocolVersion || "2025-11-25",
-      capabilities: { tools: {} },
+      capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "dizko", version: TOOL_VERSION },
       instructions: MCP_SERVER_INSTRUCTIONS
     };
@@ -34,6 +34,10 @@ export async function handleMcpRequest(request, options = {}) {
     return complete({ tools }, CACHE_HINTS["tools/list"]);
   case "tools/call":
     return complete(await callTool(request.params?.name, request.params?.arguments || {}, options));
+  case "prompts/list":
+    return complete({ prompts }, CACHE_HINTS["prompts/list"]);
+  case "prompts/get":
+    return complete(await getPrompt(request.params?.name, request.params?.arguments || {}, options));
   case "notifications/initialized":
     return undefined;
   default:

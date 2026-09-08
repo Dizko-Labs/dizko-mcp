@@ -1,21 +1,41 @@
-import { createHash } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { buildCalendarEvent } from "./calendar.js";
+import { ToolInputError } from "./errors.js";
 import { summarizeEvent } from "./format.js";
 
 const DEFAULT_QUOTE_TTL_MS = 10 * 60 * 1000;
+const STOP_CONDITIONS = [
+  "price exceeds max_total",
+  "event title, date, venue, or city changes",
+  "requested ticket type or quantity is unavailable",
+  "refund or transfer terms are worse than the user accepted",
+  "checkout requires credentials, CAPTCHA, age verification, or payment details not available to the provider"
+];
+const MAX_QUANTITY = 12;
+
+// Quote tokens are signed so a caller cannot edit quantity, max_total,
+// purchase mode or checkout URL between quote and purchase. Set
+// DIZKO_QUOTE_SIGNING_SECRET so tokens survive restarts and replicas; the
+// per-process fallback is only safe for a single instance.
+const processSecret = randomBytes(32).toString("base64url");
+
+export function quoteSigningSecret(options = {}) {
+  const env = options.env || process.env;
+  return options.quoteSigningSecret || env.DIZKO_QUOTE_SIGNING_SECRET || env.EVENTCHAT_QUOTE_SIGNING_SECRET || processSecret;
+}
 
 export const TICKET_PURCHASE_POLICY = {
   autonomous_purchase_available: false,
   supported_modes: [
     "external_checkout",
     "partner_api_purchase",
-    "uplayground_checkout",
+    "dizko_checkout",
     "delegated_payment_future"
   ],
   provider_contract: "Hermes, OpenClaw, Dizko Checkout, or another purchase provider can implement ticketPurchaseProvider.purchase({ quote, confirmation_text, delivery_email, add_to_calendar }) to enable bounded autonomous purchase, ticket email delivery, and calendar attachment/creation.",
   hard_rules: [
     "Never purchase from a third-party ticket site by browser automation, scraping, CAPTCHA bypass, or stored raw card details.",
-    "Create a locked quote before purchase.",
+    "Create a locked, signed quote before purchase.",
     "Require explicit written confirmation in the conversation before purchase.",
     "Stop and ask again if event, date, venue, quantity, ticket type, fees, refund terms, or total price changes.",
     "Respect user max_total, quantity, age restriction, accessibility, refund constraints, ticket delivery email, and calendar preference."
@@ -25,8 +45,9 @@ export const TICKET_PURCHASE_POLICY = {
 
 export function buildTicketOffers(event, options = {}) {
   const summary = summarizeEvent(event, options);
-  const provider = normalizeProvider(summary.source, summary.ticket_url);
+  const provider = normalizeProvider(event.source_display || event.source, summary.ticket_url);
   const hasCheckout = Boolean(summary.ticket_url);
+  const freeEntry = summary.price === "free";
   const purchaseProvider = options.ticketPurchaseProvider;
   const autonomousSupported = Boolean(purchaseProvider?.canPurchase?.(event, summary));
   const purchaseMode = autonomousSupported
@@ -41,13 +62,14 @@ export function buildTicketOffers(event, options = {}) {
     provider,
     purchase_mode: purchaseMode,
     autonomous_purchase_supported: autonomousSupported,
-    availability_status: hasCheckout || autonomousSupported ? "checkout_available" : "unknown",
+    availability_status: hasCheckout || autonomousSupported ? (freeEntry ? "free_entry" : "checkout_available") : "unknown",
+    free_entry: freeEntry,
     ticket_url: summary.ticket_url,
     estimated_price: summary.price,
     currency: event.currency || inferCurrency(summary.price),
     price_guaranteed: false,
     fees_included: false,
-    notes: offerNotes({ hasCheckout, autonomousSupported, provider })
+    notes: offerNotes({ hasCheckout, autonomousSupported, provider, freeEntry })
   };
 
   return {
@@ -57,37 +79,44 @@ export function buildTicketOffers(event, options = {}) {
     policy: TICKET_PURCHASE_POLICY,
     assistant_instruction: purchaseMode === "unavailable"
       ? "Tell the user ticket inventory is not available through Dizko for this event yet."
-      : "Show ticket options, explain whether autonomous purchase is supported, and call quote_ticket_order only after the user chooses quantity and constraints."
+      : freeEntry
+        ? "This event is free entry. Share the link for RSVP or guest list; no quote or purchase is needed unless the link sells add-ons."
+        : "Show ticket options, explain whether autonomous purchase is supported, and call dizko_quote_tickets only after the user chooses quantity and constraints."
   };
 }
 
 export function quoteTicketOrder(event, input = {}, options = {}) {
+  const quantity = normalizeQuantity(input.quantity);
+  const maxTotal = normalizeMoney(input.max_total, "max_total");
   const offersResult = buildTicketOffers(event, options);
   const offer = chooseOffer(offersResult.offers, input.offer_id);
   if (!offer) {
     return {
       quoted: false,
-      error: "No ticket offer is available for this event.",
+      error: input.offer_id && offersResult.offers.length
+        ? "That offer_id does not match this event. Call dizko_ticket_offers again and use the returned offer_id."
+        : "No ticket offer is available for this event.",
+      code: input.offer_id && offersResult.offers.length ? "unknown_offer" : "no_offer",
       event: offersResult.event,
       policy: TICKET_PURCHASE_POLICY
     };
   }
 
-  const quantity = normalizeQuantity(input.quantity);
   const now = options.now || new Date();
   const expiresAt = new Date(now.getTime() + DEFAULT_QUOTE_TTL_MS).toISOString();
   const quote = {
     quote_id: quoteId(offer, input, quantity, expiresAt),
-    event: offer.event,
+    event: miniEvent(offer.event),
     offer_id: offer.offer_id,
     provider: offer.provider,
     purchase_mode: offer.purchase_mode,
     autonomous_purchase_supported: offer.autonomous_purchase_supported,
     availability_status: offer.availability_status,
+    free_entry: offer.free_entry,
     checkout_url: offer.ticket_url,
     quantity,
     ticket_type: input.ticket_type || "best available / general admission",
-    max_total: input.max_total ?? null,
+    max_total: maxTotal,
     currency: input.currency || offer.currency || null,
     estimated_price: offer.estimated_price,
     price_guaranteed: offer.price_guaranteed,
@@ -96,33 +125,29 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
     delivery_email: input.delivery_email || null,
     add_to_calendar: input.add_to_calendar !== false,
     expires_at: expiresAt,
-    stop_conditions: [
-      "price exceeds max_total",
-      "event title, date, venue, or city changes",
-      "requested ticket type or quantity is unavailable",
-      "refund or transfer terms are worse than the user accepted",
-      "checkout requires credentials, CAPTCHA, age verification, or payment details not available to the provider"
-    ]
+    stop_conditions: STOP_CONDITIONS
   };
 
   return {
     quoted: true,
     quote,
-    quote_token: encodeQuoteToken(quote),
+    quote_token: encodeQuoteToken(quote, quoteSigningSecret(options)),
     confirmation_required: true,
     confirmation_prompt: confirmationPrompt(quote),
-    assistant_instruction: "Ask the user for explicit written confirmation matching this quote before calling purchase_ticket_order. If purchase_mode is external_checkout, the next tool call will return a checkout handoff rather than an autonomous purchase."
+    assistant_instruction: "Ask the user for explicit written confirmation matching this quote before calling dizko_purchase_tickets. If purchase_mode is external_checkout, the next call returns a checkout handoff rather than an autonomous purchase."
   };
 }
 
 export async function purchaseTicketOrder(input = {}, options = {}) {
-  const quote = decodeQuoteToken(input.quote_token);
+  const quote = decodeQuoteToken(input.quote_token, quoteSigningSecret(options));
   const confirmation = validatePurchaseConfirmation(quote, input.confirmation_text);
   if (!confirmation.valid) {
     return {
       purchased: false,
       status: "confirmation_required",
+      code: "confirmation_mismatch",
       error: confirmation.error,
+      missing: confirmation.missing,
       quote,
       confirmation_prompt: confirmationPrompt(quote)
     };
@@ -132,8 +157,9 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     return {
       purchased: false,
       status: "quote_expired",
+      code: "quote_expired",
       quote,
-      assistant_instruction: "Tell the user the ticket quote expired and call quote_ticket_order again before any purchase."
+      assistant_instruction: "Tell the user the ticket quote expired and call dizko_quote_tickets again before any purchase."
     };
   }
 
@@ -155,6 +181,7 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     return {
       purchased: false,
       status: "purchase_provider_not_configured",
+      code: "purchase_provider_not_configured",
       quote,
       assistant_instruction: "Tell the user autonomous purchase is not enabled for this provider yet. Offer checkout handoff or ask them to choose another event with integrated checkout."
     };
@@ -173,6 +200,7 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     return {
       purchased: false,
       status: "purchase_failed",
+      code: "purchase_failed",
       error: "Ticket purchase could not be completed.",
       quote
     };
@@ -196,17 +224,53 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
   };
 }
 
-export function encodeQuoteToken(quote) {
-  return Buffer.from(JSON.stringify(quote), "utf8").toString("base64url");
+// token = base64url(json) + "." + base64url(hmac-sha256(secret, payload))
+export function encodeQuoteToken(quote, secret = quoteSigningSecret()) {
+  const { stop_conditions: _constant, ...signed } = quote;
+  const payload = Buffer.from(JSON.stringify(signed), "utf8").toString("base64url");
+  return `${payload}.${sign(payload, secret)}`;
 }
 
-export function decodeQuoteToken(token) {
-  if (!token || typeof token !== "string") throw new Error("quote_token is required.");
-  try {
-    return JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
-  } catch {
-    throw new Error("Invalid quote_token.");
+export function decodeQuoteToken(token, secret = quoteSigningSecret()) {
+  if (!token || typeof token !== "string") {
+    throw new ToolInputError("quote_token is required.", { field: "quote_token", hint: "Call dizko_quote_tickets first and pass its quote_token unchanged." });
   }
+  const [payload, signature, ...rest] = token.split(".");
+  if (!payload || !signature || rest.length) {
+    throw invalidToken();
+  }
+  const expected = Buffer.from(sign(payload, secret));
+  const actual = Buffer.from(signature);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    throw invalidToken();
+  }
+  try {
+    const quote = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!quote || typeof quote !== "object" || !quote.quote_id) throw invalidToken();
+    return { ...quote, stop_conditions: STOP_CONDITIONS };
+  } catch (error) {
+    if (error instanceof ToolInputError) throw error;
+    throw invalidToken();
+  }
+}
+
+function invalidToken() {
+  return new ToolInputError("quote_token is invalid, altered, or was issued by another server.", {
+    field: "quote_token",
+    code: "invalid_quote_token",
+    hint: "Call dizko_quote_tickets again and pass the returned quote_token exactly as given."
+  });
+}
+
+function sign(payload, secret) {
+  return createHmac("sha256", String(secret)).update(payload).digest("base64url");
+}
+
+// Only what checkout, confirmation and the calendar entry need; keeps the
+// signed token short.
+function miniEvent(summary) {
+  const keep = ["id", "title", "when", "starts_at", "ends_at", "starts_at_local", "timezone", "venue", "address", "city", "price", "event_url", "ticket_url", "calendar_url", "directions_url"];
+  return Object.fromEntries(keep.filter((key) => summary[key] !== undefined && summary[key] !== null).map((key) => [key, summary[key]]));
 }
 
 function chooseOffer(offers, offerIdInput) {
@@ -216,25 +280,50 @@ function chooseOffer(offers, offerIdInput) {
 }
 
 function normalizeQuantity(quantity) {
-  const value = Number(quantity ?? 1);
-  if (!Number.isInteger(value) || value < 1 || value > 12) {
-    throw new Error("quantity must be an integer between 1 and 12.");
+  const value = quantity === undefined || quantity === null || quantity === "" ? 1 : Number(quantity);
+  if (!Number.isInteger(value) || value < 1 || value > MAX_QUANTITY) {
+    throw new ToolInputError(`quantity must be a whole number from 1 to ${MAX_QUANTITY}.`, {
+      field: "quantity",
+      hint: `Received ${JSON.stringify(quantity)}.`
+    });
   }
   return value;
 }
 
-function validatePurchaseConfirmation(quote, confirmationText) {
+function normalizeMoney(value, field) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    throw new ToolInputError(`${field} must be a non-negative number.`, { field, hint: `Received ${JSON.stringify(value)}.` });
+  }
+  return number;
+}
+
+// Whole-word and whole-number matching: "buyer" is not "buy", "20" is not
+// "2", and "2400" is not "24".
+export function validatePurchaseConfirmation(quote, confirmationText) {
   const text = String(confirmationText || "").toLowerCase();
-  if (!text.includes("buy") && !text.includes("purchase")) {
-    return { valid: false, error: "Written confirmation must explicitly say buy or purchase." };
+  const missing = [];
+  if (!/\b(buy|purchase|book|order)\b/.test(text)) missing.push("the word buy or purchase");
+  if (!containsNumber(text, quote.quantity)) missing.push(`the quantity ${quote.quantity}`);
+  if (quote.max_total != null && !containsNumber(text, quote.max_total)) missing.push(`the max total ${quote.max_total}`);
+  if (missing.length) {
+    return {
+      valid: false,
+      missing,
+      error: `Written confirmation must include ${missing.join(", ")}.`
+    };
   }
-  if (!text.includes(String(quote.quantity))) {
-    return { valid: false, error: `Written confirmation must include the quantity ${quote.quantity}.` };
-  }
-  if (quote.max_total != null && !text.includes(String(quote.max_total))) {
-    return { valid: false, error: `Written confirmation must include the max total ${quote.max_total}.` };
-  }
-  return { valid: true };
+  return { valid: true, missing: [] };
+}
+
+function containsNumber(text, value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return false;
+  const forms = [String(number)];
+  if (Number.isInteger(number)) forms.push(`${number}.00`, `${number}.0`);
+  else forms.push(number.toFixed(2));
+  return forms.some((form) => new RegExp(`(^|[^\\d.,])${form.replace(".", "\\.")}(?![\\d])(?!\\.\\d)`).test(text));
 }
 
 function confirmationPrompt(quote) {
@@ -248,15 +337,19 @@ function normalizeProvider(source, ticketUrl) {
   if (value.includes("eventbrite")) return "eventbrite";
   if (value.includes("resident") || value.includes("ra.co")) return "resident_advisor";
   if (value.includes("partiful")) return "partiful";
+  if (value.includes("dice.fm") || /\bdice\b/.test(value)) return "dice";
   if (value.includes("dola")) return "dola";
   if (value.includes("hermes")) return "hermes";
   if (value.includes("openclaw")) return "openclaw";
   return source || "unknown";
 }
 
-function offerNotes({ hasCheckout, autonomousSupported, provider }) {
+function offerNotes({ hasCheckout, autonomousSupported, provider, freeEntry }) {
   if (autonomousSupported) {
     return [`${provider} can support bounded autonomous purchase through an integrated provider.`];
+  }
+  if (freeEntry && hasCheckout) {
+    return ["Free entry. The link is for RSVP, guest list, or details; no purchase is needed."];
   }
   if (hasCheckout) {
     return [
@@ -286,14 +379,15 @@ function quoteId(offer, input, quantity, expiresAt) {
 }
 
 function hash(value) {
-  return createHash("sha256").update(String(value)).digest("hex");
+  return createHmac("sha256", "dizko-quote-id").update(String(value)).digest("hex");
 }
 
 function inferCurrency(price) {
   if (!price) return null;
-  if (String(price).startsWith("USD")) return "USD";
-  if (String(price).startsWith("$")) return "USD";
-  if (String(price).startsWith("€")) return "EUR";
-  if (String(price).startsWith("£")) return "GBP";
+  const text = String(price);
+  if (text.startsWith("USD") || text.startsWith("$")) return "USD";
+  if (text.startsWith("€") || text.startsWith("EUR")) return "EUR";
+  if (text.startsWith("£") || text.startsWith("GBP")) return "GBP";
+  if (text.startsWith("¥")) return "JPY";
   return null;
 }

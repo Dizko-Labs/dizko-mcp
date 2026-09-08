@@ -8,6 +8,7 @@ import { getEvent } from "./api.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { eventLinkTargets } from "./format.js";
 import { createSdkMcpServer } from "./sdkServer.js";
+import { TOOL_VERSION } from "./config.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -18,7 +19,11 @@ export function createHttpMcpServer(options = {}) {
     allowedOrigins: splitList(options.allowedOrigins ?? process.env.EVENTCHAT_MCP_ALLOWED_ORIGINS ?? "*"),
     rateLimitDisabled: parseBoolean(options.rateLimitDisabled ?? process.env.EVENTCHAT_MCP_RATE_LIMIT_DISABLED, false),
     rateLimitWindowMs: Number(options.rateLimitWindowMs || process.env.EVENTCHAT_MCP_RATE_LIMIT_WINDOW_MS || 60_000),
-    rateLimitMax: Number(options.rateLimitMax || process.env.EVENTCHAT_MCP_RATE_LIMIT_MAX || 120)
+    // 600/min per client address. Hosted assistants (ChatGPT, Claude) call
+    // from shared egress addresses, so the per-IP budget must cover many
+    // users; exempt known ranges via EVENTCHAT_MCP_RATE_LIMIT_EXEMPT.
+    rateLimitMax: Number(options.rateLimitMax || process.env.EVENTCHAT_MCP_RATE_LIMIT_MAX || 600),
+    rateLimitExempt: splitList(options.rateLimitExempt ?? process.env.EVENTCHAT_MCP_RATE_LIMIT_EXEMPT ?? "")
   };
   const rateLimiter = createRateLimiter(settings);
   // Serves the 2026-07-28 revision and falls back to old-school stateless
@@ -39,7 +44,7 @@ export function createHttpMcpServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/health") {
-        sendJson(response, 200, { ok: true, name: "dizko" }, corsHeaders(request, settings));
+        sendJson(response, 200, { ok: true, name: "dizko", version: TOOL_VERSION }, corsHeaders(request, settings));
         return;
       }
 
@@ -87,7 +92,14 @@ export function createHttpMcpServer(options = {}) {
           });
           return;
         }
-        await handleEventShortLink(response, decodeURIComponent(shortLink[1]), shortLink[2], corsHeaders(request, settings), options);
+        let eventId;
+        try {
+          eventId = decodeURIComponent(shortLink[1]);
+        } catch {
+          sendJson(response, 400, { error: "Malformed event id in link." }, corsHeaders(request, settings));
+          return;
+        }
+        await handleEventShortLink(response, eventId, shortLink[2], corsHeaders(request, settings), options);
         return;
       }
 
@@ -374,7 +386,7 @@ function createRateLimiter(settings) {
   return {
     check(key) {
       const now = Date.now();
-      if (settings.rateLimitDisabled) {
+      if (settings.rateLimitDisabled || isExempt(key, settings.rateLimitExempt)) {
         return {
           allowed: true,
           limit: max,
@@ -406,6 +418,11 @@ function createRateLimiter(settings) {
       };
     }
   };
+}
+
+function isExempt(key, prefixes) {
+  if (!Array.isArray(prefixes) || !prefixes.length) return false;
+  return prefixes.some((prefix) => prefix && String(key).startsWith(prefix));
 }
 
 function rateLimitHeadersFor(rateLimit) {

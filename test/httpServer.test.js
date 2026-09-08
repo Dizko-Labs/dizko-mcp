@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHttpMcpServer, safeJsonRpcError } from "../src/httpServer.js";
+import { TOOL_VERSION } from "../src/config.js";
 
 // 2026-07-28 is stateless: every request carries its revision, the client's
 // capabilities and (optionally) its identity in `_meta` instead of doing an
@@ -30,7 +31,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(health.status, 200);
     assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/api\.dizko\.app https:\/\/www\.dizko\.app/);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
-    assert.deepEqual(await health.json(), { ok: true, name: "dizko" });
+    assert.deepEqual(await health.json(), { ok: true, name: "dizko", version: TOOL_VERSION });
 
     const metadata = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(metadata.status, 200);
@@ -93,6 +94,8 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(initialized.headers.get("mcp-protocol-version"), "2024-11-05");
     assert.equal(initializedBody.result.serverInfo.name, "dizko");
     assert.equal(typeof initializedBody.result.capabilities.tools, "object");
+    assert.equal(typeof initializedBody.result.capabilities.prompts, "object");
+    assert.match(initializedBody.result.instructions, /dizko_search_events/);
 
     const initializedNotification = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -116,7 +119,9 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
-    assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
+    assert.ok(body.result.tools.some((tool) => tool.name === "dizko_search_events"));
+    assert.equal(body.result.tools.some((tool) => tool.name === "search_events"), false, "legacy names are not listed");
+    assert.equal(body.result.tools.length, 19);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -192,6 +197,7 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.deepEqual(discoverBody.result.supportedVersions, ["2026-07-28"]);
     assert.equal(discoverBody.result.resultType, "complete");
     assert.equal(typeof discoverBody.result.capabilities.tools, "object");
+    assert.equal(typeof discoverBody.result.capabilities.prompts, "object");
     assert.equal(
       discoverBody.result._meta["io.modelcontextprotocol/serverInfo"].name,
       "dizko"
@@ -204,8 +210,10 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(listBody.result.resultType, "complete");
     assert.equal(listBody.result.ttlMs, 300_000);
     assert.equal(listBody.result.cacheScope, "public");
-    assert.ok(listBody.result.tools.some((tool) => tool.name === "search_events"));
+    assert.ok(listBody.result.tools.some((tool) => tool.name === "dizko_search_events"));
+    assert.equal(listBody.result.tools.some((tool) => tool.name === "get_ticket_purchase_policy"), false);
 
+    // Legacy (pre-0.8) tool names are unlisted but still callable.
     const call = await modern(3, "tools/call", {
       name: "get_ticket_purchase_policy",
       arguments: {}
@@ -214,6 +222,25 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(call.status, 200);
     assert.equal(callBody.result.resultType, "complete");
     assert.ok(callBody.result.content.length > 0);
+    assert.ok(callBody.result.structuredContent.supported_modes.includes("dizko_checkout"));
+
+    // Prompts are served alongside tools with the same cache hints.
+    const promptList = await modern(4, "prompts/list", {});
+    const promptListBody = await readRpc(promptList);
+    assert.equal(promptList.status, 200);
+    assert.equal(promptListBody.result.ttlMs, 300_000);
+    assert.deepEqual(promptListBody.result.prompts.map((prompt) => prompt.name), [
+      "dizko_onboarding",
+      "dizko_search_followups",
+      "dizko_post_event_feedback",
+      "dizko_ticket_policy"
+    ]);
+
+    const prompt = await modern(5, "prompts/get", { name: "dizko_onboarding", arguments: {} }, { "Mcp-Name": "dizko_onboarding" });
+    const promptBody = await readRpc(prompt);
+    assert.equal(prompt.status, 200);
+    assert.equal(promptBody.result.messages[0].role, "user");
+    assert.match(promptBody.result.messages[0].content.text, /dizko_create_profile with consent=true/);
 
     // No session is ever minted - the header is gone from the transport.
     assert.equal(call.headers.get("mcp-session-id"), null);
@@ -399,6 +426,29 @@ test("short links return 404 for missing events and missing data", async () => {
     const noMap = await fetch(`http://127.0.0.1:${port}/e/evt-nostart/map`, { redirect: "manual" });
     assert.equal(noMap.status, 404);
     assert.match((await noMap.json()).error, /no mappable location/);
+  } finally {
+    server.close();
+  }
+});
+
+test("short links reject malformed event ids without an upstream call", async () => {
+  let upstreamCalls = 0;
+  const server = createHttpMcpServer({
+    fetch: async () => {
+      upstreamCalls += 1;
+      throw new Error("must not fetch");
+    },
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "t", apiCacheTtlMs: 0 }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  try {
+    // A truncated percent-escape is not decodable, so it cannot be an id.
+    const malformed = await fetch(`http://127.0.0.1:${port}/e/%E0%A4%A/cal`, { redirect: "manual" });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { error: "Malformed event id in link." });
+    assert.equal(malformed.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(upstreamCalls, 0);
   } finally {
     server.close();
   }

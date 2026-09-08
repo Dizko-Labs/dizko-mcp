@@ -2,12 +2,12 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.dizko/events",
   "title": "Dizko",
-  "description": "Live concerts, club nights, art, comedy, and festivals from Dizko.",
+  "description": "Live events, DJs, venues and promoters across 47 cities, with local times and links.",
   "repository": {
     "url": "https://github.com/Dizko-Labs/dizko-mcp",
     "source": "github"
   },
-  "version": "0.7.3",
+  "version": "0.8.0",
   "websiteUrl": "https://www.dizko.app",
   "icons": [
     {
@@ -27,7 +27,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "dizko-events",
-      "version": "0.7.3",
+      "version": "0.8.0",
       "transport": {
         "type": "stdio"
       },

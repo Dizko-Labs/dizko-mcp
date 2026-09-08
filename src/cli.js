@@ -1,5 +1,6 @@
-import { getConfig, SUPPORTED_CITIES } from "./config.js";
-import { EventChatAPIError, getEvent, searchEvents } from "./api.js";
+import { getConfig } from "./config.js";
+import { EventChatAPIError, getEvent, listCities, searchEvents } from "./api.js";
+import { CITY_TABLE } from "./cities.js";
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatEventList, summarizeEvent } from "./format.js";
 import { runInstall } from "./installer.js";
@@ -53,9 +54,19 @@ export async function runCli(argv = process.argv.slice(2), io = process) {
         io.stdout.write(JSON.stringify(summarizeEvent(event, { webBaseUrl: config.webBaseUrl }), null, 2) + "\n");
         break;
       }
-      case "cities":
-        io.stdout.write(SUPPORTED_CITIES.join("\n") + "\n");
+      case "cities": {
+        if (options.static) {
+          io.stdout.write(CITY_TABLE.map((city) => `${city.slug.padEnd(16)} ${city.name.padEnd(16)} ${city.timezone}`).join("\n") + "\n");
+          break;
+        }
+        const response = await listCities();
+        const rows = [];
+        for (const status of ["live", "unlocking", "early"]) {
+          for (const city of response[status] || []) rows.push(`${status.padEnd(10)} ${city.slug.padEnd(16)} ${String(city.event_count ?? 0).padStart(6)} events`);
+        }
+        io.stdout.write((rows.length ? rows.join("\n") : "No live coverage returned.") + "\n");
         break;
+      }
       case "doctor": {
         const report = await runDoctor();
         io.stdout.write(options.json ? JSON.stringify(report, null, 2) + "\n" : formatDoctorReport(report) + "\n");
@@ -139,9 +150,9 @@ Commands:
   artists      Upcoming events per artist (--artists "Ben Klock,Marcel Dettmann").
   pulse        Aggregate momentum for a city: busiest nights, venues, genres.
   get <id>     Fetch one event.
-  cities       List supported cities.
+  cities       Live coverage by status (--static prints the built-in city table with timezones).
   install      Set up an MCP client: install claude-desktop | cursor | claude-code | claude-ai | chatgpt.
-  mcp          Run the local stdio MCP server (package command: npx -y dizko-events mcp).
+  mcp          Run the local stdio MCP server (package command: npx -y dizko-events mcp). Tools are prefixed dizko_.
   serve        Run the HTTP MCP server (same as the hosted endpoint).
   doctor       Diagnose connectivity (DNS, health, MCP endpoint, live search). Add --json for machine-readable output.
   help         Show this help (also --help / -h).
@@ -161,6 +172,8 @@ Environment:
   DIZKO_API_TIMEOUT_MS          per-request timeout (default 8000).
   DIZKO_API_RETRIES             retries for transient network/5xx failures (default 2).
   DIZKO_API_RETRY_BASE_DELAY_MS backoff base delay (default 250).
+  DIZKO_QUOTE_SIGNING_SECRET    signs ticket quote tokens (set it on hosted deployments).
+  DIZKO_PREFERENCES_PATH        preference profile store (default ./data/preferences.json).
 `;
 }
 
