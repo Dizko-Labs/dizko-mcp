@@ -27,9 +27,8 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # The suite pins TZ=UTC itself (test/setup.mjs). This run deliberately
-      # does not, so a test that silently depends on the runner's clock zone
-      # would still be caught by the timezone job below.
+      # With TZ unset, test/setup.mjs pins UTC so this run is deterministic.
+      # The timezone job below exports TZ, which setup.mjs then honors.
       - run: npm test
 
   timezones:
@@ -40,8 +39,9 @@ jobs:
       matrix:
         # Date logic resolves in the city's zone, never the server's, so the
         # suite has to pass wherever the process happens to run: west of UTC,
-        # far east of it, and on a half-hour offset.
-        tz: ["America/Los_Angeles", "Pacific/Kiritimati", "Asia/Kolkata"]
+        # far east of it (+14, where noon UTC is already tomorrow), and on
+        # the half-hour and 45-minute offsets that break naive offset math.
+        tz: ["America/Los_Angeles", "Pacific/Kiritimati", "Asia/Kolkata", "Australia/Eucla"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
