@@ -7,6 +7,8 @@ import {
   findPromoter,
   findSceneEntities,
   findVenue,
+  MATCH_TIER,
+  matchTier,
   venueMatches,
   venueTokens
 } from "../src/entities.js";
@@ -115,7 +117,14 @@ test("artist search exposes canonical DJs with scores, handles and a best match"
   assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
   assert.equal(result.entities[0].match_score, 0.988, "upstream score is rounded to 3 decimals");
   assert.deepEqual(result.entities[0].links, { instagram: "https://instagram.com/ninakraviz" });
-  assert.deepEqual(result.best_match, { id: "nina-kraviz", name: "Nina Kraviz", confident: true });
+  assert.deepEqual(result.best_match, {
+    id: "nina-kraviz",
+    name: "Nina Kraviz",
+    confident: true,
+    // Runner-up names travel with the match so the model can offer them
+    // without a second round trip.
+    alternatives: [{ id: "nina-kraviz-b2b-helena-hauff", name: "Nina Kraviz b2b Helena Hauff", cities: [], genres: [] }]
+  });
 });
 
 test("artist search falls back to text matches and flags weak best matches", async () => {
@@ -635,4 +644,68 @@ test("findSceneEntities routes legacy kinds to the new finders", async () => {
 
   assert.deepEqual(await findSceneEntities({}, OPTIONS), { error: "Pass an entity id or a search query", code: "missing_entity_lookup" });
   assert.deepEqual(await findSceneEntities({ kind: "bogus", query: "x" }, OPTIONS), { error: "kind must be artist, venue, collective, or promoter", code: "invalid_entity_kind" });
+});
+
+// Name-match ranking -------------------------------------------------------
+// Upstream relevance cannot order these: measured against the live catalog,
+// its score put Nina Kraviz last of nineteen "Nina" profiles and its
+// `authority` field was the same 0.59 for every artist.
+
+test("an exact name outranks a longer name that merely contains the query", async () => {
+  const fetch = fakeFetch(() => ({
+    count: 3,
+    items: [
+      { id: "berghain-panorama-bar", name: "Berghain / Panorama Bar", kind: "venue", score: 0.063 },
+      { id: "berghain", name: "Berghain", kind: "venue", score: 0.065 },
+      { id: "berghain-kantine", name: "Berghain Kantine", kind: "venue", score: 0.065 }
+    ]
+  }));
+  const result = await findVenue({ query: "Berghain" }, { ...OPTIONS, fetch });
+
+  assert.equal(result.entities[0].name, "Berghain", "the exact match must lead regardless of upstream order");
+  assert.equal(result.best_match.name, "Berghain");
+  assert.equal(result.best_match.confident, true, "exactly one profile carries the name exactly");
+  assert.deepEqual(result.best_match.alternatives.map((entry) => entry.name), ["Berghain / Panorama Bar", "Berghain Kantine"]);
+});
+
+test("a query that two profiles answer equally well is not a confident match", async () => {
+  const fetch = fakeFetch(() => ({
+    count: 2,
+    items: [
+      { id: "bj-klock", name: "BJ Klock", kind: "dj", score: 0.02 },
+      { id: "ben-klock", name: "Ben Klock", kind: "dj", score: 0.02 }
+    ]
+  }));
+  const result = await findArtist({ query: "Klock" }, { ...OPTIONS, fetch });
+
+  // Answering "Klock" with either DJ would be a coin flip presented as fact.
+  assert.equal(result.best_match.confident, false);
+  assert.deepEqual(result.best_match.alternatives.map((entry) => entry.name), ["Ben Klock"]);
+});
+
+test("a whole-word match that nothing competes with stays confident", async () => {
+  const fetch = fakeFetch(() => ({
+    count: 1,
+    items: [{ id: "berghain-panorama-bar", name: "Berghain / Panorama Bar", kind: "venue", score: 0.05 }]
+  }));
+  const result = await findVenue({ query: "Panorama Bar" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, true, "one candidate is not an ambiguity");
+});
+
+test("a query buried inside a longer word is never a confident match", async () => {
+  const fetch = fakeFetch(() => ({
+    count: 1,
+    items: [{ id: "medlock", name: "Medlock", kind: "dj", score: 0.015 }]
+  }));
+  const result = await findArtist({ query: "lock" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, false, "\"lock\" inside \"Medlock\" is a coincidence, not an answer");
+});
+
+test("match tiers order exact, prefix, whole word, then buried substring", () => {
+  assert.equal(matchTier("Berghain", "berghain"), MATCH_TIER.exact);
+  assert.equal(matchTier("Berghain Kantine", "berghain"), MATCH_TIER.prefix);
+  assert.equal(matchTier("Berghain / Panorama Bar", "panorama bar"), MATCH_TIER.word);
+  assert.equal(matchTier("Medlock", "lock"), MATCH_TIER.substring);
+  assert.equal(matchTier("Amelie Lens", "berghain"), null);
+  assert.equal(matchTier("", "berghain"), null);
 });

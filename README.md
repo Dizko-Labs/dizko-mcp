@@ -221,6 +221,8 @@ Discovery:
 
 Entities:
 
+All three searches rank candidates by how well the name answers the query, not by upstream relevance: an exact name first, then a name that starts with the query, then a whole-word hit, then a hit buried inside a longer word. `best_match.confident` is true only when one candidate wins that ordering outright, so "Berghain" is confident while "Klock" (both Ben Klock and BJ Klock) is not; when it is false, show `best_match.alternatives` and ask which one.
+
 - `dizko_find_artist`: search by `query` for candidates with a `best_match`, or pass an `id` for the full profile: bio, cities, genres, links, upcoming events, insights, mixes, press, and the artist's published Dizko page (`page.published`, `page.page_url`) when one exists.
 - `dizko_find_venue`: search by name, or pass an `id` for neighborhood, capacity, genres, bio, links, and upcoming events at that venue.
 - `dizko_find_promoter`: promoters, collectives and party crews. Pass `city` to include promoters with upcoming listings (promoter ids are per city; collectives are searched worldwide); pass an `id` for the profile and upcoming events.

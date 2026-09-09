@@ -68,7 +68,7 @@ export async function findArtist(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities, relevant.matched) } : null,
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -215,7 +215,7 @@ export async function findVenue(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities, relevant.matched) } : null,
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -289,7 +289,10 @@ export async function findPromoter(input = {}, options = {}) {
     .slice(0, limit)
     .map((item) => promoterSummary(item, promoters.city || input.city));
   const collectiveRows = relevantItems(collectives.items, query, { max: 5 }).items.map((profile) => sceneProfileSummary(profile, "collective"));
-  const entities = mergeByName([...promoterRows, ...collectiveRows]).slice(0, limit);
+  // Promoters and collectives come from two catalogs, so the merged list is
+  // in merge order, not answer order. Rank it the same way the artist and
+  // venue searches are ranked so best_match means the same thing everywhere.
+  const entities = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, limit);
   return {
     mode: "search",
     kind: input.kind || "promoter",
@@ -297,6 +300,7 @@ export async function findPromoter(input = {}, options = {}) {
     city: input.city || null,
     count: entities.length,
     entities,
+    best_match: bestMatchPayload(entities, query, entities.length > 0, []),
     ...(input.city ? {} : { note: "Pass a city to include promoters with upcoming Dizko event listings; collectives are searched worldwide." })
   };
 }
@@ -368,33 +372,104 @@ async function findAnyEntity(input, options) {
 // The scene index is semantic and always fills the page, so "no row matched
 // the name" still comes back with rows. Report that, because a fallback row
 // must never be presented as a confident match.
+// How closely a catalog name answers what the user typed. Lower is better.
+// Upstream relevance cannot make this call: its score put Nina Kraviz last of
+// nineteen "Nina" profiles, behind Nina Nana and Nina Ly, and its `authority`
+// field is the same 0.59 for every artist in the catalog.
+export const MATCH_TIER = { exact: 0, prefix: 1, word: 2, substring: 3 };
+
+export function matchTier(name, query) {
+  const candidate = normalizeText(name);
+  const needle = normalizeText(query);
+  if (!candidate || !needle) return null;
+  if (candidate === needle) return MATCH_TIER.exact;
+  if (candidate.startsWith(needle) || needle.startsWith(candidate)) return MATCH_TIER.prefix;
+  if (!candidate.includes(needle)) return null;
+  // A whole-word hit ("Ben Klock" for "klock") beats one buried inside a
+  // longer word ("Medlock"), which the upstream fuzzy search also returns.
+  const words = candidate.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const needleWords = needle.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const startsAWord = needleWords.length ? words.some((word, index) =>
+    needleWords.every((part, offset) => words[index + offset] === part)) : false;
+  return startsAWord ? MATCH_TIER.word : MATCH_TIER.substring;
+}
+
+// Orders already-selected entities by how well their names answer the query,
+// keeping the incoming order inside a tier. Names that do not match at all
+// keep their place behind the ones that do.
+export function rankByMatch(entities, query) {
+  return entities
+    .map((entity, index) => ({ entity, index, tier: matchTier(entity?.name, query) }))
+    .sort((a, b) => {
+      const left = a.tier === null ? Number.MAX_SAFE_INTEGER : a.tier;
+      const right = b.tier === null ? Number.MAX_SAFE_INTEGER : b.tier;
+      return left - right || a.index - b.index;
+    })
+    .map((row) => row.entity);
+}
+
 function relevantItems(items, query, { max = 20 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const needle = normalizeText(query);
-  const strong = list.filter((item) => normalizeText(item?.name).includes(needle));
-  if (strong.length) return { items: strong.slice(0, max), matched: true };
+  const strong = list
+    .map((item, index) => ({ item, index, tier: matchTier(item?.name, needle) }))
+    .filter((entry) => entry.tier !== null);
+  if (strong.length) {
+    // Sort by how well the name answers the query, keeping the upstream order
+    // inside each tier so a tie is never reordered arbitrarily. Without this
+    // an exact "Berghain" ranked below "Berghain / Panorama Bar" purely
+    // because the API returned it second.
+    strong.sort((a, b) => a.tier - b.tier || a.index - b.index);
+    return { items: strong.slice(0, max).map((entry) => entry.item), matched: true, tiers: strong.map((entry) => entry.tier) };
+  }
   const textMatches = list.filter((item) => item?.matched_text === true);
-  if (textMatches.length) return { items: textMatches.slice(0, Math.min(max, 5)), matched: true };
-  return { items: list.slice(0, Math.min(max, 5)), matched: false };
+  if (textMatches.length) return { items: textMatches.slice(0, Math.min(max, 5)), matched: true, tiers: [] };
+  return { items: list.slice(0, Math.min(max, 5)), matched: false, tiers: [] };
 }
 
-// Confidence has to survive the model acting on it without asking, so it
-// requires the top name to carry the query's weight - not merely to be some
-// substring of it. "Charlotte" is not a confident match for
-// "Charlotte de Witte"; "Berghain / Panorama Bar" is one for "berghain".
-function isConfidentMatch(query, entities, matched) {
+// Confidence licenses the model to answer without asking, so it has to mean
+// "there is one obvious answer", not "something matched". A fragment like
+// "Klock" matches both Ben Klock and BJ Klock as whole words, so neither is
+// confident and the model asks. "Berghain" is confident because exactly one
+// profile carries that name exactly, even though two others contain it.
+function isConfidentMatch(query, entities, matched, tiers = []) {
   if (!matched || !entities.length) return false;
   const needle = normalizeText(query);
   const top = normalizeText(entities[0].name);
   if (!needle || !top) return false;
-  if (top === needle) return true;
-  if (top.includes(needle)) return true;
-  // The other direction (the query contains the name) is only convincing
-  // when the name covers most of what the user typed.
-  const queryTokens = needle.split(" ").filter(Boolean);
-  const topTokens = new Set(top.split(" ").filter(Boolean));
-  const covered = queryTokens.filter((token) => topTokens.has(token)).length;
-  return needle.includes(top) && covered >= Math.ceil(queryTokens.length / 2) && covered > 1;
+
+  // A whole-word hit counts: "Panorama Bar" names exactly one venue even
+  // though the profile is called "Berghain / Panorama Bar". A hit buried
+  // inside a longer word ("Medlock" for "klock") never does.
+  const bestTier = tiers.length ? tiers[0] : matchTier(top, needle);
+  if (bestTier === null || bestTier > MATCH_TIER.word) return false;
+  // A tie at the best tier is exactly the ambiguous case: two profiles answer
+  // the query equally well and only the user knows which they meant.
+  const contenders = tiers.length
+    ? tiers.filter((tier) => tier === bestTier).length
+    : entities.filter((entity) => matchTier(entity.name, needle) === bestTier).length;
+  return contenders === 1;
+}
+
+// What the model needs to ask a useful question when confidence is withheld.
+function matchAlternatives(entities) {
+  return entities.slice(1, 6).map((entity) => ({
+    id: entity.id,
+    name: entity.name,
+    cities: entity.cities || [],
+    genres: (entity.genres || []).slice(0, 3)
+  }));
+}
+
+function bestMatchPayload(entities, query, matched, tiers) {
+  if (!entities[0]) return null;
+  const confident = isConfidentMatch(query, entities, matched, tiers);
+  return {
+    id: entities[0].id,
+    name: entities[0].name,
+    confident,
+    ...(entities.length > 1 ? { alternatives: matchAlternatives(entities) } : {})
+  };
 }
 
 // A promoter row (has event listings) wins over a collective row with the
