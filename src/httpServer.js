@@ -508,9 +508,14 @@ export function clientIp(request, trustedProxies = 1) {
 // requests this guard is about.
 export function originAllowed(request, settings) {
   const allowed = settings.allowedOrigins || [];
-  if (allowed.includes("*") || !allowed.length) return true;
+  if (allowed.includes("*")) return true;
   const origin = request.headers?.origin;
+  // No Origin header at all is every non-browser client, and this guard is
+  // not about those.
   if (!origin) return true;
+  // An empty list is an operator clearing the variable to lock the server
+  // down. Reading that as "no restriction" would hand them the opposite of
+  // what they asked for, so it denies every browser origin instead.
   return allowed.includes(origin);
 }
 
@@ -520,10 +525,12 @@ function corsHeaders(request, settings) {
     ? "*"
     : settings.allowedOrigins.includes(origin)
       ? origin
-      : settings.allowedOrigins[0] || "";
+      // No header at all is clearer than an empty one, which reads as a
+      // configured value of "".
+      : settings.allowedOrigins[0] || null;
 
   return {
-    "Access-Control-Allow-Origin": allowOrigin,
+    ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     // Mcp-Method / Mcp-Name are required on 2026-07-28 POSTs (SEP-2243);
     // MCP-Protocol-Version is the 2025-era header kept for old clients.

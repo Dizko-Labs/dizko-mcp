@@ -2,7 +2,7 @@ import { getEvent, listCities, MAX_SEARCH_LIMIT, SORT_OPTIONS, searchEvents } fr
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { cityDisplayName, cityTimezone, nearestCoveredCity, resolveCity } from "./cities.js";
-import { assertIsoDate, resolveSingleDay, WHEN_PRESETS, weekdayName, zonedParts } from "./dateRange.js";
+import { assertIsoDate, isoDate, resolveSingleDay, WHEN_PRESETS, weekdayName, zonedParts } from "./dateRange.js";
 import { isToolInputError, ToolInputError } from "./errors.js";
 import { EVENT_FIELD_OPTIONS, summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
@@ -656,7 +656,8 @@ const handlers = {
 
     // A single day can hold 200+ listings and the evening ones sort last, so
     // same-day presets fetch the whole day (one cached upstream call).
-    const sameDay = isSameDayPreset(input.when);
+    const day = resolveSameDay(input.when, options.now || new Date(), timezone);
+    const sameDay = day.sameDay;
     const pageLimit = input.limit ?? 12;
     const offset = input.offset ?? 0;
     // A single-day search fetches the whole day and pages over it locally,
@@ -670,22 +671,42 @@ const handlers = {
       { ...options, config }
     );
     const now = options.now || new Date();
-    const fresh = sameDay ? dropEndedEvents(response.events || [], now, input.when, timezone) : (response.events || []);
-    const deduped = dedupeSameShow(fresh).sort(sortBy === "soonest" ? compareStartTime : () => 0);
-    const page = sameDay ? deduped.slice(offset, offset + pageLimit) : deduped.slice(0, pageLimit);
-    const events = page.map((event) => summarizeEvent(event, summaryOptions));
-    const count = response.count ?? events.length;
-    const consumed = (response.events || []).length;
-    // Advancing by rows CONSUMED upstream is right only when the page and the
-    // fetch are the same size. On the single-day path they are not - the
-    // fetch covers the whole day - so the cursor moves by rows delivered.
-    const hasMore = sameDay
-      ? offset + events.length < deduped.length
-      : consumed > 0 && offset + consumed < count;
+    const upstreamRows = response.events || [];
+    // The cursor indexes the day AS FETCHED, before anything is dropped for
+    // having ended. Indexing the filtered list instead means the list shifts
+    // left under the caller every time an event ends between two pages, and
+    // they skip exactly that many events that are still on. Positions here
+    // move only when the upstream data moves.
+    const ordered = sameDay
+      ? dedupeSameShow(upstreamRows).sort(compareStartTime)
+      : dedupeSameShow(upstreamRows).sort(sortBy === "soonest" ? compareStartTime : () => 0);
+    const stillOn = sameDay ? new Set(dropEndedEvents(ordered, now, day, timezone)) : null;
+    const positioned = sameDay
+      ? ordered.map((event, index) => ({ event, index })).filter((row) => stillOn.has(row.event))
+      : ordered.map((event, index) => ({ event, index }));
+    const pageRows = sameDay
+      ? positioned.filter((row) => row.index >= offset).slice(0, pageLimit)
+      : positioned.slice(0, pageLimit);
+    const events = pageRows.map((row) => summarizeEvent(row.event, summaryOptions));
+    const consumed = upstreamRows.length;
     const truncatedDay = sameDay && consumed >= MAX_SEARCH_LIMIT;
-    const empty = events.length ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
+    // `count` has to mean what `offset` pages through, or a model that walks
+    // by it runs off the end and reports an empty city. On the single-day
+    // path that is the day's own list; the raw upstream total is reported
+    // separately as total_listed.
+    const count = sameDay ? positioned.length : (response.count ?? events.length);
+    const lastIndex = pageRows.length ? pageRows[pageRows.length - 1].index : offset - 1;
+    const hasMore = sameDay
+      ? positioned.some((row) => row.index > lastIndex)
+      : consumed > 0 && offset + consumed < (response.count ?? events.length);
+    // Past the end of the day is not an empty city, so it must not be
+    // explained as one.
+    const pastEnd = sameDay && !events.length && offset > 0 && offset > (positioned[0]?.index ?? 0);
+    const empty = (events.length || pastEnd) ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
     return {
-      ...(sameDay ? { filtered_out: (response.events || []).length - fresh.length, filter_note: "Events that already ended today are omitted." } : {}),
+      ...(sameDay ? { filtered_out: ordered.length - positioned.length, filter_note: dayFilterNote(day) } : {}),
+      ...(sameDay ? { total_listed: response.count ?? ordered.length } : {}),
+      ...(pastEnd ? { paging_note: "This offset is past the end of the day; nothing follows it." } : {}),
       city: cityDisplayName(city),
       timezone,
       rank: "relevance",
@@ -699,8 +720,8 @@ const handlers = {
       // and a fully filtered page would hand back the offset it was given, so
       // a client looping on next_offset would never terminate.
       has_more: hasMore,
-      next_offset: hasMore ? offset + (sameDay ? events.length : consumed) : null,
-      ...(truncatedDay ? { paging_note: `This day has more than ${MAX_SEARCH_LIMIT} listings and is capped at that; narrow with genres, neighborhoods or a venue to see the rest.` } : {}),
+      next_offset: hasMore ? (sameDay ? lastIndex + 1 : offset + consumed) : null,
+      ...(truncatedDay && !pastEnd ? { paging_note: `This day has more than ${MAX_SEARCH_LIMIT} listings and is capped at that; narrow with genres, neighborhoods or a venue to see the rest.` } : {}),
       search_fallback: response.search_fallback ?? null,
       events,
       ...(empty ? { no_results: empty } : {}),
@@ -1039,18 +1060,51 @@ async function noResultsPayload(input, cityName, options) {
   return buildNoResults(input, { baselineCount, cityName });
 }
 
-function isSameDayPreset(when) {
+// Whether this request is for one specific day, so it can be fetched whole,
+// have its finished events dropped, and be paged locally. An exact date for
+// the same day has to take this path too: "today" and "2026-09-08" name the
+// same evening, and behaving differently for the two is a difference the
+// caller cannot see or predict.
+const TODAY_PRESETS = ["today", "tonight", "this evening", "now"];
+const TOMORROW_PRESETS = ["tomorrow", "tomorrow night"];
+
+// One place decides everything about a single-day request: whether it is one
+// day at all, whether that day is still ahead, and whether only evening
+// starts count. Deriving these separately from the raw string is what let
+// "today" and the exact date for today behave differently, and what made
+// "tomorrow night" return a 10:00 matinee.
+function resolveSameDay(when, now = new Date(), timezone = "UTC") {
   const text = String(when || "").toLowerCase().trim();
-  return ["today", "tonight", "this evening", "now", "tomorrow night"].includes(text);
+  const evening = /tonight|evening|night/.test(text);
+  if (TODAY_PRESETS.includes(text)) return { sameDay: true, future: false, evening };
+  if (TOMORROW_PRESETS.includes(text)) return { sameDay: true, future: true, evening };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return { sameDay: false, future: false, evening };
+
+  const today = isoDate(now, timezone);
+  const tomorrow = isoDate(new Date(now.getTime() + 24 * 60 * 60 * 1000), timezone);
+  if (text === today) return { sameDay: true, future: false, evening };
+  if (text === tomorrow) return { sameDay: true, future: true, evening };
+  return { sameDay: false, future: false, evening };
+}
+
+function dayFilterNote(day) {
+  if (day.future) {
+    return day.evening ? "Only events starting in the evening are listed." : "Every listing for that day is included.";
+  }
+  return day.evening
+    ? "Events that already ended are omitted, and only evening starts are listed."
+    : "Events that already ended are omitted.";
 }
 
 // "today": an event counts if it has not ended yet (end_time in the future,
 // or start within the last 3 hours when no end is listed). "tonight": only
 // events starting from 17:00 city-local (or after midnight) that have not
 // ended; a matinee or a daytime tour is not a night out.
-function dropEndedEvents(events, now, when, timezone) {
-  const nowMs = now.getTime();
-  const eveningOnly = /tonight|evening/.test(String(when || "").toLowerCase());
+function dropEndedEvents(events, now, day, timezone) {
+  // Nothing on a day still ahead has ended yet, so only the evening rule
+  // applies there.
+  const nowMs = day.future ? -Infinity : now.getTime();
+  const eveningOnly = day.evening;
   return events.filter((event) => {
     const start = Date.parse(event.start_time || "");
     if (!Number.isFinite(start)) return true;

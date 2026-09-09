@@ -325,3 +325,115 @@ test("venue token matching still holds after the entity changes", () => {
   assert.equal(venueMatches("Tresor", "Tresor / Globus"), true);
   assert.equal(venueMatches("BASEMENT", "Pacha NYC Basement"), false);
 });
+
+test("the single-day cursor does not shift when an event ends mid-walk", async () => {
+  // `offset` used to index the list AFTER events that had ended were dropped.
+  // Every event ending between two page fetches shifted that list left, and
+  // the caller skipped exactly that many events that were still on.
+  const rows = Array.from({ length: 24 }, (_, index) => eventRow(`s${index}`, {
+    start_time: "2026-09-08T11:00:00+00:00",
+    end_time: new Date(Date.UTC(2026, 8, 8, 12, index + 1)).toISOString()
+  }));
+  const page = async (offset, now) => {
+    const response = await callTool("dizko_search_events", { city: "berlin", when: "today", limit: 6, offset }, {
+      config: CONFIG,
+      now,
+      fetch: async () => Response.json({ count: rows.length, events: rows })
+    });
+    return response.structuredContent;
+  };
+
+  const first = await page(0, new Date("2026-09-08T12:00:00Z"));
+  // Six minutes later, six of the events on page one have ended.
+  const second = await page(first.next_offset, new Date("2026-09-08T12:06:00Z"));
+
+  assert.deepEqual(first.events.map((event) => event.id), ["s0", "s1", "s2", "s3", "s4", "s5"]);
+  assert.deepEqual(second.events.map((event) => event.id), ["s6", "s7", "s8", "s9", "s10", "s11"],
+    "the second page must continue where the first stopped, not jump the number of events that ended");
+});
+
+test("count means what the caller can page through, and running off the end says so", async () => {
+  // `count` was the upstream day total while `offset` indexed a shorter local
+  // list, so a model paging by `count` ran past the end and was handed a
+  // no_results payload telling it to say the city has nothing on.
+  const rows = Array.from({ length: 300 }, (_, index) => eventRow(`e${index}`, {
+    start_time: `2026-09-08T${String(13 + (index % 10)).padStart(2, "0")}:00:00+00:00`,
+    end_time: "2026-09-09T04:00:00+00:00"
+  }));
+  const call = async (offset) => {
+    const response = await callTool("dizko_search_events", { city: "berlin", when: "today", limit: 12, offset }, {
+      config: CONFIG,
+      now: NOW,
+      fetch: async (url) => {
+        const params = new URL(url).searchParams;
+        const start = Number(params.get("offset") || 0);
+        const size = Number(params.get("limit") || 12);
+        return Response.json({ count: rows.length, events: rows.slice(start, start + size) });
+      }
+    });
+    return response.structuredContent;
+  };
+
+  const seen = new Set();
+  let offset = 0;
+  let first = null;
+  for (let guard = 0; guard < 60; guard += 1) {
+    const body = await call(offset);
+    first ??= body;
+    body.events.forEach((event) => seen.add(event.id));
+    if (body.next_offset === null) break;
+    offset = body.next_offset;
+  }
+
+  assert.equal(first.count, seen.size, "count must equal what paging actually reaches");
+  assert.equal(first.total_listed, 300, "the raw upstream total is still reported, separately");
+
+  const pastEnd = await call(500);
+  assert.equal(pastEnd.returned, 0);
+  assert.equal(pastEnd.has_more, false);
+  assert.equal(pastEnd.no_results, undefined, "past the end of a day is not an empty city");
+  assert.match(pastEnd.paging_note, /past the end/);
+});
+
+test("an exact date for today behaves exactly like the word today", async () => {
+  // "today" took the single-day path (whole day fetched, finished events
+  // dropped, local paging) while "2026-09-08" took the multi-day one, so the
+  // same evening answered differently depending on how it was named.
+  const rows = [
+    eventRow("ended", { start_time: "2026-09-08T02:00:00+00:00", end_time: "2026-09-08T05:00:00+00:00" }),
+    eventRow("matinee", { start_time: "2026-09-08T14:00:00+00:00", end_time: "2026-09-08T18:00:00+00:00" }),
+    eventRow("night", { start_time: "2026-09-08T21:00:00+00:00", end_time: "2026-09-09T04:00:00+00:00" })
+  ];
+  const call = async (when) => {
+    const response = await callTool("dizko_search_events", { city: "berlin", when, limit: 10 }, {
+      config: CONFIG,
+      now: NOW,
+      fetch: async () => Response.json({ count: rows.length, events: rows })
+    });
+    return response.structuredContent;
+  };
+
+  const preset = await call("today");
+  const exact = await call("2026-09-08");
+  assert.deepEqual(exact.events.map((event) => event.id), preset.events.map((event) => event.id));
+  assert.deepEqual(exact.events.map((event) => event.id), ["matinee", "night"], "the event that already ended is dropped either way");
+  assert.equal(exact.filter_note, preset.filter_note);
+});
+
+test("an evening search for tomorrow drops the matinee and does not talk about today", async () => {
+  // The evening filter matched only "tonight" and "evening", so "tomorrow
+  // night" returned a 10:00 matinee, under a note about events ending today.
+  const rows = [
+    eventRow("matinee", { start_time: "2026-09-09T10:00:00+00:00", end_time: "2026-09-09T14:00:00+00:00" }),
+    eventRow("clubnight", { start_time: "2026-09-09T22:00:00+00:00", end_time: "2026-09-10T05:00:00+00:00" })
+  ];
+  const response = await callTool("dizko_search_events", { city: "berlin", when: "tomorrow night", limit: 10 }, {
+    config: CONFIG,
+    now: NOW,
+    fetch: async () => Response.json({ count: rows.length, events: rows })
+  });
+  const body = response.structuredContent;
+
+  assert.deepEqual(body.events.map((event) => event.id), ["clubnight"]);
+  assert.doesNotMatch(body.filter_note, /today/, "a search for tomorrow must not be explained in terms of today");
+});

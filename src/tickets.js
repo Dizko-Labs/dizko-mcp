@@ -154,9 +154,12 @@ const DEFAULT_MAX_TRACKED_QUOTES = 20000;
 // is pruned before this is consulted, so the ceiling is only ever reached by
 // that many unexpired claims at once.
 export function maxTrackedQuotes() {
-  const configured = Number(process.env.DIZKO_MAX_TRACKED_QUOTES || DEFAULT_MAX_TRACKED_QUOTES);
+  // Floor BEFORE the range check: validating first let "0.5" through as a
+  // positive number and then floor to 0, and a ceiling of 0 refuses every
+  // purchase on a fresh process.
+  const configured = Math.floor(Number(process.env.DIZKO_MAX_TRACKED_QUOTES || DEFAULT_MAX_TRACKED_QUOTES));
   if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_TRACKED_QUOTES;
-  return Math.floor(configured);
+  return configured;
 }
 
 function claimQuote(quoteId, expiresAt, now) {
