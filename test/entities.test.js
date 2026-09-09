@@ -335,7 +335,7 @@ test("venue search hits the venue index and reports a best match", async () => {
   assert.equal(result.entities[0].neighborhood, "Friedrichshain");
   assert.equal(result.entities[0].dizko_url, undefined, "venues have no public Dizko page");
   assert.equal(result.entities[0].match_score, 0.91);
-  assert.deepEqual(result.best_match, { id: "berghain", name: "Berghain", confident: true });
+  assert.deepEqual(result.best_match, { id: "berghain", name: "Berghain", confident: true, prominence: 41.8 });
 });
 
 test("venueMatches compares venue names by token", () => {
@@ -491,7 +491,10 @@ test("promoter search without a city searches collectives only and says so", asy
     name: "Gegen",
     cities: ["Berlin"],
     genres: ["techno"],
-    dizko_url: "https://www.dizko.app/collectives/gegen"
+    dizko_url: "https://www.dizko.app/collectives/gegen",
+    // Promoter and venue rows carry their own evidence, so the score costs no
+    // extra request and is always present.
+    prominence: 2
   });
 
   const promotersOnly = fakeFetch(() => { throw new Error("must not fetch"); });
@@ -708,4 +711,134 @@ test("match tiers order exact, prefix, whole word, then buried substring", () =>
   assert.equal(matchTier("Medlock", "lock"), MATCH_TIER.substring);
   assert.equal(matchTier("Amelie Lens", "berghain"), null);
   assert.equal(matchTier("", "berghain"), null);
+});
+
+// Prominence -------------------------------------------------------------
+// When two profiles answer the name equally well, the name has said all it
+// can. How much of an answer each one actually is decides the rest.
+
+function klockSearch() {
+  return fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 2,
+        items: [
+          { id: "bj-klock", name: "BJ Klock", kind: "dj", score: 0.0156 },
+          { id: "ben-klock", name: "Ben Klock", kind: "dj", score: 0.0155 }
+        ]
+      };
+    }
+    if (url.pathname === "/scene/profiles/dj/ben-klock/insights") {
+      return { indexed_events: 9, upcoming_events: 6, related_djs: new Array(8).fill("x"), top_venues: new Array(7).fill("x") };
+    }
+    if (url.pathname === "/scene/profiles/dj/bj-klock/insights") {
+      return { indexed_events: 0, upcoming_events: 0, related_djs: [], top_venues: [] };
+    }
+    if (url.pathname === "/scene/directory/djs/ben-klock") {
+      return { dj: { experience_level: "established", press_clips: new Array(12).fill("x"), mixes: new Array(4).fill("x"), venues_played: new Array(6).fill("x"), appearances: new Array(30).fill("x") } };
+    }
+    if (url.pathname === "/scene/directory/djs/bj-klock") {
+      return { dj: { appearances: [{ id: "one" }] } };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+}
+
+test("a tie on the name is decided by which artist is actually the answer", async () => {
+  // Upstream ranks BJ Klock first and both names carry "Klock" as a whole
+  // word, so nothing about the name separates them. Ben Klock has nine
+  // listed dates, six upcoming, twelve press clips and thirty appearances.
+  const result = await findArtist({ query: "Klock" }, { ...OPTIONS, fetch: klockSearch() });
+
+  assert.equal(result.entities[0].name, "Ben Klock");
+  assert.equal(result.best_match.name, "Ben Klock");
+  assert.equal(result.best_match.confident, true, "a decisive gap answers the question instead of asking it");
+  assert.ok(result.best_match.prominence > result.best_match.alternatives[0].prominence * 3);
+  assert.deepEqual(result.best_match.alternatives.map((entry) => entry.name), ["BJ Klock"]);
+});
+
+test("two comparable artists sharing a name stay ambiguous", async () => {
+  // The same shape as the Klock pair, but both have real careers. Picking
+  // either would be a coin flip presented as fact.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return { count: 2, items: [{ id: "one", name: "Sasha One", kind: "dj" }, { id: "two", name: "Sasha Two", kind: "dj" }] };
+    }
+    if (url.pathname.endsWith("/insights")) return { indexed_events: 8, upcoming_events: 5, related_djs: new Array(6).fill("x"), top_venues: new Array(5).fill("x") };
+    return { dj: { experience_level: "established", press_clips: new Array(9).fill("x"), appearances: new Array(30).fill("x") } };
+  });
+  const result = await findArtist({ query: "Sasha" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, false);
+  assert.equal(result.best_match.alternatives.length, 1);
+});
+
+test("an unbeatable name match needs no popularity lookup at all", async () => {
+  // One profile wins the name outright, so nothing is fetched: the common
+  // case must not pay for the ambiguous one.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return { count: 1, items: [{ id: "nina-kraviz", name: "Nina Kraviz", kind: "dj" }] };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findArtist({ query: "Nina Kraviz" }, { ...OPTIONS, fetch });
+  assert.deepEqual(paths(fetch), ["/scene/search"], "no insights or directory call for an unambiguous name");
+  assert.equal(result.best_match.confident, true);
+  assert.equal(result.best_match.prominence, undefined);
+});
+
+test("popularity never overrides an exact name match", async () => {
+  // Someone who types a profile's complete name means that profile, however
+  // many better-known artists merely contain it.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 2,
+        items: [
+          { id: "nina", name: "Nina", kind: "dj" },
+          { id: "nina-kraviz", name: "Nina Kraviz", kind: "dj" }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findArtist({ query: "Nina" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.name, "Nina");
+  assert.equal(result.best_match.confident, true);
+  assert.deepEqual(paths(fetch), ["/scene/search"], "an exact match is settled by the name, not by a lookup");
+});
+
+test("a lookup that fails leaves the tie unresolved rather than guessing", async () => {
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return { count: 2, items: [{ id: "a", name: "A Klock", kind: "dj" }, { id: "b", name: "B Klock", kind: "dj" }] };
+    }
+    throw new Error("upstream down");
+  });
+  const result = await findArtist({ query: "Klock" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, false, "no evidence means no confidence, not a coin flip");
+  assert.equal(result.entities.length, 2);
+});
+
+test("venue and promoter scores come from rows already fetched", async () => {
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 2,
+        items: [
+          { id: "berghain-pb", name: "Berghain / Panorama Bar", kind: "venue", typical_capacity: 1500, genres: new Array(6).fill("techno"), bio: "x".repeat(276), founded: 2004 },
+          { id: "wd-q136975", name: "Berghain Kantine", kind: "venue", typical_capacity: null, genres: ["open-format"], bio: "A nightclub in Berlin, Germany.", founded: 2004 }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findVenue({ query: "Berghain" }, { ...OPTIONS, fetch });
+
+  assert.deepEqual(paths(fetch), ["/scene/search"], "venue scoring must not cost a second request");
+  // A real venue record has a capacity, several genres and a written bio; a
+  // stub scraped from an encyclopedia has one line and nulls.
+  assert.ok(result.entities[0].prominence > result.entities[1].prominence * 3);
+  assert.equal(result.best_match.name, "Berghain / Panorama Bar");
+  assert.equal(result.best_match.confident, true);
 });

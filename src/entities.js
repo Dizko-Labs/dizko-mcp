@@ -14,6 +14,7 @@ import { isoDate } from "./dateRange.js";
 import { ToolInputError } from "./errors.js";
 import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
 import { summarizeEvent } from "./format.js";
+import { artistProminence, decisivelyAhead, promoterProminence, venueProminence } from "./prominence.js";
 
 const SCENE_KIND = {
   artist: "dj",
@@ -59,7 +60,9 @@ export async function findArtist(input = {}, options = {}) {
   const limit = boundedLimit(input.limit, 10, 20);
   const response = await searchScene({ query, kind: "dj", city: input.city, genre: input.genre, limit }, options);
   const relevant = relevantItems(response.items, query);
-  const entities = relevant.items.map((profile) => sceneProfileSummary(profile, "artist"));
+  const named = relevant.items.map((profile) => sceneProfileSummary(profile, "artist"));
+  const ranked = await applyArtistProminence(named, relevant.tiers, options);
+  const entities = ranked.entities;
   return {
     mode: "search",
     kind: "artist",
@@ -68,7 +71,7 @@ export async function findArtist(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers),
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -206,7 +209,9 @@ export async function findVenue(input = {}, options = {}) {
   const limit = boundedLimit(input.limit, 10, 20);
   const response = await searchScene({ query, kind: "venue", city: input.city, genre: input.genre, limit }, options);
   const relevant = relevantItems(response.items, query);
-  const entities = relevant.items.map((profile) => sceneProfileSummary(profile, "venue"));
+  const named = relevant.items.map((profile) => sceneProfileSummary(profile, "venue"));
+  const ranked = applyRowProminence(named, relevant.tiers, venueProminence);
+  const entities = ranked.entities;
   return {
     mode: "search",
     kind: "venue",
@@ -215,7 +220,7 @@ export async function findVenue(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers),
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -292,7 +297,10 @@ export async function findPromoter(input = {}, options = {}) {
   // Promoters and collectives come from two catalogs, so the merged list is
   // in merge order, not answer order. Rank it the same way the artist and
   // venue searches are ranked so best_match means the same thing everywhere.
-  const entities = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, limit);
+  const merged = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, limit);
+  const promoterTiers = merged.map((entity) => matchTier(entity?.name, query)).filter((tier) => tier !== null);
+  const ranked = applyRowProminence(merged, promoterTiers, promoterProminence);
+  const entities = ranked.entities;
   return {
     mode: "search",
     kind: input.kind || "promoter",
@@ -300,7 +308,7 @@ export async function findPromoter(input = {}, options = {}) {
     city: input.city || null,
     count: entities.length,
     entities,
-    best_match: bestMatchPayload(entities, query, entities.length > 0, []),
+    best_match: bestMatchPayload(entities, query, entities.length > 0, promoterTiers, ranked.scores),
     ...(input.city ? {} : { note: "Pass a city to include promoters with upcoming Dizko event listings; collectives are searched worldwide." })
   };
 }
@@ -408,6 +416,53 @@ export function rankByMatch(entities, query) {
     .map((row) => row.entity);
 }
 
+// Prominence is only worth fetching when it can change the answer, which is
+// when two or more profiles are tied at the best name tier. The common case,
+// one clear name winner, costs nothing extra. The fetch is bounded so a
+// query matching a dozen profiles cannot fan out without limit.
+const MAX_PROMINENCE_LOOKUPS = 6;
+
+function tiedAtBestTier(tiers) {
+  if (!tiers.length) return 0;
+  return tiers.filter((tier) => tier === tiers[0]).length;
+}
+
+// Attaches an artist prominence score to the tied leaders and reorders them
+// by it, keeping every other candidate where the name ranking left it.
+async function applyArtistProminence(entities, tiers, options) {
+  const tied = tiedAtBestTier(tiers);
+  if (tied < 2) return { entities, scores: [] };
+  const leaders = entities.slice(0, Math.min(tied, MAX_PROMINENCE_LOOKUPS));
+
+  const scored = await Promise.all(leaders.map(async (entity) => {
+    // A profile with no insights or directory row simply scores what its
+    // missing evidence is worth: zero. It must never fail the lookup.
+    const [insights, directory] = await Promise.all([
+      getDjInsights(entity.id, options).catch(() => ({})),
+      getDjDirectoryProfile(entity.id, options).catch(() => null)
+    ]);
+    return { ...entity, prominence: artistProminence({ insights, directory: directory?.dj || {} }) };
+  }));
+
+  scored.sort((a, b) => b.prominence - a.prominence);
+  return {
+    entities: [...scored, ...entities.slice(leaders.length)],
+    scores: scored.map((entity) => entity.prominence)
+  };
+}
+
+// Venues and promoters carry their evidence in the rows the search already
+// returned, so their scores cost no extra request and are always attached.
+function applyRowProminence(entities, tiers, score) {
+  const scored = entities.map((entity) => ({ ...entity, prominence: score(entity) }));
+  const tied = tiedAtBestTier(tiers);
+  if (tied >= 2) {
+    const leaders = scored.slice(0, tied).sort((a, b) => b.prominence - a.prominence);
+    return { entities: [...leaders, ...scored.slice(tied)], scores: leaders.map((entity) => entity.prominence) };
+  }
+  return { entities: scored, scores: scored.map((entity) => entity.prominence) };
+}
+
 function relevantItems(items, query, { max = 20 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const needle = normalizeText(query);
@@ -432,7 +487,7 @@ function relevantItems(items, query, { max = 20 } = {}) {
 // "Klock" matches both Ben Klock and BJ Klock as whole words, so neither is
 // confident and the model asks. "Berghain" is confident because exactly one
 // profile carries that name exactly, even though two others contain it.
-function isConfidentMatch(query, entities, matched, tiers = []) {
+function isConfidentMatch(query, entities, matched, tiers = [], scores = []) {
   if (!matched || !entities.length) return false;
   const needle = normalizeText(query);
   const top = normalizeText(entities[0].name);
@@ -443,12 +498,19 @@ function isConfidentMatch(query, entities, matched, tiers = []) {
   // inside a longer word ("Medlock" for "klock") never does.
   const bestTier = tiers.length ? tiers[0] : matchTier(top, needle);
   if (bestTier === null || bestTier > MATCH_TIER.word) return false;
-  // A tie at the best tier is exactly the ambiguous case: two profiles answer
-  // the query equally well and only the user knows which they meant.
+
   const contenders = tiers.length
     ? tiers.filter((tier) => tier === bestTier).length
     : entities.filter((entity) => matchTier(entity.name, needle) === bestTier).length;
-  return contenders === 1;
+  if (contenders === 1) return true;
+
+  // Several profiles answer the name equally well. The name has said all it
+  // can, so how much of an answer each one actually is decides: "Klock" is
+  // Ben Klock, who has nine listed dates and twelve press clips, not BJ
+  // Klock, who has one appearance. Two comparable artists stay ambiguous.
+  if (scores.length < contenders) return false;
+  const tied = [...scores.slice(0, contenders)].sort((a, b) => b - a);
+  return decisivelyAhead(tied[0], tied[1]);
 }
 
 // What the model needs to ask a useful question when confidence is withheld.
@@ -457,17 +519,19 @@ function matchAlternatives(entities) {
     id: entity.id,
     name: entity.name,
     cities: entity.cities || [],
-    genres: (entity.genres || []).slice(0, 3)
+    genres: (entity.genres || []).slice(0, 3),
+    ...(entity.prominence === undefined ? {} : { prominence: entity.prominence })
   }));
 }
 
-function bestMatchPayload(entities, query, matched, tiers) {
+function bestMatchPayload(entities, query, matched, tiers, scores = []) {
   if (!entities[0]) return null;
-  const confident = isConfidentMatch(query, entities, matched, tiers);
+  const confident = isConfidentMatch(query, entities, matched, tiers, scores);
   return {
     id: entities[0].id,
     name: entities[0].name,
     confident,
+    ...(entities[0].prominence === undefined ? {} : { prominence: entities[0].prominence }),
     ...(entities.length > 1 ? { alternatives: matchAlternatives(entities) } : {})
   };
 }

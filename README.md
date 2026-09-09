@@ -221,7 +221,11 @@ Discovery:
 
 Entities:
 
-All three searches rank candidates by how well the name answers the query, not by upstream relevance: an exact name first, then a name that starts with the query, then a whole-word hit, then a hit buried inside a longer word. `best_match.confident` is true only when one candidate wins that ordering outright, so "Berghain" is confident while "Klock" (both Ben Klock and BJ Klock) is not; when it is false, show `best_match.alternatives` and ask which one.
+All three searches rank candidates by how well the name answers the query, not by upstream relevance: an exact name first, then a name that starts with the query, then a whole-word hit, then a hit buried inside a longer word.
+
+When several candidates answer the name equally well, the name has said all it can, so how much of an answer each one actually is decides. `prominence` scores that: for an artist, listed Dizko dates, upcoming dates, co-billed artists, press clips, mixes, career appearances and editorial standing; for a venue, whether the record carries a capacity, genres and a real bio rather than a one-line stub; for a promoter, its upcoming count. `best_match.confident` is true only when the leader wins outright on name, or is decisively ahead on prominence. So "Klock" resolves confidently to Ben Klock (nine listed dates, twelve press clips) over BJ Klock (one appearance), while two comparable artists sharing a name stay ambiguous and `best_match.alternatives` carries the candidates to ask about.
+
+An exact name match is never overridden by prominence: someone who types a profile's full name means that profile. Artist prominence costs two extra upstream calls per tied candidate and is fetched only when a tie makes it matter, so an unambiguous lookup pays nothing for it; venue and promoter scores come from rows the search already returned. Upstream relevance cannot do this job: its score ranked Nina Kraviz last of nineteen "Nina" profiles and its `authority` field is 0.59 for every artist in the catalog.
 
 - `dizko_find_artist`: search by `query` for candidates with a `best_match`, or pass an `id` for the full profile: bio, cities, genres, links, upcoming events, insights, mixes, press, and the artist's published Dizko page (`page.published`, `page.page_url`) when one exists.
 - `dizko_find_venue`: search by name, or pass an `id` for neighborhood, capacity, genres, bio, links, and upcoming events at that venue.

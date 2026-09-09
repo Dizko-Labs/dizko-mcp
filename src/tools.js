@@ -199,7 +199,7 @@ const rawTools = [
   {
     name: "dizko_find_artist",
     title: "Find Artist or DJ",
-    description: "Look up a DJ, artist, or performer. Search by name (query) to get candidates with a best_match; pass an id from a result for the full profile: bio, cities, genres, links, upcoming events (deduplicated, date-ordered), insights (top venues, related artists), mixes, press, and the artist's published Dizko page with deep-linkable mixes when one exists. Use for 'who is X', 'what does X play', 'X's Dizko page' and 'X's latest mix'.",
+    description: "Look up a DJ, artist, or performer. Search by name (query) to get candidates with a best_match; pass an id from a result for the full profile: bio, cities, genres, links, upcoming events (deduplicated, date-ordered), insights (top venues, related artists), mixes, press, and the artist's published Dizko page with deep-linkable mixes when one exists. Use for 'who is X', 'what does X play', 'X's Dizko page' and 'X's latest mix'. Candidates are ranked by how well the name answers the query and, when several answer it equally well, by how much of an answer each artist is: listed dates, press and career depth. best_match.confident is true only when one candidate wins outright, so 'Klock' resolves to Ben Klock over BJ Klock, while two comparable artists sharing a name stay ambiguous for you to ask about.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -782,7 +782,7 @@ const handlers = {
     return {
       ...result,
       assistant_instruction: result.mode === "search"
-        ? "If best_match.confident is true, answer about that artist; call dizko_find_artist again with its id for the full profile when the user wants details, dates, mixes or the Dizko page. Otherwise show the top candidates and ask which one."
+        ? "If best_match.confident is true, answer about that artist; call dizko_find_artist again with its id for the full profile when the user wants details, dates, mixes or the Dizko page. Otherwise show best_match.alternatives with the top candidate and ask which one they mean, naming what separates them (cities, genres). `prominence` scores how much of an answer each profile is, from listed dates, press and career depth; it is present only where it was needed to settle a tie, and it is never a fact to state to the user."
         : "Treat entity facts as canonical Dizko data. Use upcoming_events (already deduplicated and date-ordered, local times in `when`), insights, mixes and press only when present. If page.published is true, link page.page_url and, for a specific mix, the matching embed's deep_link. If page.published is false, do not present a Dizko page link; offer SoundCloud or Resident Advisor from links instead."
     };
   },
@@ -792,7 +792,7 @@ const handlers = {
     return {
       ...result,
       assistant_instruction: result.mode === "search"
-        ? "If best_match.confident is true, call dizko_find_venue with its id to get the venue's upcoming events; otherwise show the candidates and ask which one."
+        ? "If best_match.confident is true, call dizko_find_venue with its id to get the venue's upcoming events; otherwise show best_match.alternatives and ask which one. `prominence` ranks how complete a venue record is; it is an internal ranking signal, never a fact to state to the user."
         : "Treat entity facts as canonical Dizko data. upcoming_events are date-ordered with local times in `when`; render them with the standard event template. If none, say the venue has no upcoming Dizko listings rather than guessing."
     };
   },
