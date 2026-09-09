@@ -285,7 +285,7 @@ function assertInstructions(instructions) {
 
 async function checkHealth() {
   const response = await fetchWithTimeout(`${baseUrl}/health`);
-  const body = await response.json();
+  const body = await readJsonBody(response, `${baseUrl}/health`);
   assert(response.ok, `Health endpoint returned HTTP ${response.status}`);
   assert(body.ok === true && body.name === "dizko", "Health body did not match expected service metadata");
   return {
@@ -298,7 +298,7 @@ async function checkHealth() {
 
 async function checkMetadata() {
   const response = await fetchWithTimeout(`${baseUrl}/`);
-  const body = await response.json();
+  const body = await readJsonBody(response, `${baseUrl}/`);
   assert(response.ok, `Metadata endpoint returned HTTP ${response.status}`);
   for (const key of ["endpoint", "install", "privacy", "support", "terms", "user_guide", "security", "logo"]) {
     assert(typeof body[key] === "string" && body[key].startsWith("/"), `Metadata missing ${key}`);
@@ -714,6 +714,21 @@ async function fetchWithTimeout(url, options = {}) {
     });
   } catch (error) {
     throw new Error(`Request timed out or failed after ${requestTimeoutMs}ms: ${url} (${error.message})`);
+  }
+}
+
+// A proxy error page, a CDN 502 or a maintenance page all answer with HTML,
+// and response.json() then throws a bare SyntaxError whose message begins
+// "Unexpected token 'H'" - which says nothing about which endpoint failed or
+// what it actually returned. This reports the endpoint, the status and the
+// first line of the body instead.
+async function readJsonBody(response, url) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.trim().split("\n")[0].slice(0, 200) || "(empty body)";
+    throw new Error(`${url} returned HTTP ${response.status} with a non-JSON body: ${preview}`);
   }
 }
 

@@ -9,9 +9,27 @@ const submissionPacketPath = resolve(process.env.EVENTCHAT_SUBMISSION_PACKET_PAT
 const submissionAuditPath = resolve(process.env.EVENTCHAT_SUBMISSION_AUDIT_PATH || "./SUBMISSION_AUDIT.md");
 const requireDeploymentMetadata = process.env.EVENTCHAT_REQUIRE_DEPLOYMENT_METADATA !== "false";
 
+// A missing input file is an ordinary operator mistake, not a crash: an
+// ENOENT stack trace makes the reader work out which of the two files was
+// missing and how it is meant to get there.
+async function readJsonFile(path, hint) {
+  let text;
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Missing ${path}. ${hint}`);
+    throw error;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${path} is not valid JSON: ${error.message}`);
+  }
+}
+
 async function main() {
-  const fields = JSON.parse(await readFile(fieldsPath, "utf8"));
-  const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+  const fields = await readJsonFile(fieldsPath, "This file holds the submission field values and is committed to the repository.");
+  const evidence = await readJsonFile(evidencePath, "Run `npm run verify:submission:bundle` first: it probes the live deployment and writes this evidence file.");
 
   assertNonEmpty(fields.app_name, "app_name");
   assertNonEmpty(fields.short_description, "short_description");
