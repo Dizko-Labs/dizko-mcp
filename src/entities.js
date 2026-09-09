@@ -702,7 +702,16 @@ function normalizeEntityKind(value) {
 }
 
 function normalizeText(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .normalize("NFD")
+    // Fold accents so an ASCII query reaches an accented name and the other
+    // way round. Live, the catalog stores "Sven Vath" while the correct
+    // spelling is "Sven Väth", so typing the name properly was the one way
+    // to be told it was not a confident match.
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function unique(values) {

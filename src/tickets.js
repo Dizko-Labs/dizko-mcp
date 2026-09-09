@@ -270,15 +270,29 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
   // order be replayed under a fresh key.
   // A provider call that throws says nothing about whether the order landed,
   // so the claim deliberately stands and the caller must re-quote rather than
-  // retry blind.
-  const result = await provider.purchase({
-    quote,
-    confirmation_text: input.confirmation_text,
-    delivery_email: input.delivery_email || quote.delivery_email || null,
-    add_to_calendar: input.add_to_calendar ?? quote.add_to_calendar ?? true,
-    user_payment_profile_id: input.user_payment_profile_id || null,
-    idempotency_key: quote.quote_id
-  });
+  // retry blind. What it must NOT do is surface as a generic tool error: the
+  // model would read that as "it failed", tell the user nothing was bought,
+  // and retry - and the retry returns quote_already_used, which reads as a
+  // contradiction. The outcome is unknown, and the payload says exactly that.
+  let result;
+  try {
+    result = await provider.purchase({
+      quote,
+      confirmation_text: input.confirmation_text,
+      delivery_email: input.delivery_email || quote.delivery_email || null,
+      add_to_calendar: input.add_to_calendar ?? quote.add_to_calendar ?? true,
+      user_payment_profile_id: input.user_payment_profile_id || null,
+      idempotency_key: quote.quote_id
+    });
+  } catch {
+    return {
+      purchased: false,
+      status: "purchase_outcome_unknown",
+      code: "purchase_outcome_unknown",
+      quote,
+      assistant_instruction: "The ticket provider did not answer, so it is not known whether this order went through. Do not retry and do not tell the user it failed. Tell them to check their email and the provider's order page, and only quote again if they confirm nothing was bought."
+    };
+  }
 
   if (!result?.purchased) {
     // Only an explicit `purchased: false` is the provider stating nothing

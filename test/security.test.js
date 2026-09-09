@@ -692,3 +692,47 @@ test("a repeatedly used avoid term survives a flood of one-off terms", () => {
   }
   assert.equal(avoidPattern("huge crowds"), hot, "a term used on every call must not be evicted by one-off terms");
 });
+
+test("a provider that never answers is reported as unknown, not as a failure", async () => {
+  // Throwing out of the tool made the model read "it failed", tell the user
+  // nothing was bought, and retry - and the retry says quote_already_used,
+  // which reads as a contradiction. Neither statement is safe to make about
+  // money when the provider did not answer.
+  const quoted = quoteFor();
+  const input = { quote_token: quoted.quote_token, confirmation_text: "yes, buy 2 tickets, max total 30 EUR" };
+  const options = {
+    config: CONFIG,
+    now: NOW,
+    quoteSigningSecret: SECRET,
+    ticketPurchaseProvider: { purchase: async () => { throw new Error("gateway 503 for card 4242"); } }
+  };
+
+  const result = await purchaseTicketOrder(input, options);
+  assert.equal(result.code, "purchase_outcome_unknown");
+  assert.equal(result.purchased, false);
+  assert.doesNotMatch(JSON.stringify(result), /4242|503/, "provider error text never reaches the model");
+  assert.match(result.assistant_instruction, /not known whether/);
+
+  // The claim still stands, so a blind retry cannot place a second order.
+  const retry = await purchaseTicketOrder(input, options);
+  assert.equal(retry.code, "quote_already_used");
+});
+
+test("an accented name and its plain spelling are the same artist", async () => {
+  // The catalog stores "Sven Vath" while the correct spelling is "Sven Väth",
+  // so typing the name properly was the one way to be told it was not a
+  // confident match.
+  const fetch = fakeSceneFetch([{ id: "sven-vath", name: "Sven Vath", kind: "dj" }]);
+  for (const query of ["Sven Vath", "Sven Väth", "sven vath"]) {
+    const result = body(await callTool("dizko_find_artist", { query }, { config: CONFIG, fetch }));
+    assert.equal(result.best_match.name, "Sven Vath", `"${query}" must find the artist`);
+    assert.equal(result.best_match.confident, true, `"${query}" must be confident`);
+  }
+});
+
+function fakeSceneFetch(items) {
+  return async (url) => {
+    if (new URL(url).pathname === "/scene/search") return Response.json({ count: items.length, items });
+    throw new Error(`Unexpected request: ${new URL(url).pathname}`);
+  };
+}
