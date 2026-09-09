@@ -414,6 +414,7 @@ Tickets, preferences (`src/tickets.js`, `src/preferences.js`):
 | Variable | Default | Legacy aliases | Purpose |
 | --- | --- | --- | --- |
 | `DIZKO_QUOTE_SIGNING_SECRET` | random per process | `EVENTCHAT_QUOTE_SIGNING_SECRET` | HMAC key for quote tokens. Set it on hosted deployments so quotes survive restarts; the per-process fallback is only safe for a single instance. |
+| `DIZKO_MAX_TRACKED_QUOTES` | `20000` | none | How many spent-quote claims are held at once. Sized for concurrent live quotes: expired claims are pruned first, so the ceiling is only reached by that many unexpired claims. At the ceiling a purchase is refused (`quote_registry_full`) rather than an existing claim being dropped. |
 | `DIZKO_PREFERENCES_PATH` | `./data/preferences.json` | `EVENTCHAT_PREFERENCES_PATH` | Preference store file. |
 | `DIZKO_PREFERENCE_RETENTION_DAYS` | `730` | `EVENTCHAT_PREFERENCE_RETENTION_DAYS` | Inactive profiles are pruned after this many days. |
 | `DIZKO_MAX_PROFILES` | `10000` | `EVENTCHAT_MAX_PROFILES` | Ceiling on stored profiles. At the ceiling, profiles that were created but never used or consented to are evicted oldest-first; only if that frees nothing does creation fail with `profile_limit_reached`. |

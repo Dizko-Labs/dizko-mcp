@@ -7,7 +7,7 @@ const DEFAULT_PREFS_PATH = "./data/preferences.json";
 const DEFAULT_RETENTION_DAYS = 730;
 const DEFAULT_MAX_PROFILES = 10000;
 const DEFAULT_MAX_PROFILE_BYTES = 98304;
-const ABANDONED_PROFILE_GRACE_MS = 60 * 60 * 1000;
+const ABANDONED_PROFILE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const fileQueues = new Map();
 
 // Single-file JSON store. Writes are atomic (temp file + rename) and
@@ -272,8 +272,13 @@ function enforceProfileCap(data, now = new Date()) {
   if (Object.keys(users).length < limit) return;
 
   const graceCutoff = now.getTime() - ABANDONED_PROFILE_GRACE_MS;
+  // Abandoned means empty and untouched, not unconsented. Every profile the
+  // public tool creates has consent - it refuses to create one without it -
+  // so filtering on consent made this set permanently empty and the whole
+  // mitigation dead code: the store simply hard-failed at the ceiling, which
+  // locks out every new user since creation needs no credential.
   const abandoned = Object.entries(users)
-    .filter(([, profile]) => !profile.consent && !(profile.feedback || []).length && !hasStoredTaste(profile.preferences))
+    .filter(([, profile]) => !(profile.feedback || []).length && !hasStoredTaste(profile.preferences))
     .map(([profileId, profile]) => ({ profileId, at: Date.parse(profile.updated_at || profile.created_at || "") || 0 }))
     .filter((entry) => entry.at < graceCutoff)
     .sort((a, b) => a.at - b.at);
@@ -291,11 +296,13 @@ function enforceProfileCap(data, now = new Date()) {
 
 // createProfile stores the normalized shape, which carries empty arrays for
 // every unset list, so a key count says nothing about whether the profile
-// holds any taste at all.
+// holds any taste at all. `false` carries none either: `free: false` and
+// `nightlife: false` are the defaults, not a stated preference.
 function hasStoredTaste(preferences = {}) {
   return Object.values(preferences).some((value) => {
     if (Array.isArray(value)) return value.length > 0;
     if (value && typeof value === "object") return Object.keys(value).length > 0;
+    if (value === false) return false;
     return value !== undefined && value !== null;
   });
 }
@@ -465,7 +472,21 @@ export function updateLearnedSignals(learned = {}, feedback, saved = {}) {
     increment(next, signal.key, signal.values, -1);
   }
   floorSavedTerms(next, saved);
-  return next;
+  return plainCounters(next);
+}
+
+// The counters are built on null-prototype maps so a term named "constructor"
+// or "__proto__" is counted like any other string, but what leaves this
+// function is an ordinary object: that is the shape callers compare against
+// and the shape a JSON round trip returns. Spread copies own properties, so
+// a literal "__proto__" key survives as data rather than reassigning a
+// prototype.
+function plainCounters(learned) {
+  const out = {};
+  for (const [key, counters] of Object.entries(learned || {})) {
+    out[key] = counters && typeof counters === "object" ? { ...counters } : counters;
+  }
+  return out;
 }
 
 function floorSavedTerms(learned, saved = {}) {
@@ -578,13 +599,21 @@ function promoterNames(promoters) {
 function increment(target, key, values, weight) {
   const entries = list(values);
   if (!entries.length) return;
-  target[key] ||= {};
+  // A null-prototype map so a genre or venue literally named "constructor"
+  // or "__proto__" is counted like any other string. With a plain object,
+  // `target[key][value]` resolved to an inherited function, which both
+  // skipped the cap and produced "function Object() { [native code] }1" as
+  // the stored score.
+  if (!target[key] || Object.getPrototypeOf(target[key]) !== null) {
+    target[key] = Object.assign(Object.create(null), target[key] || {});
+  }
   for (const value of entries) {
     // A term already being tracked always updates. A brand new term only
     // enters while there is room, so a stream of never-seen-before values
     // cannot inflate the profile without bound.
-    if (target[key][value] === undefined && Object.keys(target[key]).length >= MAX_LEARNED_TERMS_PER_KEY) continue;
-    target[key][value] = (target[key][value] || 0) + weight;
+    const current = Object.hasOwn(target[key], value) ? target[key][value] : undefined;
+    if (current === undefined && Object.keys(target[key]).length >= MAX_LEARNED_TERMS_PER_KEY) continue;
+    target[key][value] = (typeof current === "number" ? current : 0) + weight;
   }
 }
 

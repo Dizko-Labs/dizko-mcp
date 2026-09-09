@@ -126,7 +126,13 @@ const AVOID_PATTERN_CACHE_MAX = 500;
 
 export function avoidPattern(term) {
   const cached = AVOID_PATTERN_CACHE.get(term);
-  if (cached) return cached;
+  if (cached) {
+    // Re-insert so eviction is least-recently-USED. Insertion order alone
+    // would drop a term used on every call once 500 new ones passed through.
+    AVOID_PATTERN_CACHE.delete(term);
+    AVOID_PATTERN_CACHE.set(term, cached);
+    return cached;
+  }
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, (match) => `\\${match}`);
   const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "iu");
   if (AVOID_PATTERN_CACHE.size >= AVOID_PATTERN_CACHE_MAX) {

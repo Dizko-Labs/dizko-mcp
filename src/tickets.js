@@ -148,17 +148,28 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
 // This registry is per-process, which matches the store behind it: several
 // replicas need a shared claim store behind the same interface.
 const consumedQuotes = new Map();
-const MAX_TRACKED_QUOTES = 20000;
+const DEFAULT_MAX_TRACKED_QUOTES = 20000;
+
+// Sized for concurrent live quotes, not for total volume: everything expired
+// is pruned before this is consulted, so the ceiling is only ever reached by
+// that many unexpired claims at once.
+export function maxTrackedQuotes() {
+  const configured = Number(process.env.DIZKO_MAX_TRACKED_QUOTES || DEFAULT_MAX_TRACKED_QUOTES);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_TRACKED_QUOTES;
+  return Math.floor(configured);
+}
 
 function claimQuote(quoteId, expiresAt, now) {
   pruneConsumedQuotes(now);
-  if (consumedQuotes.has(quoteId)) return false;
-  if (consumedQuotes.size >= MAX_TRACKED_QUOTES) {
-    consumedQuotes.delete(consumedQuotes.keys().next().value);
-  }
+  if (consumedQuotes.has(quoteId)) return "already_claimed";
+  // Everything expired is already gone, so anything still here is a LIVE
+  // claim. Evicting the oldest to make room would free exactly the claim an
+  // attacker wants freed: mint junk quotes until the victim's claim is
+  // pushed out, then replay it. A full registry fails closed instead.
+  if (consumedQuotes.size >= maxTrackedQuotes()) return "registry_full";
   const expiry = Date.parse(expiresAt);
   consumedQuotes.set(quoteId, Number.isFinite(expiry) ? expiry : now.getTime() + DEFAULT_QUOTE_TTL_MS);
-  return true;
+  return "claimed";
 }
 
 function releaseQuote(quoteId) {
@@ -193,7 +204,10 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     };
   }
 
-  if (new Date(quote.expires_at).getTime() < (options.now || new Date()).getTime()) {
+  // Inclusive, matching pruneConsumedQuotes: with a strict < the claim is
+  // pruned at exactly expires_at while the quote is still spendable, and the
+  // same quote buys twice on that millisecond.
+  if (new Date(quote.expires_at).getTime() <= (options.now || new Date()).getTime()) {
     return {
       purchased: false,
       status: "quote_expired",
@@ -216,13 +230,23 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     };
   }
 
-  if (!claimQuote(quote.quote_id, quote.expires_at, options.now || new Date())) {
+  const claim = claimQuote(quote.quote_id, quote.expires_at, options.now || new Date());
+  if (claim === "already_claimed") {
     return {
       purchased: false,
       status: "quote_already_used",
       code: "quote_already_used",
       quote,
       assistant_instruction: "This quote was already submitted for purchase. Do not retry it. Check the user's existing order first, and only call dizko_quote_tickets for a fresh quote if they confirm nothing was bought."
+    };
+  }
+  if (claim === "registry_full") {
+    return {
+      purchased: false,
+      status: "purchase_unavailable",
+      code: "quote_registry_full",
+      quote,
+      assistant_instruction: "Ticket purchase is temporarily unavailable and nothing was charged. Tell the user to try again shortly or use the checkout link."
     };
   }
 
@@ -254,9 +278,11 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
   });
 
   if (!result?.purchased) {
-    // An explicit "not purchased" is the provider stating nothing happened,
-    // so the quote is spendable again within its remaining TTL.
-    releaseQuote(quote.quote_id);
+    // Only an explicit `purchased: false` is the provider stating nothing
+    // happened. undefined or null state nothing at all - a fire-and-forget
+    // adapter may have placed the order and simply not said so - so the
+    // claim stands and the caller must re-quote rather than retry blind.
+    if (result?.purchased === false) releaseQuote(quote.quote_id);
     return {
       purchased: false,
       status: "purchase_failed",
@@ -402,9 +428,20 @@ function containsNumber(text, value) {
   });
 }
 
+// The sentence this asks for is passed back as `confirmation_text`, which
+// the schema caps. A festival billing every artist in the title would push
+// the mandated wording past that cap, so the server would reject the exact
+// words it just demanded. The title is trimmed to keep the whole sentence
+// inside the cap; matching still works because it never required the title.
+export const CONFIRMATION_TEXT_MAX_LENGTH = 400;
+
 function confirmationPrompt(quote) {
   const maxTotal = quote.max_total == null ? "the provider's checkout price" : `${quote.currency || ""}${quote.max_total}`;
-  return `To authorize, write: "Yes, buy ${quote.quantity} ticket(s) for ${quote.event.title}, max total ${maxTotal}. Stop if price, date, venue, ticket type, quantity, or refund terms change."`;
+  const sentence = (title) => `Yes, buy ${quote.quantity} ticket(s) for ${title}, max total ${maxTotal}. Stop if price, date, venue, ticket type, quantity, or refund terms change.`;
+  const fullTitle = String(quote.event.title || "");
+  const overflow = sentence(fullTitle).length - CONFIRMATION_TEXT_MAX_LENGTH;
+  const title = overflow > 0 ? `${fullTitle.slice(0, Math.max(1, fullTitle.length - overflow - 1)).trimEnd()}\u2026` : fullTitle;
+  return `To authorize, write: "${sentence(title)}"`;
 }
 
 function normalizeProvider(source, ticketUrl) {

@@ -5,6 +5,8 @@
 // Order matters: the filters listed first are the ones most likely to be the
 // blocker, not simply the ones that are set.
 
+import { isSupportedWhen } from "./dateRange.js";
+
 const LIST_FILTERS = ["genres", "vibe", "event_types", "neighborhoods"];
 
 // assistant_instruction is a directive channel: whatever lands in it is read
@@ -13,10 +15,6 @@ const LIST_FILTERS = ["genres", "vibe", "event_types", "neighborhoods"];
 // or `when` string is caller-controlled text, so it stays in the structured
 // fields (active_filters, retry_with) where it reads as data, and the
 // instruction points at the field by name instead.
-const SAFE_TIMEFRAME_PRESETS = new Set([
-  "today", "tonight", "tomorrow", "weekend", "next weekend", "week", "next week", "month",
-  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "any"
-]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function describeFilters(input = {}) {
@@ -156,8 +154,11 @@ function buildInstruction({ baselineCount, active, label, timeframe, suggestions
 
 function describeTimeframe(input = {}) {
   const when = String(input.when || "").trim().toLowerCase();
-  if (when && SAFE_TIMEFRAME_PRESETS.has(when)) return `for "${when}"`;
   if (when && ISO_DATE.test(when)) return `on ${when}`;
+  // Echo the timeframe only if the date grammar accepts it. Everything it
+  // accepts is a short controlled phrase ("weekend", "friday night", "next
+  // week"); anything else is caller text and is described, not repeated.
+  if (when && isSupportedWhen(when)) return `for "${when}"`;
   if (when) return "in the requested window";
   if (ISO_DATE.test(input.date_from || "") && ISO_DATE.test(input.date_to || "") && input.date_from !== input.date_to) {
     return `between ${input.date_from} and ${input.date_to}`;

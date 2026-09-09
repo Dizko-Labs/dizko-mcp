@@ -104,6 +104,20 @@ export function assertIsoDate(value, field) {
 // Resolves a preset to an inclusive date range in the given timezone. Throws
 // ToolInputError (field "when") for anything it does not understand so the
 // model sees the accepted presets instead of a generic failure.
+// Whether `when` is a value this grammar accepts. The grammar is closed - an
+// unmatched value throws - so asking it directly is both safer and more
+// complete than restating its vocabulary somewhere else, where the copy goes
+// stale the moment a preset is added.
+export function isSupportedWhen(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return false;
+  try {
+    resolveDateRange(value, new Date(), "UTC");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveDateRange(preset, now = new Date(), timezone = "UTC") {
   const raw = String(preset ?? "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {

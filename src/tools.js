@@ -26,7 +26,7 @@ import {
   purchaseTicketOrder,
   quoteTicketOrder
 } from "./tickets.js";
-import { applySchemaLimits } from "./schemaLimits.js";
+import { applySchemaLimits, assertBoundedInput } from "./schemaLimits.js";
 import { firstErrorPayload, validateInput } from "./validate.js";
 
 export const EVENT_LINKS_INSTRUCTION = [
@@ -576,6 +576,12 @@ export async function callTool(name, input = {}, options = {}) {
     // Plain-object lookup would resolve "toString" or "constructor" to an
     // inherited function and hand the SDK something that is not a tool result.
     if (Object.hasOwn(legacyHandlers, name)) {
+      // Pre-0.8 names have no inputSchema, and this branch runs before
+      // validateInput, so without a bound here they are the one door into the
+      // handlers and the upstream API that no cap covers.
+      assertBoundedInput(input || {}, (message, field) => {
+        throw new ToolInputError(message, { field: field || null, hint: `Shorten the argument and call ${name} again.` });
+      });
       return await legacyHandlers[name](input || {}, context);
     }
     const alias = Object.hasOwn(LEGACY_TOOL_ALIASES, name) ? LEGACY_TOOL_ALIASES[name] : undefined;
@@ -626,7 +632,7 @@ const handlers = {
         ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
         : rankingHintsFromRequest(input);
       const response = await recommendEvents({ ...searchInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
-      const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
+      const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
       // Taste ranks a candidate window rather than walking the inventory in
       // order, so there is no stable cursor to hand back. Say so instead of
       // implying a page 2 that would re-rank and repeat events.
@@ -677,7 +683,7 @@ const handlers = {
       ? offset + events.length < deduped.length
       : consumed > 0 && offset + consumed < count;
     const truncatedDay = sameDay && consumed >= MAX_SEARCH_LIMIT;
-    const empty = events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
+    const empty = events.length ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
     return {
       ...(sameDay ? { filtered_out: (response.events || []).length - fresh.length, filter_note: "Events that already ended today are omitted." } : {}),
       city: cityDisplayName(city),
@@ -718,7 +724,7 @@ const handlers = {
       ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
       : rankingHintsFromRequest(input);
     const plan = await planNight({ ...input, city, preferences: hints }, { ...options, config });
-    const emptyPlan = plan.events.length ? null : await noResultsPayload({ ...input, city }, cityDisplayName(city), { ...options, config });
+    const emptyPlan = plan.events.length ? null : await noResultsPayload({ ...input, city }, coveredCityName(city), { ...options, config });
     return {
       ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
       timezone,
@@ -1008,6 +1014,16 @@ function eventOptions(context) {
 // extra (cached) upstream call with every optional filter removed separates
 // "your filters are too tight" from "nothing is on", and the difference is
 // what the user actually needs to hear.
+// The display name ONLY when the city resolved against Dizko's own table.
+// cityDisplayName title-cases anything it does not recognize, so on an
+// unknown city it hands back the caller's own string dressed up as a name -
+// which then reached assistant_instruction, the field the model reads as
+// orders. Unknown cities get null here and the instruction says "the
+// requested city" instead; the raw value still travels as data.
+function coveredCityName(city) {
+  return resolveCity(city)?.name || null;
+}
+
 async function noResultsPayload(input, cityName, options) {
   let baselineCount = null;
   if (hasNarrowingFilters(input)) {

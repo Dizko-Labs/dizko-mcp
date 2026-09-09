@@ -87,9 +87,13 @@ function coerceAndCheck(schema, value, path, root, errors) {
       const allowed = new Set(schema.propertyNames.enum.map((key) => String(key).toLowerCase()));
       for (const key of Object.keys(out)) {
         if (allowed.has(key.toLowerCase())) continue;
+        // Object keys carry no maxLength, so the rejected key is unbounded
+        // caller text. Echoing it whole put a 200,000-character key - or a
+        // fake instruction dressed as one - straight into the error message.
+        const shown = key.length > 64 ? `${key.slice(0, 64)}\u2026` : key;
         errors.push({
-          field: path ? `${path}.${key}` : key,
-          message: `${label(path || "value")} does not accept the key "${key}".`,
+          field: path ? `${path}.${shown}` : shown,
+          message: `${label(path || "value")} does not accept the key "${shown}".`,
           allowed: schema.propertyNames.enum
         });
         delete out[key];
