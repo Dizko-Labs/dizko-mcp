@@ -12,7 +12,7 @@ import { avoidPattern, scoreEvent } from "../src/rank.js";
 import { buildNoResults } from "../src/relaxations.js";
 import { CONFIRMATION_TEXT_MAX_LENGTH, purchaseTicketOrder, quoteTicketOrder, resetConsumedQuotes } from "../src/tickets.js";
 import { callTool, tools } from "../src/tools.js";
-import { applySchemaLimits, DEFAULT_STRING_MAX_LENGTH } from "../src/schemaLimits.js";
+import { applySchemaLimits, assertBoundedInput, DEFAULT_STRING_MAX_LENGTH } from "../src/schemaLimits.js";
 import { handleMcpRequest, negotiateProtocolVersion } from "../src/mcpServer.js";
 import { createHttpMcpServer, originAllowed } from "../src/httpServer.js";
 
@@ -751,3 +751,29 @@ function fakeSceneFetch(items) {
     throw new Error(`Unexpected request: ${new URL(url).pathname}`);
   };
 }
+
+test("a legacy field name is bounded like a field value", async () => {
+  // Only values were length-checked, so a 200,000-character key travelled
+  // through the handler and into whatever the handler said about it.
+  const flood = { [`k${"x".repeat(200000)}`]: 1 };
+  const refused = body(await callTool("get_event_search_followups", flood, { config: CONFIG }));
+  assert.equal(refused.code, "invalid_argument");
+  assert.ok(refused.error.length < 300, `error was ${refused.error.length} characters`);
+});
+
+test("an object graph that shares references is walked once, not exponentially", () => {
+  // A JSON body is a tree, so this only guards a hand-built graph. Without
+  // it, a few hundred aliased nodes take longer than any request should.
+  const leaf = { a: 1, b: 2 };
+  let level = leaf;
+  for (let depth = 0; depth < 5; depth += 1) {
+    const next = {};
+    for (let index = 0; index < 100; index += 1) next[`n${index}`] = level;
+    level = next;
+  }
+  const started = Date.now();
+  let violations = 0;
+  assertBoundedInput(level, () => { violations += 1; });
+  assert.ok(Date.now() - started < 1000, "the walk must not blow up on shared references");
+  assert.ok(violations >= 0);
+});

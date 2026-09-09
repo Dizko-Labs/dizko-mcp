@@ -94,11 +94,16 @@ export const LEGACY_INPUT_LIMITS = {
   maxStringLength: 8192,
   maxArrayItems: 100,
   maxKeys: 200,
+  maxKeyLength: 200,
   maxDepth: 8
 };
 
 export function assertBoundedInput(input, onViolation) {
   let keys = 0;
+  // A JSON body parses to a tree, so this only matters for a hand-built
+  // object graph that shares references: without it, a few hundred aliased
+  // nodes expand into an exponential walk.
+  const seen = new Set();
   const walk = (value, depth, path) => {
     if (depth > LEGACY_INPUT_LIMITS.maxDepth) onViolation(`${path || "input"} is nested too deeply.`, path);
     if (typeof value === "string") {
@@ -115,9 +120,16 @@ export function assertBoundedInput(input, onViolation) {
       return;
     }
     if (value && typeof value === "object") {
+      if (seen.has(value)) return;
+      seen.add(value);
       for (const [key, child] of Object.entries(value)) {
         keys += 1;
         if (keys > LEGACY_INPUT_LIMITS.maxKeys) onViolation("The request carries too many fields.", path || null);
+        // Keys are caller text too. Bounding only values left a 200,000
+        // character key to travel through the handler and into any error.
+        if (key.length > LEGACY_INPUT_LIMITS.maxKeyLength) {
+          onViolation(`A field name is longer than ${LEGACY_INPUT_LIMITS.maxKeyLength} characters.`, path || null);
+        }
         walk(child, depth + 1, path ? `${path}.${key}` : key);
       }
     }

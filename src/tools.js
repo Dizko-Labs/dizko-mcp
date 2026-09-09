@@ -728,7 +728,7 @@ const handlers = {
       // a client looping on next_offset would never terminate.
       has_more: hasMore,
       next_offset: hasMore ? (sameDay ? lastIndex + 1 : offset + consumed) : null,
-      ...(truncatedDay && !pastEnd ? { paging_note: `This day has more than ${MAX_SEARCH_LIMIT} listings and is capped at that; narrow with genres, neighborhoods or a venue to see the rest.` } : {}),
+      ...(truncatedDay && !pastEnd ? { paging_note: `This day filled the ${MAX_SEARCH_LIMIT}-listing fetch, so there may be more; narrow with genres, neighborhoods or a venue to be sure of seeing everything.` } : {}),
       search_fallback: response.search_fallback ?? null,
       events,
       ...(empty ? { no_results: empty } : {}),

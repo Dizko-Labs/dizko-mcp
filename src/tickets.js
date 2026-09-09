@@ -210,7 +210,12 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
   // Inclusive, matching pruneConsumedQuotes: with a strict < the claim is
   // pruned at exactly expires_at while the quote is still spendable, and the
   // same quote buys twice on that millisecond.
-  if (new Date(quote.expires_at).getTime() <= (options.now || new Date()).getTime()) {
+  // An unparseable expiry counts as expired. Signed tokens always carry a
+  // valid ISO string, so this is unreachable today, but a NaN comparison is
+  // false in both directions and would otherwise mean a quote that never
+  // expires while its claim is pruned on a synthetic TTL.
+  const expiresAt = new Date(quote.expires_at).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt <= (options.now || new Date()).getTime()) {
     return {
       purchased: false,
       status: "quote_expired",
