@@ -310,17 +310,20 @@ test("MCP coerces model-friendly argument shapes and rejects the rest before fet
     params: { name: "dizko_search_events", arguments: { city: "berlin", limit: "5", genres: "techno,house", free: "true" } }
   }, options);
   assert.equal(coerced.isError, false);
-  assert.equal(requested.length, 1);
   assert.equal(requested[0].searchParams.get("limit"), "5");
   assert.deepEqual(requested[0].searchParams.getAll("genres"), ["techno", "house"]);
   assert.equal(requested[0].searchParams.get("free"), "true");
+  // The fixture returns nothing, so the empty-result path also probes the
+  // unfiltered baseline to tell the model why. That is the only extra call.
+  assert.equal(requested.length, 2);
+  assert.deepEqual(requested[1].searchParams.getAll("genres"), []);
 
   const rejected = await handleMcpRequest({
     method: "tools/call",
     params: { name: "dizko_search_events", arguments: { city: "berlin", limit: "many" } }
   }, options);
   assert.equal(rejected.isError, true);
-  assert.equal(requested.length, 1, "invalid input must not reach the upstream");
+  assert.equal(requested.length, 2, "invalid input must not reach the upstream");
   assert.deepEqual(rejected.structuredContent, {
     error: "limit must be a whole number.",
     code: "invalid_argument",
@@ -333,7 +336,7 @@ test("MCP coerces model-friendly argument shapes and rejects the rest before fet
     params: { name: "dizko_search_events", arguments: {} }
   }, options);
   assert.equal(scopeless.isError, true);
-  assert.equal(requested.length, 1);
+  assert.equal(requested.length, 2, "a scopeless call must not reach the upstream either");
   assert.equal(scopeless.structuredContent.code, "invalid_argument");
   assert.equal(scopeless.structuredContent.field, "city");
   assert.match(scopeless.structuredContent.hint, /dizko_list_cities/);

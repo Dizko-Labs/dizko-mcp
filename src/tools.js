@@ -7,6 +7,7 @@ import { isToolInputError, ToolInputError } from "./errors.js";
 import { EVENT_FIELD_OPTIONS, summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, rankingHintsFromRequest, recommendEvents } from "./planner.js";
+import { baselineSearchInput, buildNoResults, hasNarrowingFilters } from "./relaxations.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
@@ -61,7 +62,7 @@ const rawTools = [
   {
     name: "dizko_search_events",
     title: "Search Dizko Events",
-    description: "Search live Dizko events in one city and timeframe. Use for any 'what's on' request that names a city, a venue, an artist, or a timeframe. Returns up to `limit` events with local times (`when`), venue and address, price, genres, vibe, lineup, set times and links; `count` is the total matching. Pass profile_id and profile_secret to rank by saved taste (saved taste ranks results, it never filters them). Filters you pass (genres, vibe, event_types, price_max, venue, featuring) are hard filters; `avoid` and `max_price` are ranking hints.",
+    description: "Search live Dizko events in one city and timeframe. Use for any 'what's on' request that names a city, a venue, an artist, or a timeframe. Returns up to `limit` events with local times (`when`), venue and address, price, genres, vibe, lineup, set times and links; `count` is the total matching. Pass profile_id and profile_secret to rank by saved taste (saved taste ranks results, it never filters them). Filters you pass (genres, vibe, event_types, price_max, venue, featuring) are hard filters; `avoid` and `max_price` are ranking hints. When nothing matches, the result carries `no_results` with how many events exist without the filters and ordered `suggested_relaxations` you can retry directly.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -100,7 +101,7 @@ const rawTools = [
   {
     name: "dizko_plan_night",
     title: "Plan a Night Out",
-    description: "Build a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Use when the user wants a plan with backups rather than a list. Accepts the same filters as dizko_search_events and an optional profile for saved taste.",
+    description: "Build a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Use when the user wants a plan with backups rather than a list. Accepts the same filters as dizko_search_events and an optional profile for saved taste. An empty plan carries the same `no_results` guidance as search.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -618,6 +619,7 @@ const handlers = {
         ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
         : rankingHintsFromRequest(input);
       const response = await recommendEvents({ ...searchInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
+      const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
       return {
         ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
         city: cityDisplayName(city),
@@ -627,8 +629,9 @@ const handlers = {
         ...response,
         returned: response.events.length,
         offset: input.offset ?? 0,
+        ...(emptyTaste ? { no_results: emptyTaste } : {}),
         app_download_url: config.appDownloadUrl,
-        assistant_instruction: EVENT_LINKS_INSTRUCTION
+        assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : EVENT_LINKS_INSTRUCTION
       };
     }
 
@@ -643,6 +646,7 @@ const handlers = {
     const events = deduped.slice(0, pageLimit).map((event) => summarizeEvent(event, summaryOptions));
     const offset = input.offset ?? 0;
     const count = response.count ?? events.length;
+    const empty = events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
     return {
       ...(sameDay ? { filtered_out: (response.events || []).length - fresh.length, filter_note: "Events that already ended today are omitted." } : {}),
       city: cityDisplayName(city),
@@ -656,8 +660,9 @@ const handlers = {
       next_offset: offset + events.length < count ? offset + events.length : null,
       search_fallback: response.search_fallback ?? null,
       events,
+      ...(empty ? { no_results: empty } : {}),
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: EVENT_LINKS_INSTRUCTION
+      assistant_instruction: empty ? empty.assistant_instruction : EVENT_LINKS_INSTRUCTION
     };
   },
 
@@ -676,12 +681,14 @@ const handlers = {
       ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
       : rankingHintsFromRequest(input);
     const plan = await planNight({ ...input, city, preferences: hints }, { ...options, config });
+    const emptyPlan = plan.events.length ? null : await noResultsPayload({ ...input, city }, cityDisplayName(city), { ...options, config });
     return {
       ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
       timezone,
       ...plan,
+      ...(emptyPlan ? { no_results: emptyPlan } : {}),
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: EVENT_LINKS_INSTRUCTION
+      assistant_instruction: emptyPlan ? emptyPlan.assistant_instruction : EVENT_LINKS_INSTRUCTION
     };
   },
 
@@ -947,6 +954,25 @@ const legacyHandlers = {
     }, Boolean(result.error));
   }
 };
+
+// An empty result is a dead end for the model unless it learns why. One
+// extra (cached) upstream call with every optional filter removed separates
+// "your filters are too tight" from "nothing is on", and the difference is
+// what the user actually needs to hear.
+async function noResultsPayload(input, cityName, options) {
+  let baselineCount = null;
+  if (hasNarrowingFilters(input)) {
+    try {
+      const baseline = await searchEvents(baselineSearchInput(input), options);
+      baselineCount = baseline.count ?? (baseline.events || []).length;
+    } catch {
+      // The suggestions still stand without the baseline number.
+    }
+  } else {
+    baselineCount = 0;
+  }
+  return buildNoResults(input, { baselineCount, cityName });
+}
 
 function isSameDayPreset(when) {
   const text = String(when || "").toLowerCase().trim();
