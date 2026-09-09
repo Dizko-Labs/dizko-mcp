@@ -344,10 +344,16 @@ test("venueMatches compares venue names by token", () => {
   assert.deepEqual(venueTokens("The Club"), []);
 
   assert.equal(venueMatches("Berghain / Panorama Bar", "Berghain | Panorama Bar | Säule"), true);
-  assert.equal(venueMatches("Berghain / Panorama Bar", "Berghain Kantine"), true);
+  // Berghain must not claim a Kantine listing, and Kantine must not claim
+  // Berghain's Klubnacht: they are different rooms with different capacities.
+  assert.equal(venueMatches("Berghain / Panorama Bar", "Berghain Kantine"), false);
+  assert.equal(venueMatches("Berghain Kantine", "Berghain | Panorama Bar | Säule"), false);
+  assert.equal(venueMatches("Berghain Kantine", "Kantine am Berghain"), true);
   assert.equal(venueMatches("Tresor", "Tresor / Globus"), true);
   assert.equal(venueMatches("RSO Berlin", "RSO.BERLIN"), true);
-  assert.equal(venueMatches("Salon zur Wilden Renate", "Renate"), true);
+  // A colloquial short form is accepted only on the second, looser pass.
+  assert.equal(venueMatches("Salon zur Wilden Renate", "Renate"), false);
+  assert.equal(venueMatches("Salon zur Wilden Renate", "Renate", { strict: false }), true);
   assert.equal(venueMatches("BASEMENT", "BASEMENT NY"), true);
   assert.equal(venueMatches("BASEMENT", "Pacha NYC Basement"), false);
   assert.equal(venueMatches("Fabric", "Private Hire at fabric"), false);
@@ -384,11 +390,15 @@ test("venue profiles match venue names by token", async () => {
   assert.equal(result.mode, "profile");
   assert.equal(result.kind, "venue");
   assert.equal(result.entity.name, "Berghain / Panorama Bar");
-  assert.equal(result.returned_event_count, 3);
-  assert.deepEqual(result.upcoming_events.map((row) => row.id), ["bh-2", "bh-3", "bh-4"], "unrelated venue dropped, same-show duplicate collapsed, sorted by start");
-  assert.deepEqual(result.upcoming_events.map((row) => row.venue), ["Berghain Kantine", "Berghain", "Berghain | Panorama Bar | Säule"]);
-  assert.equal(result.upcoming_events[1].ticket_url, "https://ra.co/events/bh-3", "the richer duplicate wins");
-  assert.equal(result.upcoming_events[0].when, "Sat 10 Oct, 00:00");
+  // Berghain Kantine is a separate, much smaller room in the same complex,
+  // so its afterparty is not a Berghain listing. Matching on a shared first
+  // token used to pull it in, which is how asking about Kantine returned
+  // Berghain's Klubnacht.
+  assert.equal(result.returned_event_count, 2);
+  assert.deepEqual(result.upcoming_events.map((row) => row.id), ["bh-3", "bh-4"], "unrelated venue and other room dropped, same-show duplicate collapsed, sorted by start");
+  assert.deepEqual(result.upcoming_events.map((row) => row.venue), ["Berghain", "Berghain | Panorama Bar | Säule"]);
+  assert.equal(result.upcoming_events[0].ticket_url, "https://ra.co/events/bh-3", "the richer duplicate wins");
+  assert.equal(result.upcoming_events[0].when, "Sun 11 Oct, 00:00");
   assert.equal(result.upcoming_events[0].timezone, "Europe/Berlin");
 });
 
@@ -841,4 +851,105 @@ test("venue and promoter scores come from rows already fetched", async () => {
   assert.ok(result.entities[0].prominence > result.entities[1].prominence * 3);
   assert.equal(result.best_match.name, "Berghain / Panorama Bar");
   assert.equal(result.best_match.confident, true);
+});
+
+test("a catalog name the query merely starts with is not a match at all", async () => {
+  // The reverse direction looked symmetric and was not. A catalog entry
+  // called "A" is a prefix of "Amelie Lens", "Honey" of "Honey Dijon" and
+  // "Marcel" of "Marcel Dettmann". Alone in its tier each was handed back as
+  // a confident answer about a different artist entirely.
+  assert.equal(matchTier("A", "Amelie Lens"), null);
+  assert.equal(matchTier("Honey", "Honey Dijon"), null);
+  assert.equal(matchTier("Marcel", "Marcel Dettmann"), null);
+  assert.equal(matchTier("Nina", "Nina Kraviz"), null);
+  // The forward direction is the one that means something: the catalog name
+  // contains what the user typed.
+  assert.equal(matchTier("Nina Kraviz", "nina"), MATCH_TIER.prefix);
+
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 3,
+        items: [
+          { id: "honey", name: "Honey", kind: "dj" },
+          { id: "nana", name: "Nina Nana", kind: "dj" },
+          { id: "ly", name: "Nina Ly", kind: "dj" }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findArtist({ query: "Honey Dijon" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, false, "no catalog name answers this query");
+  assert.ok(result.match_note, "the model must be told these are only the closest entries");
+});
+
+test("two scrapes of one name are one answer, not an ambiguity", async () => {
+  // Catalogs carry the same venue twice under different casing. Asking the
+  // user to choose between "Berghain" and "berghain" is asking about nothing.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 3,
+        // Identical records, so prominence cannot separate them either: the
+        // only thing that resolves this is recognising one name, not two.
+        items: [
+          { id: "berghain", name: "Berghain", kind: "venue", typical_capacity: 1500, genres: new Array(6).fill("techno"), bio: "x".repeat(200) },
+          { id: "wd-berghain", name: "berghain", kind: "venue", typical_capacity: 1500, genres: new Array(6).fill("techno"), bio: "x".repeat(200) },
+          { id: "kantine", name: "Berghain Kantine", kind: "venue" }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findVenue({ query: "Berghain" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.confident, true);
+  assert.equal(result.best_match.id, "berghain", "the fuller record of the two leads");
+});
+
+test("a room does not inherit its building's listings", async () => {
+  const events = [
+    { id: "k1", title: "Punk night", venue_name: "Kantine am Berghain", venue_city: "berlin", start_time: "2026-10-09T20:00:00Z", event_types: ["party"] },
+    { id: "k2", title: "Odd Beholder", venue_name: "Kantine, Berghain", venue_city: "berlin", start_time: "2026-10-10T20:00:00Z", event_types: ["party"] },
+    { id: "b1", title: "Klubnacht", venue_name: "Berghain | Panorama Bar | Säule", venue_city: "berlin", start_time: "2026-10-11T22:00:00Z", event_types: ["party"] }
+  ];
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/events") return { count: events.length, events };
+    return { id: "kantine", name: "Berghain Kantine", kind: "venue", cities: ["Berlin"] };
+  });
+
+  const result = await findVenue({ id: "kantine", city: "berlin" }, { ...OPTIONS, fetch });
+  assert.deepEqual(result.upcoming_events.map((row) => row.id), ["k1", "k2"], "Klubnacht is not a Kantine listing");
+});
+
+test("a room with no listings of its own is empty, not filled with the building's", async () => {
+  // The looser pass exists for "Renate" answering "Salon zur Wilden Renate".
+  // It must not become a back door: a two-word name is a room and its
+  // building, not a formal title with a nickname.
+  const events = [
+    { id: "b1", title: "Klubnacht", venue_name: "Berghain", venue_city: "berlin", start_time: "2026-10-11T22:00:00Z", event_types: ["party"] }
+  ];
+  // Named the way the listings do, so the building is the LAST word: without
+  // the length guard the short-form rule would read "Berghain" as this
+  // room's nickname and hand back the Klubnacht.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/events") return { count: 1, events };
+    return { id: "kantine", name: "Kantine am Berghain", kind: "venue", cities: ["Berlin"] };
+  });
+
+  const result = await findVenue({ id: "kantine", city: "berlin" }, { ...OPTIONS, fetch });
+  assert.deepEqual(result.upcoming_events, [], "better to say a room has nothing on than to list another room's events");
+});
+
+test("a venue with no exact listings still finds its colloquial short form", async () => {
+  const events = [
+    { id: "r1", title: "Wild night", venue_name: "Renate", venue_city: "berlin", start_time: "2026-10-09T20:00:00Z", event_types: ["party"] }
+  ];
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/events") return { count: 1, events };
+    return { id: "renate", name: "Salon zur Wilden Renate", kind: "venue", cities: ["Berlin"] };
+  });
+
+  const result = await findVenue({ id: "renate", city: "berlin" }, { ...OPTIONS, fetch });
+  assert.deepEqual(result.upcoming_events.map((row) => row.id), ["r1"], "the looser pass runs when nothing matched exactly");
 });

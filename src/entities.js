@@ -249,12 +249,27 @@ async function venueProfile(id, input, options) {
 async function venueEvents(profileName, filters, options) {
   const tokens = venueTokens(profileName);
   const candidates = unique([tokens[0], tokens[tokens.length - 1], profileName].filter(Boolean));
+  const pages = [];
   for (const needle of candidates) {
     const response = await searchEvents({ ...filters, venue: needle, sort_by: "soonest", limit: 60 }, options);
-    const matches = dedupeSameShow((response.events || []).filter((event) => venueMatches(profileName, event.venue_name)));
-    if (matches.length) return matches.sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || "")));
+    pages.push(response.events || []);
+    const matches = venueRows(pages.at(-1), profileName, { strict: true });
+    if (matches.length) return matches;
+  }
+  // Nothing named this room exactly. Only now accept a listing that names the
+  // venue by a short form of its full name - "Renate" for "Salon zur Wilden
+  // Renate" - which is why this pass runs second: a room that has its own
+  // listings must never be padded out with its building's.
+  for (const page of pages) {
+    const matches = venueRows(page, profileName, { strict: false });
+    if (matches.length) return matches;
   }
   return [];
+}
+
+function venueRows(events, profileName, options) {
+  const matches = dedupeSameShow(events.filter((event) => venueMatches(profileName, event.venue_name, options)));
+  return matches.sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || "")));
 }
 
 const VENUE_STOP_WORDS = new Set(["the", "club", "bar", "berlin", "london", "nyc", "ny", "new", "york", "la", "of", "and", "at", "im", "am", "der", "die", "das", "de", "le", "la", "el"]);
@@ -266,13 +281,52 @@ export function venueTokens(name) {
     .filter((token) => token && !VENUE_STOP_WORDS.has(token));
 }
 
-export function venueMatches(profileName, eventVenue) {
-  const profile = venueTokens(profileName);
-  const event = venueTokens(eventVenue);
-  if (!profile.length || !event.length) return false;
-  if (profile[0] === event[0]) return true;
-  const profileSet = new Set(profile);
-  return event.every((token) => profileSet.has(token));
+// Listings name a room, or a slash-separated list of rooms in one building:
+// "Berghain | Panorama Bar | Säule", "Kantine am Berghain". Splitting on
+// those separators keeps the rooms apart, while a comma is left alone
+// because "Kantine, Berghain" is one room named by its building, not two.
+export function venueRooms(name) {
+  return normalizeText(name)
+    .split(/[/|]+/)
+    .map((room) => venueTokens(room))
+    .filter((tokens) => tokens.length);
+}
+
+// A profile matches an event when every distinguishing word of the profile's
+// name appears in one of the event's rooms. The direction matters: Berghain
+// contains Kantine, so a Berghain query may return a Kantine listing, but a
+// Kantine query must never return Berghain's Klubnacht. Matching on a shared
+// first token did exactly that - asking about Berghain Kantine returned four
+// main-room events among six real ones.
+function sameRoom(left, right) {
+  if (left.length !== right.length) return false;
+  const inRight = new Set(right);
+  return left.every((token) => inRight.has(token));
+}
+
+export function venueMatches(profileName, eventVenue, { strict = true } = {}) {
+  const profileRooms = venueRooms(profileName);
+  const eventRoomList = venueRooms(eventVenue);
+  if (!profileRooms.length || !eventRoomList.length) return false;
+
+  if (profileRooms.some((profileRoom) => eventRoomList.some((eventRoom) => sameRoom(profileRoom, eventRoom)))) {
+    return true;
+  }
+  if (strict) return false;
+
+  // A colloquial short form has to carry the head word of the full name, and
+  // the full name has to be long enough to plausibly have one: "Renate"
+  // answers for "Salon zur Wilden Renate". A two-word name is not a formal
+  // title with a nickname, it is usually a room and its building, so
+  // "Berghain" never answers for "Berghain Kantine". This is a heuristic on
+  // names, which is why it runs only when nothing matched exactly.
+  return profileRooms.some((profileRoom) => {
+    if (profileRoom.length < 3) return false;
+    const head = profileRoom[profileRoom.length - 1];
+    const inProfile = new Set(profileRoom);
+    return eventRoomList.some((eventRoom) =>
+      eventRoom.includes(head) && eventRoom.every((token) => inProfile.has(token)));
+  });
 }
 
 // ---------- promoters and collectives ----------
@@ -391,7 +445,12 @@ export function matchTier(name, query) {
   const needle = normalizeText(query);
   if (!candidate || !needle) return null;
   if (candidate === needle) return MATCH_TIER.exact;
-  if (candidate.startsWith(needle) || needle.startsWith(candidate)) return MATCH_TIER.prefix;
+  // Only the forward direction counts: the catalog name has to contain what
+  // the user typed. Accepting the reverse - the query starting with the name
+  // - meant a catalog entry called "A" was a prefix match for "Amelie Lens",
+  // and "Honey" for "Honey Dijon". Alone in its tier, each of those was then
+  // handed back as a confident answer about the wrong artist.
+  if (candidate.startsWith(needle)) return MATCH_TIER.prefix;
   if (!candidate.includes(needle)) return null;
   // A whole-word hit ("Ben Klock" for "klock") beats one buried inside a
   // longer word ("Medlock"), which the upstream fuzzy search also returns.
@@ -499,10 +558,14 @@ function isConfidentMatch(query, entities, matched, tiers = [], scores = []) {
   const bestTier = tiers.length ? tiers[0] : matchTier(top, needle);
   if (bestTier === null || bestTier > MATCH_TIER.word) return false;
 
-  const contenders = tiers.length
-    ? tiers.filter((tier) => tier === bestTier).length
-    : entities.filter((entity) => matchTier(entity.name, needle) === bestTier).length;
-  if (contenders === 1) return true;
+  // Two rows for the same name are one answer, not an ambiguity: catalogs
+  // carry "Berghain" and "berghain" as separate scrapes, and asking the user
+  // to choose between them is asking about nothing.
+  const atBestTier = entities.filter((entity, index) => (
+    tiers.length ? tiers[index] === bestTier : matchTier(entity.name, needle) === bestTier
+  ));
+  const contenders = new Set(atBestTier.map((entity) => normalizeText(entity.name))).size;
+  if (contenders <= 1) return true;
 
   // Several profiles answer the name equally well. The name has said all it
   // can, so how much of an answer each one actually is decides: "Klock" is
