@@ -200,6 +200,12 @@ export async function getPromoter(city, slug, options = {}) {
 // expired entries are kept for a stale window and served only when the
 // upstream fails with a retryable (network/5xx) error. Concurrent
 // identical requests share one in-flight fetch.
+//
+// Eviction is least-recently-USED, not least-recently-written. Insertion
+// order alone meant a read never counted as use, so 201 one-off queries
+// evicted every hot entry - the city list, tonight's search - no matter how
+// often they were being served. A Map preserves insertion order, so
+// re-inserting a key on every hit makes the oldest key the true LRU victim.
 const responseCache = new Map();
 const inFlight = new Map();
 const CACHE_MAX_ENTRIES = 200;
@@ -218,6 +224,7 @@ async function fetchJsonCached(url, config, options, label) {
   const entry = ttlMs > 0 ? responseCache.get(key) : undefined;
 
   if (entry && now - entry.storedAt < ttlMs) {
+    touch(key, entry);
     return structuredClone(entry.body);
   }
 
@@ -254,10 +261,18 @@ async function fetchJsonCached(url, config, options, label) {
     }
   } catch (error) {
     if (entry && error.retryable === true && now - entry.storedAt < staleMs) {
+      touch(key, entry);
       return structuredClone(entry.body);
     }
     throw error;
   }
+}
+
+// Moves a key to the most-recently-used end without changing storedAt, so
+// promotion never extends an entry's TTL or stale window.
+function touch(key, entry) {
+  if (!responseCache.delete(key)) return;
+  responseCache.set(key, entry);
 }
 
 // GET with a bounded retry: transient network failures and retryable HTTP

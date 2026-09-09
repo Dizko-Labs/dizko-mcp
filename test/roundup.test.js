@@ -199,13 +199,23 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
   const preferencesPath = join(dir, "preferences.json");
 
   try {
+    // A misspelled weekday is refused with the accepted keys rather than
+    // silently dropped: a saved rule that quietly vanishes is worse than an
+    // error the model can correct on the spot.
+    const typo = body(await callTool("dizko_create_profile", {
+      consent: true,
+      preferences: { genres: ["house"], day_filters: { friday: { genres: ["techno"] }, funday: { genres: ["ignored"] } } }
+    }, { preferencesPath }));
+    assert.equal(typo.code, "invalid_argument");
+    assert.equal(typo.field, "preferences.day_filters.funday");
+    assert.deepEqual(typo.allowed, ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+
     const created = body(await callTool("dizko_create_profile", {
       consent: true,
       preferences: {
         genres: ["house"],
         day_filters: {
-          friday: { genres: ["techno"], max_price: 30 },
-          funday: { genres: ["ignored"] }
+          friday: { genres: ["techno"], max_price: 30 }
         }
       }
     }, { preferencesPath }));

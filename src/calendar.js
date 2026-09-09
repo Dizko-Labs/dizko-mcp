@@ -104,7 +104,7 @@ function toIcsDate(value) {
 export function escapeIcs(value) {
   return String(value || "")
     .replace(/\\/g, "\\\\")
-    .replace(/\r?\n/g, "\\n")
+    .replace(/\r\n|\r|\n/g, "\\n")
     .replace(/,/g, "\\,")
     .replace(/;/g, "\\;");
 }

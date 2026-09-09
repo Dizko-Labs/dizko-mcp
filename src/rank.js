@@ -114,9 +114,30 @@ function matchesAvoidance(term, event, eventText, preferences) {
 }
 
 // Whole-word avoidance so "rave" does not penalize "Brave New World".
+//
+// The regex is compiled once per distinct term and reused. Compiling inside
+// the loop meant one RegExp per (term x event) pair, so an `avoid` list and a
+// full page of events multiplied into tens of thousands of compilations on a
+// single call. Schema caps bound the term count; this bounds the work per
+// term. The cache is capped so a stream of distinct terms cannot grow it
+// without limit.
+const AVOID_PATTERN_CACHE = new Map();
+const AVOID_PATTERN_CACHE_MAX = 500;
+
+export function avoidPattern(term) {
+  const cached = AVOID_PATTERN_CACHE.get(term);
+  if (cached) return cached;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, (match) => `\\${match}`);
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "iu");
+  if (AVOID_PATTERN_CACHE.size >= AVOID_PATTERN_CACHE_MAX) {
+    AVOID_PATTERN_CACHE.delete(AVOID_PATTERN_CACHE.keys().next().value);
+  }
+  AVOID_PATTERN_CACHE.set(term, pattern);
+  return pattern;
+}
+
 function wordMatch(text, term) {
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "iu").test(text);
+  return avoidPattern(term).test(text);
 }
 
 function addMatches(reasons, label, desired, actual, points) {

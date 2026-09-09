@@ -1,9 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { ToolInputError } from "./errors.js";
 
 const DEFAULT_PREFS_PATH = "./data/preferences.json";
 const DEFAULT_RETENTION_DAYS = 730;
+const DEFAULT_MAX_PROFILES = 10000;
+const ABANDONED_PROFILE_GRACE_MS = 60 * 60 * 1000;
 const fileQueues = new Map();
 
 // Single-file JSON store. Writes are atomic (temp file + rename) and
@@ -31,6 +34,7 @@ export class FilePreferenceStore {
       const profileSecret = randomProfileSecret();
       const data = await this.read();
       pruneExpiredProfiles(data);
+      enforceProfileCap(data);
       const now = new Date().toISOString();
       const profile = {
         ...makeProfile(profileId, profileSecret),
@@ -87,7 +91,7 @@ export class FilePreferenceStore {
       const learned = updateLearnedSignals(existing.learned, entry, existing.preferences);
       const profile = {
         ...existing,
-        feedback: [...existing.feedback, entry].slice(-250),
+        feedback: [...(existing.feedback || []), entry].slice(-250),
         learned,
         updated_at: entry.created_at
       };
@@ -174,7 +178,7 @@ export function publicProfile(profile) {
     preferences: profile.preferences,
     learned_preferences: learnedToPreferences(profile.learned),
     learned_scores: learnedScores(profile.learned),
-    feedback_count: profile.feedback.length,
+    feedback_count: (profile.feedback || []).length,
     updated_at: profile.updated_at
   };
 }
@@ -210,6 +214,53 @@ function pruneExpiredProfiles(data, now = new Date()) {
   return { changed };
 }
 
+export function maxStoredProfiles() {
+  const configured = Number(process.env.DIZKO_MAX_PROFILES || process.env.EVENTCHAT_MAX_PROFILES || DEFAULT_MAX_PROFILES);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_PROFILES;
+  return Math.floor(configured);
+}
+
+// Profile creation needs no credential, and every write rewrites the whole
+// file, so an unbounded store is both a disk problem and a quadratic-cost
+// problem: profile N makes every later call re-serialize N records. When the
+// store is full, abandoned profiles go first - created, never used, never
+// given consent - oldest first. Only if that frees nothing does creation
+// fail, and it fails with an error the caller can act on rather than a
+// stack trace.
+function enforceProfileCap(data, now = new Date()) {
+  const limit = maxStoredProfiles();
+  const users = data.users || {};
+  if (Object.keys(users).length < limit) return;
+
+  const graceCutoff = now.getTime() - ABANDONED_PROFILE_GRACE_MS;
+  const abandoned = Object.entries(users)
+    .filter(([, profile]) => !profile.consent && !(profile.feedback || []).length && !hasStoredTaste(profile.preferences))
+    .map(([profileId, profile]) => ({ profileId, at: Date.parse(profile.updated_at || profile.created_at || "") || 0 }))
+    .filter((entry) => entry.at < graceCutoff)
+    .sort((a, b) => a.at - b.at);
+
+  for (const entry of abandoned) {
+    delete users[entry.profileId];
+    if (Object.keys(users).length < limit) return;
+  }
+
+  throw new ToolInputError("The preference store is full, so no new profile can be created right now.", {
+    code: "profile_limit_reached",
+    hint: "Reuse an existing profile_id, or ask an operator to raise DIZKO_MAX_PROFILES or shorten DIZKO_PREFERENCE_RETENTION_DAYS."
+  });
+}
+
+// createProfile stores the normalized shape, which carries empty arrays for
+// every unset list, so a key count says nothing about whether the profile
+// holds any taste at all.
+function hasStoredTaste(preferences = {}) {
+  return Object.values(preferences).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === "object") return Object.keys(value).length > 0;
+    return value !== undefined && value !== null;
+  });
+}
+
 function makeProfile(profileId, profileSecret = randomProfileSecret()) {
   const now = new Date().toISOString();
   return {
@@ -239,6 +290,14 @@ const SCALAR_KEYS = ["max_price", "free", "nightlife"];
 // Taste dimensions need repeated evidence before they become an avoid rule;
 // a specific place needs only one bad night.
 const AVOID_THRESHOLDS = { genres: -2, vibe: -2, event_types: -2, venues: -1, promoters: -1, notes: -1 };
+
+// Stored-size caps. Per-call schema limits stop one huge argument; these stop
+// the slow version, where merge mode appends 25 fresh terms per call until a
+// profile is megabytes wide and every read, merge and write pays for it.
+// A person's real taste fits inside these numbers many times over.
+const MAX_SAVED_TERMS_PER_FIELD = 60;
+const MAX_LEARNED_TERMS_PER_KEY = 200;
+const MAX_TERM_LENGTH = 120;
 const TASTE_KEYS = new Set(["genres", "vibe", "event_types"]);
 
 function normalizePreferences(preferences = {}) {
@@ -287,7 +346,9 @@ function mergePreferences(base = {}, incoming = {}) {
 function mergeBasePreferences(base = {}, incoming = {}) {
   const merged = {};
   for (const key of LIST_KEYS) {
-    merged[key] = unique([...(base[key] || []), ...(incoming[key] || [])]);
+    // Newest terms win the tail: a saved list that hits the cap keeps what
+    // the user most recently asked for rather than freezing on old entries.
+    merged[key] = unique([...(base[key] || []), ...(incoming[key] || [])]).slice(-MAX_SAVED_TERMS_PER_FIELD);
   }
   for (const key of SCALAR_KEYS) {
     merged[key] = incoming[key] !== undefined ? incoming[key] : base[key];
@@ -476,6 +537,10 @@ function increment(target, key, values, weight) {
   if (!entries.length) return;
   target[key] ||= {};
   for (const value of entries) {
+    // A term already being tracked always updates. A brand new term only
+    // enters while there is room, so a stream of never-seen-before values
+    // cannot inflate the profile without bound.
+    if (target[key][value] === undefined && Object.keys(target[key]).length >= MAX_LEARNED_TERMS_PER_KEY) continue;
     target[key][value] = (target[key][value] || 0) + weight;
   }
 }
@@ -484,7 +549,7 @@ function list(value) {
   const values = Array.isArray(value) ? value : [value];
   return unique(values
     .flatMap((item) => String(item || "").split(","))
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => item.trim().toLowerCase().slice(0, MAX_TERM_LENGTH))
     .filter(Boolean));
 }
 

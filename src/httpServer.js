@@ -23,7 +23,14 @@ export function createHttpMcpServer(options = {}) {
     // from shared egress addresses, so the per-IP budget must cover many
     // users; exempt known ranges via EVENTCHAT_MCP_RATE_LIMIT_EXEMPT.
     rateLimitMax: Number(options.rateLimitMax || process.env.EVENTCHAT_MCP_RATE_LIMIT_MAX || 600),
-    rateLimitExempt: splitList(options.rateLimitExempt ?? process.env.EVENTCHAT_MCP_RATE_LIMIT_EXEMPT ?? "")
+    rateLimitExempt: splitList(options.rateLimitExempt ?? process.env.EVENTCHAT_MCP_RATE_LIMIT_EXEMPT ?? ""),
+    // How many proxies of ours sit in front of this process. Only the hops
+    // they appended to X-Forwarded-For can be trusted.
+    trustedProxies: Number(options.trustedProxies ?? process.env.EVENTCHAT_MCP_TRUSTED_PROXIES ?? 1),
+    // A JSON-RPC batch is N calls in one request. Without a cap, one POST
+    // inside the 1 MB body limit carries thousands of tool calls and fans
+    // out that many upstream requests at once.
+    maxBatchSize: Number(options.maxBatchSize || process.env.EVENTCHAT_MCP_MAX_BATCH_SIZE || 20)
   };
   const rateLimiter = createRateLimiter(settings);
   // Serves the 2026-07-28 revision and falls back to old-school stateless
@@ -83,7 +90,7 @@ export function createHttpMcpServer(options = {}) {
       if (shortLink) {
         // Short links trigger upstream event lookups, so they share the
         // /mcp rate limiter - random-id scans must not hammer the backend.
-        const rateLimit = rateLimiter.check(clientIp(request));
+        const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress);
         if (!rateLimit.allowed) {
           sendJson(response, 429, { error: "Rate limit exceeded. Please retry shortly." }, {
             ...corsHeaders(request, settings),
@@ -139,7 +146,7 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      const rateLimit = rateLimiter.check(clientIp(request));
+      const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress);
       const rateLimitHeaders = rateLimitHeadersFor(rateLimit);
       if (!rateLimit.allowed) {
         sendJson(response, 429, {
@@ -171,7 +178,25 @@ export function createHttpMcpServer(options = {}) {
       }
 
       const payload = await readJson(request, settings.maxBodyBytes);
-      validateJsonRpcPayload(payload);
+      validateJsonRpcPayload(payload, settings.maxBatchSize);
+      // Charge the limiter for every call in the batch, not once for the
+      // envelope that carries them.
+      const batchCost = Array.isArray(payload) ? payload.length : 1;
+      if (batchCost > 1) {
+        const batchLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress, batchCost - 1);
+        if (!batchLimit.allowed) {
+          sendJson(response, 429, {
+            jsonrpc: "2.0",
+            id: null,
+            error: { code: -32029, message: "Rate limit exceeded. Please retry shortly." }
+          }, {
+            ...corsHeaders(request, settings),
+            ...rateLimitHeadersFor(batchLimit),
+            "Retry-After": String(batchLimit.retryAfterSeconds)
+          });
+          return;
+        }
+      }
       await mcpHandler(request, response, payload);
     } catch (error) {
       const safeError = safeJsonRpcError(error);
@@ -190,6 +215,9 @@ export function safeJsonRpcError(error) {
   }
   if (error?.message === "Request body too large") {
     return { status: 413, code: -32600, message: "Request body too large." };
+  }
+  if (error?.message === "JSON-RPC batch too large") {
+    return { status: 400, code: -32600, message: "JSON-RPC batch too large. Send fewer calls per request." };
   }
   if ([
     "Invalid JSON-RPC request",
@@ -282,13 +310,20 @@ async function sendMcpbBundle(response, headers = {}) {
   response.end(body);
 }
 
-async function readJson(request, maxBodyBytes) {
-  let body = "";
+// Buffer the chunks and decode once. Stringifying each chunk on its own
+// replaces any multi-byte character split across a chunk boundary with U+FFFD,
+// which silently mangles a city or an artist name in a large body instead of
+// failing - and miscounts the size limit against the corrupted string.
+export async function readJson(request, maxBodyBytes) {
+  const chunks = [];
+  let bytes = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body, "utf8") > maxBodyBytes) throw new Error("Request body too large");
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > maxBodyBytes) throw new Error("Request body too large");
+    chunks.push(buffer);
   }
-  return JSON.parse(body || "{}");
+  return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8") || "{}");
 }
 
 function sendJson(response, statusCode, value, headers = {}) {
@@ -361,8 +396,11 @@ function securityHeaders() {
   };
 }
 
-function validateJsonRpcPayload(payload) {
+function validateJsonRpcPayload(payload, maxBatchSize = 20) {
   const requests = Array.isArray(payload) ? payload : [payload];
+  if (Array.isArray(payload) && payload.length > maxBatchSize) {
+    throw new Error("JSON-RPC batch too large");
+  }
   for (const request of requests) validateJsonRpc(request);
 }
 
@@ -384,9 +422,9 @@ function createRateLimiter(settings) {
   const max = Math.max(1, Number(settings.rateLimitMax) || 120);
 
   return {
-    check(key) {
+    check(key, exemptAddress = null, cost = 1) {
       const now = Date.now();
-      if (settings.rateLimitDisabled || isExempt(key, settings.rateLimitExempt)) {
+      if (settings.rateLimitDisabled || isExempt(exemptAddress, settings.rateLimitExempt)) {
         return {
           allowed: true,
           limit: max,
@@ -404,7 +442,7 @@ function createRateLimiter(settings) {
       const entry = existing && existing.resetAt > now
         ? existing
         : { count: 0, resetAt: now + windowMs };
-      entry.count += 1;
+      entry.count += Math.max(1, Math.floor(cost));
       clients.set(key, entry);
 
       const remaining = Math.max(0, max - entry.count);
@@ -420,9 +458,12 @@ function createRateLimiter(settings) {
   };
 }
 
-function isExempt(key, prefixes) {
-  if (!Array.isArray(prefixes) || !prefixes.length) return false;
-  return prefixes.some((prefix) => prefix && String(key).startsWith(prefix));
+// Checked against the socket peer address, never a forwarded header: an
+// exemption that any caller can claim by setting X-Forwarded-For is not an
+// exemption, it is an open door.
+export function isExempt(address, prefixes) {
+  if (!Array.isArray(prefixes) || !prefixes.length || !address) return false;
+  return prefixes.some((prefix) => prefix && String(address).startsWith(prefix));
 }
 
 function rateLimitHeadersFor(rateLimit) {
@@ -433,11 +474,20 @@ function rateLimitHeadersFor(rateLimit) {
   };
 }
 
-function clientIp(request) {
-  const forwarded = request.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0].trim();
-  if (Array.isArray(forwarded) && forwarded.length > 0) return forwarded[0].split(",")[0].trim();
-  return request.socket.remoteAddress || "unknown";
+// X-Forwarded-For is appended to by each proxy, so the LAST hops are the ones
+// our own infrastructure wrote and the leading entries are whatever the client
+// claimed. Counting back from the end by the number of proxies we actually run
+// gives the first address the client could not forge; taking `[0]` instead
+// lets any caller pick its own rate-limit bucket.
+export function clientIp(request, trustedProxies = 1) {
+  const header = request.headers["x-forwarded-for"];
+  const raw = Array.isArray(header) ? header.join(",") : header;
+  const socketAddress = request.socket?.remoteAddress || "unknown";
+  if (typeof raw !== "string" || !raw.trim()) return socketAddress;
+  const hops = raw.split(",").map((hop) => hop.trim()).filter(Boolean);
+  if (!hops.length) return socketAddress;
+  const hopCount = Number.isFinite(trustedProxies) && trustedProxies > 0 ? Math.floor(trustedProxies) : 1;
+  return hops[Math.max(0, hops.length - hopCount)] || socketAddress;
 }
 
 function corsHeaders(request, settings) {

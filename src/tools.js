@@ -26,6 +26,7 @@ import {
   purchaseTicketOrder,
   quoteTicketOrder
 } from "./tickets.js";
+import { applySchemaLimits } from "./schemaLimits.js";
 import { firstErrorPayload, validateInput } from "./validate.js";
 
 export const EVENT_LINKS_INSTRUCTION = [
@@ -386,7 +387,7 @@ const rawTools = [
   {
     name: "dizko_purchase_tickets",
     title: "Purchase Tickets",
-    description: "Execute a quoted ticket order after the user's explicit written confirmation (must say buy/purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously.",
+    description: "Execute a quoted ticket order after the user's explicit written confirmation (must say buy/purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -394,7 +395,6 @@ const rawTools = [
         quote_token: { type: "string", description: "The signed quote_token from dizko_quote_tickets, unchanged." },
         confirmation_text: { type: "string", description: "The user's own words confirming the purchase, including buy/purchase, the quantity and the max total." },
         user_payment_profile_id: { type: "string", description: "Provider-specific saved payment profile id, when an integrated provider supports autonomous purchase." },
-        idempotency_key: { type: "string" },
         delivery_email: { type: "string" },
         add_to_calendar: { type: "boolean" }
       },
@@ -438,6 +438,11 @@ const TOOL_STATUS = {
   dizko_purchase_tickets: ["Processing ticket order", "Ticket order processed"],
   dizko_calendar_file: ["Creating calendar file", "Calendar file ready"]
 };
+
+// Every tool schema gets a string and array cap before it is published or
+// validated against, so an oversized argument is refused at the door instead
+// of being handed to a ranking loop or written to a profile file.
+for (const tool of rawTools) applySchemaLimits(tool.inputSchema);
 
 export const tools = rawTools.map(publicToolDefinition);
 const toolsByName = new Map(rawTools.map((tool) => [tool.name, tool]));
@@ -568,10 +573,12 @@ export async function callTool(name, input = {}, options = {}) {
   const context = { store, config, options };
 
   try {
-    if (legacyHandlers[name]) {
+    // Plain-object lookup would resolve "toString" or "constructor" to an
+    // inherited function and hand the SDK something that is not a tool result.
+    if (Object.hasOwn(legacyHandlers, name)) {
       return await legacyHandlers[name](input || {}, context);
     }
-    const alias = LEGACY_TOOL_ALIASES[name];
+    const alias = Object.hasOwn(LEGACY_TOOL_ALIASES, name) ? LEGACY_TOOL_ALIASES[name] : undefined;
     const toolName = alias ? alias.name : name;
     const tool = toolsByName.get(toolName);
     if (!tool) {
@@ -620,6 +627,9 @@ const handlers = {
         : rankingHintsFromRequest(input);
       const response = await recommendEvents({ ...searchInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
       const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
+      // Taste ranks a candidate window rather than walking the inventory in
+      // order, so there is no stable cursor to hand back. Say so instead of
+      // implying a page 2 that would re-rank and repeat events.
       return {
         ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
         city: cityDisplayName(city),
@@ -629,6 +639,9 @@ const handlers = {
         ...response,
         returned: response.events.length,
         offset: input.offset ?? 0,
+        has_more: false,
+        next_offset: null,
+        paging_note: "Taste ranking scores one candidate window; raise limit rather than paging.",
         ...(emptyTaste ? { no_results: emptyTaste } : {}),
         app_download_url: config.appDownloadUrl,
         assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : EVENT_LINKS_INSTRUCTION
@@ -646,6 +659,8 @@ const handlers = {
     const events = deduped.slice(0, pageLimit).map((event) => summarizeEvent(event, summaryOptions));
     const offset = input.offset ?? 0;
     const count = response.count ?? events.length;
+    const consumed = (response.events || []).length;
+    const hasMore = consumed > 0 && offset + consumed < count;
     const empty = events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
     return {
       ...(sameDay ? { filtered_out: (response.events || []).length - fresh.length, filter_note: "Events that already ended today are omitted." } : {}),
@@ -656,8 +671,13 @@ const handlers = {
       count,
       returned: events.length,
       offset,
-      has_more: offset + events.length < count,
-      next_offset: offset + events.length < count ? offset + events.length : null,
+      // Advance the cursor by the rows CONSUMED upstream, not the rows that
+      // survived filtering and deduping. Advancing by the smaller number
+      // re-reads rows the caller already has, and when a whole page is
+      // filtered out it would hand back the offset it was given - a client
+      // looping on next_offset would never terminate.
+      has_more: hasMore,
+      next_offset: hasMore ? offset + consumed : null,
       search_fallback: response.search_fallback ?? null,
       events,
       ...(empty ? { no_results: empty } : {}),
@@ -866,7 +886,7 @@ const handlers = {
     const event = await getEvent(input.event_id, { ...context.options, config: context.config });
     const { profile, feedback } = await context.store.recordFeedback(input.profile_id, {
       ...input,
-      event: summarizeEvent(event, { ...context.options, config: context.config, fields: ["promoters"] })
+      event: summarizeEvent(event, { ...eventOptions(context), fields: ["promoters"] })
     });
     const publicView = publicProfile(profile);
     return {
@@ -880,13 +900,13 @@ const handlers = {
   },
 
   async dizko_ticket_offers(input, context) {
-    const event = await getEvent(input.event_id, { ...context.options, config: context.config });
-    return buildTicketOffers(event, { ...context.options, config: context.config });
+    const event = await getEvent(input.event_id, eventOptions(context));
+    return buildTicketOffers(event, eventOptions(context));
   },
 
   async dizko_quote_tickets(input, context) {
-    const event = await getEvent(input.event_id, { ...context.options, config: context.config });
-    return quoteTicketOrder(event, input, { ...context.options, config: context.config });
+    const event = await getEvent(input.event_id, eventOptions(context));
+    return quoteTicketOrder(event, input, eventOptions(context));
   },
 
   async dizko_purchase_tickets(input, context) {
@@ -894,9 +914,9 @@ const handlers = {
   },
 
   async dizko_calendar_file(input, context) {
-    const event = await getEvent(input.event_id, { ...context.options, config: context.config });
+    const event = await getEvent(input.event_id, eventOptions(context));
     return {
-      calendar_event: buildCalendarEvent(event, { ...context.options, config: context.config, status: input.status || "CONFIRMED" }),
+      calendar_event: buildCalendarEvent(event, { ...eventOptions(context), status: input.status || "CONFIRMED" }),
       assistant_instruction: "Return the .ics content or attach it as a calendar file when the client supports files. The user can import it into Apple Calendar, Google Calendar, Outlook, or another calendar app."
     };
   }
@@ -954,6 +974,18 @@ const legacyHandlers = {
     }, Boolean(result.error));
   }
 };
+
+// summarizeEvent reads webBaseUrl/linkBaseUrl off its options and does not
+// consult config, so every caller that builds links has to pass them or a
+// self-hosted deployment emits production URLs in .ics files and quotes.
+function eventOptions(context) {
+  return {
+    ...context.options,
+    config: context.config,
+    webBaseUrl: context.config.webBaseUrl,
+    linkBaseUrl: context.config.mcpUrl
+  };
+}
 
 // An empty result is a dead end for the model unless it learns why. One
 // extra (cached) upstream call with every optional filter removed separates
@@ -1130,9 +1162,13 @@ async function unsupportedCityPayload(requestedCity, context) {
     requested_city: requested,
     ...(thin ? { coverage_status: thin.status, event_count: thin.event_count } : {}),
     nearest_covered_city: nearestPayload,
+    // The city string came from the caller, so it stays in requested_city as
+    // data. Interpolating it here would put caller-controlled text into the
+    // slot the model reads as its instructions. The nearest-city name and
+    // counts come from Dizko's own coverage table and are safe to state.
     assistant_instruction: nearestPayload
-      ? `Tell the user ${requested} is not covered yet. The nearest covered city is ${nearestPayload.name}, ${nearestPayload.distance_km} km away, with ${nearestPayload.event_count} live events; offer to search there.`
-      : `Tell the user ${requested} is not covered yet and use dizko_list_cities to show current coverage.`
+      ? `Tell the user the city named in requested_city is not covered by Dizko yet. The nearest covered city is ${nearestPayload.name}, ${nearestPayload.distance_km} km away, with ${nearestPayload.event_count} live events; offer to search there.`
+      : "Tell the user the city named in requested_city is not covered by Dizko yet, and use dizko_list_cities to show current coverage."
   };
 }
 

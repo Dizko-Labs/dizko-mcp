@@ -414,6 +414,7 @@ Tickets, preferences (`src/tickets.js`, `src/preferences.js`):
 | `DIZKO_QUOTE_SIGNING_SECRET` | random per process | `EVENTCHAT_QUOTE_SIGNING_SECRET` | HMAC key for quote tokens. Set it on hosted deployments so quotes survive restarts; the per-process fallback is only safe for a single instance. |
 | `DIZKO_PREFERENCES_PATH` | `./data/preferences.json` | `EVENTCHAT_PREFERENCES_PATH` | Preference store file. |
 | `DIZKO_PREFERENCE_RETENTION_DAYS` | `730` | `EVENTCHAT_PREFERENCE_RETENTION_DAYS` | Inactive profiles are pruned after this many days. |
+| `DIZKO_MAX_PROFILES` | `10000` | `EVENTCHAT_MAX_PROFILES` | Ceiling on stored profiles. At the ceiling, profiles that were created but never used or consented to are evicted oldest-first; only if that frees nothing does creation fail with `profile_limit_reached`. |
 | `EVENTCHAT_ALLOW_LEGACY_PROFILE_IDS` | unset | none | `true` lets pre-secret legacy profiles be read without a secret. Keep it unset in production. |
 
 HTTP server (`src/httpServer.js`, `EVENTCHAT_*` only):
@@ -429,6 +430,8 @@ HTTP server (`src/httpServer.js`, `EVENTCHAT_*` only):
 | `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` | empty | Comma list of IP prefixes exempt from the limiter (hosted assistants call from shared egress addresses). |
 | `EVENTCHAT_MCP_RATE_LIMIT_DISABLED` | `false` | Disable the limiter entirely. |
 | `EVENTCHAT_MCP_MAX_BODY_BYTES` | `1048576` | Maximum JSON-RPC body. |
+| `EVENTCHAT_MCP_MAX_BATCH_SIZE` | `20` | Maximum requests in one JSON-RPC batch. A larger batch is rejected with `-32600` before any of it runs; each element in an accepted batch is charged to the rate limiter. |
+| `EVENTCHAT_MCP_TRUSTED_PROXIES` | `1` | How many proxy hops sit in front of the server. The rate-limit client IP is taken this many entries from the right of `X-Forwarded-For`, so a caller cannot pick their own bucket by prepending addresses. Set it to the real hop count behind a CDN plus load balancer. |
 
 ## Flows
 

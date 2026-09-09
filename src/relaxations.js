@@ -7,6 +7,18 @@
 
 const LIST_FILTERS = ["genres", "vibe", "event_types", "neighborhoods"];
 
+// assistant_instruction is a directive channel: whatever lands in it is read
+// as an instruction, not as data. Only values the server itself produced or
+// validated against a closed set are ever interpolated into it. A raw `city`
+// or `when` string is caller-controlled text, so it stays in the structured
+// fields (active_filters, retry_with) where it reads as data, and the
+// instruction points at the field by name instead.
+const SAFE_TIMEFRAME_PRESETS = new Set([
+  "today", "tonight", "tomorrow", "weekend", "next weekend", "week", "next week", "month",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "any"
+]);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function describeFilters(input = {}) {
   const active = [];
   for (const key of LIST_FILTERS) {
@@ -78,7 +90,9 @@ const RELAXATION_ORDER = [
 export function buildNoResults(input = {}, { baselineCount = null, cityName = null, maxSuggestions = 3 } = {}) {
   const active = describeFilters(input);
   const activeKeys = new Set(active.map((item) => item.key));
-  const label = cityName || input.city || "this city";
+  // cityName is the display name from the covered-city table; input.city is
+  // whatever the caller typed, so it never reaches the instruction text.
+  const label = cityName || "the requested city";
   const timeframe = describeTimeframe(input);
 
   const suggestions = [];
@@ -141,9 +155,14 @@ function buildInstruction({ baselineCount, active, label, timeframe, suggestions
 }
 
 function describeTimeframe(input = {}) {
-  if (input.when) return `for "${input.when}"`;
-  if (input.date_from && input.date_to && input.date_from !== input.date_to) return `between ${input.date_from} and ${input.date_to}`;
-  if (input.date_from) return `on ${input.date_from}`;
+  const when = String(input.when || "").trim().toLowerCase();
+  if (when && SAFE_TIMEFRAME_PRESETS.has(when)) return `for "${when}"`;
+  if (when && ISO_DATE.test(when)) return `on ${when}`;
+  if (when) return "in the requested window";
+  if (ISO_DATE.test(input.date_from || "") && ISO_DATE.test(input.date_to || "") && input.date_from !== input.date_to) {
+    return `between ${input.date_from} and ${input.date_to}`;
+  }
+  if (ISO_DATE.test(input.date_from || "")) return `on ${input.date_from}`;
   return "in the requested window";
 }
 

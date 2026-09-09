@@ -2,8 +2,9 @@
 // SDK's low-level server never validates tool arguments against
 // inputSchema, so this is the only thing standing between "city": 123 and
 // the upstream API. Supports: type (incl. type arrays), enum, minimum,
-// maximum, minLength, maxLength, items, properties, required, $ref into
-// $defs, anyOf (as "at least one branch"), dependentRequired.
+// maximum, minLength, maxLength, maxItems, items, properties, propertyNames
+// (enum only), required, $ref into $defs, anyOf (as "at least one branch"),
+// dependentRequired.
 //
 // Coercion: numeric strings -> numbers, "true"/"false" -> booleans,
 // comma-separated strings -> arrays, scalars -> single-element arrays,
@@ -78,6 +79,21 @@ function coerceAndCheck(schema, value, path, root, errors) {
     const out = { ...coerced };
     for (const [key, child] of Object.entries(schema.properties || {})) {
       if (out[key] !== undefined) out[key] = coerceAndCheck(child, out[key], path ? `${path}.${key}` : key, root, errors);
+    }
+    // propertyNames bounds an open map (day_filters keys are weekdays and
+    // nothing else). Without it an open map is an unbounded write target:
+    // 50,000 junk keys would all be coerced, stored and re-serialized.
+    if (schema.propertyNames?.enum) {
+      const allowed = new Set(schema.propertyNames.enum.map((key) => String(key).toLowerCase()));
+      for (const key of Object.keys(out)) {
+        if (allowed.has(key.toLowerCase())) continue;
+        errors.push({
+          field: path ? `${path}.${key}` : key,
+          message: `${label(path || "value")} does not accept the key "${key}".`,
+          allowed: schema.propertyNames.enum
+        });
+        delete out[key];
+      }
     }
     if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
       for (const key of Object.keys(out)) {

@@ -643,7 +643,13 @@ test("MCP dizko_search_events ranks by taste when asked", async () => {
   assert.equal(body.count, 2);
   assert.equal(body.ranked_count, 2);
   assert.equal(body.returned, 1);
-  assert.equal("has_more" in body, false, "taste mode ranks a page rather than paginating");
+  // Taste re-ranks a candidate window, so there is no stable cursor: paging
+  // it would re-score and repeat events. The keys are still present and
+  // explicitly closed, so a client looping on has_more behaves the same in
+  // both ranking modes instead of reading undefined.
+  assert.equal(body.has_more, false, "taste mode ranks a page rather than paginating");
+  assert.equal(body.next_offset, null);
+  assert.match(body.paging_note, /raise limit/);
   assert.equal(body.events[0].id, "techno", "the genre match outranks upstream order");
   assert.equal(typeof body.events[0].recommendation_score, "number");
   assert.ok(body.events[0].recommendation_reasons.includes("genre match: techno"));

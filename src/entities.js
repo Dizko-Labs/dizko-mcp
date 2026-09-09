@@ -34,6 +34,9 @@ export async function findSceneEntities(input = {}, options = {}) {
   if (!input.id && !String(input.query || "").trim()) {
     return entityError("Pass an entity id or a search query", "missing_entity_lookup");
   }
+  if (input.id && !kind) {
+    return entityError("Looking up an id needs a kind: artist, venue, collective, or promoter.", "missing_entity_kind");
+  }
   if (kind === "venue") return findVenue(input, options);
   if (kind === "promoter" || kind === "collective") return findPromoter({ ...input, kind }, options);
   if (kind === "artist") return findArtist(input, options);
@@ -55,7 +58,8 @@ export async function findArtist(input = {}, options = {}) {
   const query = String(input.query).trim();
   const limit = boundedLimit(input.limit, 10, 20);
   const response = await searchScene({ query, kind: "dj", city: input.city, genre: input.genre, limit }, options);
-  const entities = relevantItems(response.items, query).map((profile) => sceneProfileSummary(profile, "artist"));
+  const relevant = relevantItems(response.items, query);
+  const entities = relevant.items.map((profile) => sceneProfileSummary(profile, "artist"));
   return {
     mode: "search",
     kind: "artist",
@@ -64,7 +68,8 @@ export async function findArtist(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities) } : null
+    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities, relevant.matched) } : null,
+    ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
 
@@ -200,7 +205,8 @@ export async function findVenue(input = {}, options = {}) {
   const query = String(input.query).trim();
   const limit = boundedLimit(input.limit, 10, 20);
   const response = await searchScene({ query, kind: "venue", city: input.city, genre: input.genre, limit }, options);
-  const entities = relevantItems(response.items, query).map((profile) => sceneProfileSummary(profile, "venue"));
+  const relevant = relevantItems(response.items, query);
+  const entities = relevant.items.map((profile) => sceneProfileSummary(profile, "venue"));
   return {
     mode: "search",
     kind: "venue",
@@ -209,7 +215,8 @@ export async function findVenue(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities) } : null
+    best_match: entities[0] ? { id: entities[0].id, name: entities[0].name, confident: isConfidentMatch(query, entities, relevant.matched) } : null,
+    ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
 
@@ -281,7 +288,7 @@ export async function findPromoter(input = {}, options = {}) {
     .filter((item) => !genre || (item.genres || []).some((value) => normalizeText(value).includes(genre)))
     .slice(0, limit)
     .map((item) => promoterSummary(item, promoters.city || input.city));
-  const collectiveRows = relevantItems(collectives.items, query, { max: 5 }).map((profile) => sceneProfileSummary(profile, "collective"));
+  const collectiveRows = relevantItems(collectives.items, query, { max: 5 }).items.map((profile) => sceneProfileSummary(profile, "collective"));
   const entities = mergeByName([...promoterRows, ...collectiveRows]).slice(0, limit);
   return {
     mode: "search",
@@ -339,7 +346,7 @@ async function promoterProfile(id, input, options) {
 // ---------- any kind ----------
 
 async function findAnyEntity(input, options) {
-  const query = String(input.query).trim();
+  const query = String(input.query || "").trim();
   const limit = boundedLimit(input.limit, 10, 20);
   const response = await searchScene({ query, city: input.city, genre: input.genre, limit }, options);
   const entities = (response.items || []).map((profile) => sceneProfileSummary(profile, kindFromScene(profile.kind)));
@@ -358,35 +365,66 @@ async function findAnyEntity(input, options) {
 
 // The scene index is semantic and always fills the page; keep rows that
 // actually matched the text (or contain the query), never fewer than 3.
+// The scene index is semantic and always fills the page, so "no row matched
+// the name" still comes back with rows. Report that, because a fallback row
+// must never be presented as a confident match.
 function relevantItems(items, query, { max = 20 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const needle = normalizeText(query);
   const strong = list.filter((item) => normalizeText(item?.name).includes(needle));
-  if (strong.length) return strong.slice(0, max);
+  if (strong.length) return { items: strong.slice(0, max), matched: true };
   const textMatches = list.filter((item) => item?.matched_text === true);
-  return (textMatches.length ? textMatches : list).slice(0, Math.min(max, 5));
+  if (textMatches.length) return { items: textMatches.slice(0, Math.min(max, 5)), matched: true };
+  return { items: list.slice(0, Math.min(max, 5)), matched: false };
 }
 
-function isConfidentMatch(query, entities) {
-  if (!entities.length) return false;
+// Confidence has to survive the model acting on it without asking, so it
+// requires the top name to carry the query's weight - not merely to be some
+// substring of it. "Charlotte" is not a confident match for
+// "Charlotte de Witte"; "Berghain / Panorama Bar" is one for "berghain".
+function isConfidentMatch(query, entities, matched) {
+  if (!matched || !entities.length) return false;
   const needle = normalizeText(query);
   const top = normalizeText(entities[0].name);
-  return top === needle || needle.includes(top) || top.includes(needle);
+  if (!needle || !top) return false;
+  if (top === needle) return true;
+  if (top.includes(needle)) return true;
+  // The other direction (the query contains the name) is only convincing
+  // when the name covers most of what the user typed.
+  const queryTokens = needle.split(" ").filter(Boolean);
+  const topTokens = new Set(top.split(" ").filter(Boolean));
+  const covered = queryTokens.filter((token) => topTokens.has(token)).length;
+  return needle.includes(top) && covered >= Math.ceil(queryTokens.length / 2) && covered > 1;
 }
 
 // A promoter row (has event listings) wins over a collective row with the
 // same name: its id and URL are the ones that lead to upcoming events.
+// A promoter row (which has event listings) and a collective row for the
+// same crew describe one thing and are merged, with the promoter's id
+// winning because that is the id that leads to events. Two rows of the SAME
+// kind are two different entities that happen to share a display name, and
+// merging them would report one entity's dates under another's id.
 function mergeByName(rows) {
-  const seen = new Map();
+  const unique = new Map();
   for (const row of rows) {
-    const key = normalizeText(row.name);
-    const existing = seen.get(key);
-    if (!existing) { seen.set(key, row); continue; }
-    const promoter = existing.kind === "promoter" ? existing : row.kind === "promoter" ? row : null;
-    const other = promoter === existing ? row : existing;
-    seen.set(key, promoter ? { ...other, ...promoter, kind: "promoter", collective_id: other.kind === "collective" ? other.id : undefined } : { ...existing, ...row });
+    const key = `${row.kind}:${row.id}`;
+    if (!unique.has(key)) unique.set(key, row);
   }
-  return [...seen.values()].map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
+  const merged = new Map();
+  for (const row of unique.values()) {
+    const nameKey = normalizeText(row.name);
+    const existing = merged.get(nameKey);
+    if (!existing) { merged.set(nameKey, row); continue; }
+    if (existing.kind === row.kind) {
+      // Same name, same kind: two different entities. Keep both.
+      merged.set(`${nameKey}:${row.id}`, row);
+      continue;
+    }
+    const promoter = existing.kind === "promoter" ? existing : row;
+    const other = promoter === existing ? row : existing;
+    merged.set(nameKey, { ...other, ...promoter, kind: "promoter", collective_id: other.kind === "collective" ? other.id : undefined });
+  }
+  return [...merged.values()].map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
 }
 
 function kindFromScene(kind) {

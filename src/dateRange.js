@@ -140,8 +140,12 @@ export function resolveDateRange(preset, now = new Date(), timezone = "UTC") {
       return range(friday, weekendEnd(friday));
     }
     case "next weekend": {
-      const thisFriday = weekendStart();
-      const friday = addDays(thisFriday, day === 0 ? 5 : 7);
+      // weekendStart() returns TODAY on a Saturday or Sunday (the weekend is
+      // already running), so it cannot anchor "next". Derive this calendar
+      // week's Friday instead - behind us on Sat/Sun, ahead on Mon-Fri - and
+      // add seven days, so the answer is always a Friday-to-Sunday block.
+      const thisWeekFriday = addDays(today, day === 0 ? -2 : 5 - day);
+      const friday = addDays(thisWeekFriday, 7);
       return range(friday, addDays(friday, 2));
     }
     case "week":

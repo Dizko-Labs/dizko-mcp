@@ -138,6 +138,46 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
   };
 }
 
+// A signed quote is a bearer token: it stays valid for its whole TTL and
+// anything holding a copy can present it again. Signing proves the quote was
+// minted here, not that it has never been spent. Every quote is therefore
+// claimed exactly once - the claim is taken before the provider is called,
+// so two concurrent replays cannot both get through - and released only when
+// the provider reports the purchase definitively did not happen.
+//
+// This registry is per-process, which matches the store behind it: several
+// replicas need a shared claim store behind the same interface.
+const consumedQuotes = new Map();
+const MAX_TRACKED_QUOTES = 20000;
+
+function claimQuote(quoteId, expiresAt, now) {
+  pruneConsumedQuotes(now);
+  if (consumedQuotes.has(quoteId)) return false;
+  if (consumedQuotes.size >= MAX_TRACKED_QUOTES) {
+    consumedQuotes.delete(consumedQuotes.keys().next().value);
+  }
+  const expiry = Date.parse(expiresAt);
+  consumedQuotes.set(quoteId, Number.isFinite(expiry) ? expiry : now.getTime() + DEFAULT_QUOTE_TTL_MS);
+  return true;
+}
+
+function releaseQuote(quoteId) {
+  consumedQuotes.delete(quoteId);
+}
+
+function pruneConsumedQuotes(now) {
+  const cutoff = now.getTime();
+  for (const [quoteId, expiry] of consumedQuotes) {
+    if (expiry <= cutoff) consumedQuotes.delete(quoteId);
+  }
+}
+
+// Test seam: a suite that mints quotes with a fixed clock would otherwise
+// see one run's claims leak into the next.
+export function resetConsumedQuotes() {
+  consumedQuotes.clear();
+}
+
 export async function purchaseTicketOrder(input = {}, options = {}) {
   const quote = decodeQuoteToken(input.quote_token, quoteSigningSecret(options));
   const confirmation = validatePurchaseConfirmation(quote, input.confirmation_text);
@@ -176,8 +216,19 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     };
   }
 
+  if (!claimQuote(quote.quote_id, quote.expires_at, options.now || new Date())) {
+    return {
+      purchased: false,
+      status: "quote_already_used",
+      code: "quote_already_used",
+      quote,
+      assistant_instruction: "This quote was already submitted for purchase. Do not retry it. Check the user's existing order first, and only call dizko_quote_tickets for a fresh quote if they confirm nothing was bought."
+    };
+  }
+
   const provider = options.ticketPurchaseProvider;
   if (!provider?.purchase) {
+    releaseQuote(quote.quote_id);
     return {
       purchased: false,
       status: "purchase_provider_not_configured",
@@ -187,16 +238,25 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     };
   }
 
+  // The idempotency key is derived from the signed quote, never accepted from
+  // the caller: a caller-chosen key lets two different orders collide, or one
+  // order be replayed under a fresh key.
+  // A provider call that throws says nothing about whether the order landed,
+  // so the claim deliberately stands and the caller must re-quote rather than
+  // retry blind.
   const result = await provider.purchase({
     quote,
     confirmation_text: input.confirmation_text,
     delivery_email: input.delivery_email || quote.delivery_email || null,
     add_to_calendar: input.add_to_calendar ?? quote.add_to_calendar ?? true,
     user_payment_profile_id: input.user_payment_profile_id || null,
-    idempotency_key: input.idempotency_key || quote.quote_id
+    idempotency_key: quote.quote_id
   });
 
   if (!result?.purchased) {
+    // An explicit "not purchased" is the provider stating nothing happened,
+    // so the quote is spendable again within its remaining TTL.
+    releaseQuote(quote.quote_id);
     return {
       purchased: false,
       status: "purchase_failed",
@@ -317,13 +377,29 @@ export function validatePurchaseConfirmation(quote, confirmationText) {
   return { valid: true, missing: [] };
 }
 
+// The number has to stand on its own: "the 12th" is not a quantity of 12 and
+// "2,000" is not a quantity of 2. Grouped thousands and a comma decimal are
+// accepted as the same value, because people write totals both ways.
 function containsNumber(text, value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return false;
-  const forms = [String(number)];
-  if (Number.isInteger(number)) forms.push(`${number}.00`, `${number}.0`);
-  else forms.push(number.toFixed(2));
-  return forms.some((form) => new RegExp(`(^|[^\\d.,])${form.replace(".", "\\.")}(?![\\d])(?!\\.\\d)`).test(text));
+  const forms = new Set([String(number)]);
+  if (Number.isInteger(number)) {
+    forms.add(`${number}.00`);
+    forms.add(`${number}.0`);
+    forms.add(number.toLocaleString("en-US"));
+  } else {
+    forms.add(number.toFixed(2));
+    forms.add(number.toFixed(2).replace(".", ","));
+    forms.add(String(number).replace(".", ","));
+    forms.add(number.toLocaleString("en-US", { minimumFractionDigits: 2 }));
+  }
+  return [...forms].some((form) => {
+    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, (match) => `\\${match}`);
+    // A trailing comma or period only disqualifies the match when digits
+    // follow it: "buy 2, max total" is the number 2, "2,000" is not.
+    return new RegExp(`(^|[^\\d.,])${escaped}(?!\\d)(?![,.]\\d)(?![a-z])`, "i").test(text);
+  });
 }
 
 function confirmationPrompt(quote) {
