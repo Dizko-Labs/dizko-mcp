@@ -121,9 +121,12 @@ test("artist search exposes canonical DJs with scores, handles and a best match"
     id: "nina-kraviz",
     name: "Nina Kraviz",
     confident: true,
+    // The b2b billing is one tier down and therefore competing, so both are
+    // scored. Neither has any evidence in this fixture, so the name holds.
+    prominence: 0,
     // Runner-up names travel with the match so the model can offer them
     // without a second round trip.
-    alternatives: [{ id: "nina-kraviz-b2b-helena-hauff", name: "Nina Kraviz b2b Helena Hauff", cities: [], genres: [] }]
+    alternatives: [{ id: "nina-kraviz-b2b-helena-hauff", name: "Nina Kraviz b2b Helena Hauff", cities: [], genres: [], prominence: 0 }]
   });
 });
 
@@ -797,25 +800,62 @@ test("an unbeatable name match needs no popularity lookup at all", async () => {
   assert.equal(result.best_match.prominence, undefined);
 });
 
-test("popularity never overrides an exact name match", async () => {
-  // Someone who types a profile's complete name means that profile, however
-  // many better-known artists merely contain it.
-  const fetch = fakeFetch((url) => {
+test("an exact name holds unless the fuller record is decisively ahead", async () => {
+  // Catalogs carry the same real place twice: a one-line encyclopedia stub
+  // that happens to win the name, and the record with the capacity, the
+  // genres and the bio. The fuller record is the better answer.
+  const stubAndReal = fakeFetch((url) => {
     if (url.pathname === "/scene/search") {
       return {
         count: 2,
         items: [
-          { id: "nina", name: "Nina", kind: "dj" },
-          { id: "nina-kraviz", name: "Nina Kraviz", kind: "dj" }
+          { id: "wd-berghain", name: "Berghain", kind: "venue", bio: "A nightclub in Berlin, Germany.", genres: ["open-format"], founded: 2004 },
+          { id: "berghain", name: "Berghain / Panorama Bar", kind: "venue", typical_capacity: 1500, genres: new Array(6).fill("techno"), bio: "x".repeat(276), founded: 2004 }
         ]
       };
     }
     throw new Error(`Unexpected request: ${url.pathname}`);
   });
-  const result = await findArtist({ query: "Nina" }, { ...OPTIONS, fetch });
-  assert.equal(result.best_match.name, "Nina");
-  assert.equal(result.best_match.confident, true);
-  assert.deepEqual(paths(fetch), ["/scene/search"], "an exact match is settled by the name, not by a lookup");
+  const displaced = await findVenue({ query: "Berghain" }, { ...OPTIONS, fetch: stubAndReal });
+  assert.equal(displaced.best_match.name, "Berghain / Panorama Bar", "the stub wins the name and loses the answer");
+  assert.equal(displaced.best_match.confident, true, "a decisive win is an answer, not an ambiguity");
+
+  // A near miss does not displace: the name still decides when the fuller
+  // record is merely somewhat fuller.
+  const closeCall = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 2,
+        items: [
+          { id: "exact", name: "Tresor", kind: "venue", typical_capacity: 600, genres: new Array(4).fill("techno"), bio: "y".repeat(200) },
+          { id: "longer", name: "Tresor Basement", kind: "venue", typical_capacity: 700, genres: new Array(5).fill("techno"), bio: "y".repeat(240) }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const held = await findVenue({ query: "Tresor" }, { ...OPTIONS, fetch: closeCall });
+  assert.equal(held.best_match.name, "Tresor", "a small edge in completeness is not a reason to ignore the name");
+  assert.equal(held.best_match.confident, true);
+});
+
+test("a buried substring match never displaces the name, however prominent", async () => {
+  // Displacement is one tier. "Medlock" containing "lock" is two steps down
+  // and must not beat a profile that carries the query as a whole word.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return {
+        count: 2,
+        items: [
+          { id: "lock-room", name: "The Lock Room", kind: "venue" },
+          { id: "medlock", name: "Medlock Hall", kind: "venue", typical_capacity: 5000, genres: new Array(8).fill("techno"), bio: "z".repeat(400), founded: 1990 }
+        ]
+      };
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
+  });
+  const result = await findVenue({ query: "Lock" }, { ...OPTIONS, fetch });
+  assert.equal(result.best_match.name, "The Lock Room");
 });
 
 test("a lookup that fails leaves the tie unresolved rather than guessing", async () => {

@@ -71,7 +71,7 @@ export async function findArtist(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores),
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -220,7 +220,7 @@ export async function findVenue(input = {}, options = {}) {
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
     entities,
-    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores),
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
@@ -362,7 +362,7 @@ export async function findPromoter(input = {}, options = {}) {
     city: input.city || null,
     count: entities.length,
     entities,
-    best_match: bestMatchPayload(entities, query, entities.length > 0, promoterTiers, ranked.scores),
+    best_match: bestMatchPayload(entities, query, entities.length > 0, promoterTiers, ranked.scores, ranked.displaced),
     ...(input.city ? {} : { note: "Pass a city to include promoters with upcoming Dizko event listings; collectives are searched worldwide." })
   };
 }
@@ -481,17 +481,47 @@ export function rankByMatch(entities, query) {
 // query matching a dozen profiles cannot fan out without limit.
 const MAX_PROMINENCE_LOOKUPS = 6;
 
-function tiedAtBestTier(tiers) {
+// Who is actually competing for the answer: the best name tier, plus the one
+// immediately below it. One step, deliberately. A catalog carries the same
+// real venue at two name qualities - "Berghain" as a one-line encyclopedia
+// stub and "Berghain / Panorama Bar" as the record with the capacity, the
+// genres and the bio - and the fuller record is the better answer even
+// though the stub wins the name. A buried substring match is two steps down
+// and never competes, however prominent it is.
+function contenders(tiers) {
   if (!tiers.length) return 0;
-  return tiers.filter((tier) => tier === tiers[0]).length;
+  const best = tiers[0];
+  // One step down, and never below a whole-word match. "Medlock Hall" holds
+  // "lock" inside a longer word, which is close to a coincidence: a big
+  // venue named that must not win a search for "Lock" over "The Lock Room",
+  // however complete its record is.
+  const ceiling = Math.max(best, Math.min(best + 1, MATCH_TIER.word));
+  return tiers.filter((tier) => tier <= ceiling).length;
 }
 
-// Attaches an artist prominence score to the tied leaders and reorders them
-// by it, keeping every other candidate where the name ranking left it.
+// Puts the leader first. The name ranking decides unless a candidate one
+// tier down is decisively more of an answer, which is the stub-versus-real
+// case; a near miss never displaces the name.
+function promoteLeader(scored, rest) {
+  if (scored.length < 2) return { entities: [...scored, ...rest], scores: scored.map((entity) => entity.prominence), displaced: false };
+
+  const byProminence = [...scored].sort((a, b) => b.prominence - a.prominence);
+  const nameLeader = scored[0];
+  const displaced = byProminence[0] !== nameLeader && decisivelyAhead(byProminence[0].prominence, nameLeader.prominence);
+  const ordered = displaced
+    ? [byProminence[0], ...scored.filter((entity) => entity !== byProminence[0])]
+    : scored;
+
+  return { entities: [...ordered, ...rest], scores: ordered.map((entity) => entity.prominence), displaced };
+}
+
+// Artist evidence costs two upstream calls per candidate, so it is fetched
+// only when something is actually competing. A query one profile answers
+// outright still costs a single request.
 async function applyArtistProminence(entities, tiers, options) {
-  const tied = tiedAtBestTier(tiers);
-  if (tied < 2) return { entities, scores: [] };
-  const leaders = entities.slice(0, Math.min(tied, MAX_PROMINENCE_LOOKUPS));
+  const competing = contenders(tiers);
+  if (competing < 2) return { entities, scores: [], displaced: false };
+  const leaders = entities.slice(0, Math.min(competing, MAX_PROMINENCE_LOOKUPS));
 
   const scored = await Promise.all(leaders.map(async (entity) => {
     // A profile with no insights or directory row simply scores what its
@@ -503,23 +533,16 @@ async function applyArtistProminence(entities, tiers, options) {
     return { ...entity, prominence: artistProminence({ insights, directory: directory?.dj || {} }) };
   }));
 
-  scored.sort((a, b) => b.prominence - a.prominence);
-  return {
-    entities: [...scored, ...entities.slice(leaders.length)],
-    scores: scored.map((entity) => entity.prominence)
-  };
+  return promoteLeader(scored, entities.slice(leaders.length));
 }
 
 // Venues and promoters carry their evidence in the rows the search already
 // returned, so their scores cost no extra request and are always attached.
 function applyRowProminence(entities, tiers, score) {
   const scored = entities.map((entity) => ({ ...entity, prominence: score(entity) }));
-  const tied = tiedAtBestTier(tiers);
-  if (tied >= 2) {
-    const leaders = scored.slice(0, tied).sort((a, b) => b.prominence - a.prominence);
-    return { entities: [...leaders, ...scored.slice(tied)], scores: leaders.map((entity) => entity.prominence) };
-  }
-  return { entities: scored, scores: scored.map((entity) => entity.prominence) };
+  const competing = contenders(tiers);
+  if (competing < 2) return { entities: scored, scores: scored.map((entity) => entity.prominence), displaced: false };
+  return promoteLeader(scored.slice(0, competing), scored.slice(competing));
 }
 
 function relevantItems(items, query, { max = 20 } = {}) {
@@ -546,7 +569,11 @@ function relevantItems(items, query, { max = 20 } = {}) {
 // "Klock" matches both Ben Klock and BJ Klock as whole words, so neither is
 // confident and the model asks. "Berghain" is confident because exactly one
 // profile carries that name exactly, even though two others contain it.
-function isConfidentMatch(query, entities, matched, tiers = [], scores = []) {
+function isConfidentMatch(query, entities, matched, tiers = [], scores = [], displaced = false) {
+  // A leader that took the lead by being decisively more of an answer has
+  // already cleared a higher bar than the name ranking sets, so it is
+  // confident whatever the name said.
+  if (displaced && matched && entities.length) return true;
   if (!matched || !entities.length) return false;
   const needle = normalizeText(query);
   const top = normalizeText(entities[0].name);
@@ -587,9 +614,9 @@ function matchAlternatives(entities) {
   }));
 }
 
-function bestMatchPayload(entities, query, matched, tiers, scores = []) {
+function bestMatchPayload(entities, query, matched, tiers, scores = [], displaced = false) {
   if (!entities[0]) return null;
-  const confident = isConfidentMatch(query, entities, matched, tiers, scores);
+  const confident = isConfidentMatch(query, entities, matched, tiers, scores, displaced);
   return {
     id: entities[0].id,
     name: entities[0].name,
