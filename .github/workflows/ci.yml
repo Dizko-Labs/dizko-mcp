@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor from package.json engines, plus current LTS.
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # The suite pins TZ=UTC itself (test/setup.mjs). This run deliberately
+      # does not, so a test that silently depends on the runner's clock zone
+      # would still be caught by the timezone job below.
+      - run: npm test
+
+  timezones:
+    name: Tests under other timezones
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Date logic resolves in the city's zone, never the server's, so the
+        # suite has to pass wherever the process happens to run: west of UTC,
+        # far east of it, and on a half-hour offset.
+        tz: ["America/Los_Angeles", "Pacific/Kiritimati", "Asia/Kolkata"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          TZ: ${{ matrix.tz }}
+
+  bundle:
+    name: Desktop bundle builds and starts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build:mcpb
+      # Claude Desktop unzips the bundle and runs it with no install step, so
+      # a missing dependency only shows up here: unpack it somewhere else and
+      # make sure the stdio server actually answers.
+      - name: Start the unpacked bundle and list tools
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/mcpb && unzip -q dist/*.mcpb -d /tmp/mcpb
+          cd /tmp/mcpb
+          request='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
+          echo "$request" | timeout 30 node bin/dizko-mcp.js > out.json
+          grep -q '"dizko_search_events"' out.json
+          echo "Bundle answered tools/list with the expected tool surface."
+
+  package:
+    name: npm pack contents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # `files` in package.json decides what ships to npm; a missing src file
+      # would break `npx dizko-events` without failing any test.
+      - name: Verify the published tarball can run the CLI
+        run: |
+          set -euo pipefail
+          npm pack --silent > /dev/null
+          mkdir -p /tmp/packtest && tar -xzf dizko-events-*.tgz -C /tmp/packtest
+          cd /tmp/packtest/package
+          npm install --omit=dev --no-audit --no-fund --silent
+          node ./bin/dizko.js help | grep -q "dizko-events"
+          node -e "import('./src/index.js').then((m) => { if (m.tools.length !== 19) { throw new Error('expected 19 tools, got ' + m.tools.length); } console.log('Packed library exposes', m.tools.length, 'tools and', m.prompts.length, 'prompts.'); })"

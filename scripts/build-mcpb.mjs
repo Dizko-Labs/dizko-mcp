@@ -1,11 +1,12 @@
 // Builds a Dizko Events one-click Claude Desktop extension bundle (MCPB,
-// formerly DXT): the manifest plus bin/ + src/ + a minimal package.json
-// (required for "type": "module"). The stdio entry point imports
-// @modelcontextprotocol/server, so the host must be able to resolve the
-// package's runtime dependencies.
+// formerly DXT): the manifest, bin/ + src/, a package.json that keeps
+// "type": "module", and the production dependency tree. The bundle must be
+// self-contained - Claude Desktop unzips it and runs `node bin/dizko-mcp.js`
+// with no install step, so a missing node_modules means the extension fails
+// to start with ERR_MODULE_NOT_FOUND.
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CITY_TABLE } from "../src/cities.js";
 
@@ -60,8 +61,30 @@ writeFileSync(join(stageDir, "package.json"), JSON.stringify({
   name: pkg.name,
   version: pkg.version,
   type: "module",
-  private: true
+  private: true,
+  dependencies: pkg.dependencies
 }, null, 2) + "\n");
+
+// Copy the production dependency tree. `npm ls --omit=dev` resolves the real
+// install (including transitive packages and any hoisting), so the bundle
+// matches what the tests ran against instead of a guessed list.
+const depPaths = execFileSync("npm", ["ls", "--omit=dev", "--all", "--parseable"], { cwd: root, encoding: "utf8" })
+  .split("\n")
+  .map((line) => line.trim())
+  .filter((line) => line.includes(`${sep}node_modules${sep}`));
+
+if (!depPaths.length) {
+  throw new Error("No production dependencies resolved. Run `npm install` before building the bundle.");
+}
+for (const source of depPaths) {
+  const relative = source.slice(root.length + 1);
+  cpSync(source, join(stageDir, relative), { recursive: true, dereference: true });
+}
+for (const required of Object.keys(pkg.dependencies || {})) {
+  if (!existsSync(join(stageDir, "node_modules", required, "package.json"))) {
+    throw new Error(`Bundle is missing dependency ${required}; the extension would not start.`);
+  }
+}
 
 rmSync(outFile, { force: true });
 try {
@@ -72,4 +95,4 @@ try {
 }
 rmSync(stageDir, { recursive: true, force: true });
 
-console.log(JSON.stringify({ ok: true, bundle: outFile, version: pkg.version }, null, 2));
+console.log(JSON.stringify({ ok: true, bundle: outFile, version: pkg.version, bundled_dependencies: depPaths.length }, null, 2));
