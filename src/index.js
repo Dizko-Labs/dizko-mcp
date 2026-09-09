@@ -55,6 +55,9 @@ export {
   clearEventCache,
   MAX_SEARCH_LIMIT,
   SORT_OPTIONS,
+  DizkoAPIError,
+  DizkoNetworkError,
+  // Pre-0.8 aliases for the same classes.
   EventChatAPIError,
   EventChatNetworkError
 } from "./api.js";

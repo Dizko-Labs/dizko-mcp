@@ -1,5 +1,5 @@
 import { getConfig } from "./config.js";
-import { EventChatAPIError, getEvent, listCities, searchEvents } from "./api.js";
+import { DizkoAPIError, getEvent, listCities, searchEvents } from "./api.js";
 import { CITY_TABLE } from "./cities.js";
 import { formatDoctorReport, runDoctor } from "./doctor.js";
 import { formatEventList, summarizeEvent } from "./format.js";
@@ -109,7 +109,7 @@ export function formatCliError(error) {
   if (error.hostname) lines.push(`  host: ${error.hostname}`);
   if (error.url) lines.push(`  url: ${error.url}`);
   if (error.retryable) lines.push("  retryable: yes - this is usually temporary, try again shortly");
-  if (error instanceof EventChatAPIError) {
+  if (error instanceof DizkoAPIError) {
     lines.push("  hint: run `dizko-events doctor` to diagnose connectivity");
   }
   return lines.join("\n");

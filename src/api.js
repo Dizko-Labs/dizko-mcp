@@ -9,10 +9,10 @@ export const MAX_SEARCH_LIMIT = 200;
 export const DEFAULT_SEARCH_LIMIT = 12;
 export const SORT_OPTIONS = ["soonest", "popular", "distance", "cost", "event_type"];
 
-export class EventChatAPIError extends Error {
+export class DizkoAPIError extends Error {
   constructor(message, { status = null, body = null, url = null, code = null, hostname = null, classification = null, retryable, cause } = {}) {
     super(message, cause !== undefined ? { cause } : undefined);
-    this.name = "EventChatAPIError";
+    this.name = "DizkoAPIError";
     this.status = status;
     this.body = body;
     this.url = url;
@@ -23,12 +23,16 @@ export class EventChatAPIError extends Error {
   }
 }
 
-export class EventChatNetworkError extends EventChatAPIError {
+export class DizkoNetworkError extends DizkoAPIError {
   constructor(message, props = {}) {
     super(message, props);
-    this.name = "EventChatNetworkError";
+    this.name = "DizkoNetworkError";
   }
 }
+
+// Pre-0.8 names. The classes are the same objects, so `instanceof` keeps
+// working for anyone who imported them from the library.
+export { DizkoAPIError as EventChatAPIError, DizkoNetworkError as EventChatNetworkError };
 
 // Comma-separated strings are accepted wherever an array is expected: models
 // and CLI users both send "techno,house".
@@ -164,7 +168,7 @@ export async function getPublicArtistPage(handle, options = {}) {
   const response = await fetchApi(url, config, options, "Public artist page");
   if (response.status === 404) return null;
   if (!response.ok) {
-    throw new EventChatAPIError(`Public artist page failed with HTTP ${response.status}`, {
+    throw new DizkoAPIError(`Public artist page failed with HTTP ${response.status}`, {
       status: response.status,
       body: await safeText(response),
       url: String(url)
@@ -225,7 +229,7 @@ async function fetchJsonCached(url, config, options, label) {
     const request = (async () => {
       const response = await fetchApi(url, config, options, label);
       if (!response.ok) {
-        throw new EventChatAPIError(`${label} failed with HTTP ${response.status}`, {
+        throw new DizkoAPIError(`${label} failed with HTTP ${response.status}`, {
           status: response.status,
           body: await safeText(response),
           url: key
@@ -288,7 +292,7 @@ async function fetchApi(url, config, options, label) {
     }
     if (isRetryableStatus(response.status) && attempt < maxRetries) {
       await safeText(response);
-      lastError = new EventChatAPIError(`${label} failed with HTTP ${response.status}`, {
+      lastError = new DizkoAPIError(`${label} failed with HTTP ${response.status}`, {
         status: response.status,
         url: String(url)
       });
@@ -300,9 +304,9 @@ async function fetchApi(url, config, options, label) {
 }
 
 function toRequestError(error, url, label, timeoutMs) {
-  if (error instanceof EventChatAPIError) return error;
+  if (error instanceof DizkoAPIError) return error;
   if (error.name === "TimeoutError" || error.name === "AbortError") {
-    return new EventChatAPIError(`${label} timed out after ${timeoutMs}ms (${hostnameFromUrl(url) || "unknown host"})`, {
+    return new DizkoAPIError(`${label} timed out after ${timeoutMs}ms (${hostnameFromUrl(url) || "unknown host"})`, {
       status: 504,
       body: "",
       url: String(url),
@@ -313,7 +317,7 @@ function toRequestError(error, url, label, timeoutMs) {
     });
   }
   const described = describeNetworkError(error, url);
-  return new EventChatNetworkError(`${label} failed: ${described.message}`, {
+  return new DizkoNetworkError(`${label} failed: ${described.message}`, {
     url: described.url,
     code: described.code,
     hostname: described.hostname,

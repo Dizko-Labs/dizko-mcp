@@ -17,7 +17,7 @@ test("public library entry exposes the stable agent-integration surface", () => 
     "resolveDateRange", "WHEN_PRESETS", "isoDate", "weekdayName",
     "ToolInputError", "validateInput",
     "buildEventQuery", "clearEventCache", "MAX_SEARCH_LIMIT", "SORT_OPTIONS",
-    "EventChatAPIError", "EventChatNetworkError", "TICKET_PURCHASE_POLICY",
+    "DizkoAPIError", "DizkoNetworkError", "EventChatAPIError", "EventChatNetworkError", "TICKET_PURCHASE_POLICY",
     "handleMcpRequest", "runMcpServer", "createSdkMcpServer", "createHttpMcpServer", "runHttpMcpServer"
   ]) {
     assert.ok(name in lib, `missing export: ${name}`);
