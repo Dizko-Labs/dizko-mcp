@@ -142,12 +142,39 @@ test("merge mode cannot grow a saved list without bound", async () => {
     const store = new FilePreferenceStore(join(dir, "preferences.json"));
     const { profile } = await store.createProfile({});
     for (let round = 0; round < 40; round += 1) {
-      await store.savePreferences(profile.profile_id, { venues: Array.from({ length: 25 }, (_, index) => `v${round}-${index}`) });
+      await store.savePreferences(profile.profile_id, { venues: Array.from({ length: 50 }, (_, index) => `v${round}-${index}`) });
     }
     const saved = await store.getProfile(profile.profile_id);
-    assert.ok(saved.preferences.venues.length <= 60, `venues grew to ${saved.preferences.venues.length}`);
-    assert.equal(saved.preferences.venues.at(-1), "v39-24", "the cap must keep the newest terms, not the oldest");
+    assert.ok(saved.preferences.venues.length <= 100, `venues grew to ${saved.preferences.venues.length}`);
+    assert.equal(saved.preferences.venues.at(-1), "v39-49", "the cap must keep the newest terms, not the oldest");
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a profile is trimmed to its byte budget rather than growing unbounded", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dizko-sec-"));
+  const previous = process.env.DIZKO_MAX_PROFILE_BYTES;
+  process.env.DIZKO_MAX_PROFILE_BYTES = "8192";
+  try {
+    const store = new FilePreferenceStore(join(dir, "preferences.json"));
+    const { profile } = await store.createProfile({});
+    for (let round = 0; round < 40; round += 1) {
+      await store.recordFeedback(profile.profile_id, {
+        event_id: `e${round}`,
+        liked: true,
+        notes: "x".repeat(1800),
+        event: { genres: ["techno"], venue: "AMT" }
+      });
+    }
+    const saved = await store.getProfile(profile.profile_id);
+    const bytes = Buffer.byteLength(JSON.stringify(saved), "utf8");
+    assert.ok(bytes <= 8192, `profile grew to ${bytes} bytes`);
+    assert.ok(saved.feedback.length > 0, "trimming must drop the oldest feedback, not all of it");
+    assert.equal(saved.feedback.at(-1).event_id, "e39", "the newest feedback must survive");
+    assert.ok(Object.keys(saved.learned.genres || {}).length > 0, "learned signal outlives the raw feedback it came from");
+  } finally {
+    if (previous === undefined) delete process.env.DIZKO_MAX_PROFILE_BYTES; else process.env.DIZKO_MAX_PROFILE_BYTES = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });

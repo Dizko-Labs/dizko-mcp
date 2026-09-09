@@ -27,10 +27,23 @@ export const STRING_MAX_LENGTH_BY_FIELD = {
   description: 500
 };
 
+// Taste lists are set-membership checks over a page of events, which is
+// linear and cheap: 50 terms across 500 events costs ~90ms. Someone who
+// follows fifty DJs is a real user, not an attacker, so these are generous.
+// `avoid` is the one list that runs a regex per term, so it stays tighter.
+const TASTE_LIST_MAX_ITEMS = 50;
+
 export const ARRAY_MAX_ITEMS_BY_FIELD = {
+  genres: TASTE_LIST_MAX_ITEMS,
+  vibe: TASTE_LIST_MAX_ITEMS,
+  event_types: TASTE_LIST_MAX_ITEMS,
+  neighborhoods: TASTE_LIST_MAX_ITEMS,
+  venues: TASTE_LIST_MAX_ITEMS,
+  promoters: TASTE_LIST_MAX_ITEMS,
+  featuring: TASTE_LIST_MAX_ITEMS,
+  avoid: 40,
   fields: 12,
-  cities: 12,
-  day_filters: 7
+  cities: 12
 };
 
 // Applies the caps to a JSON Schema in place and returns it. Schemas that

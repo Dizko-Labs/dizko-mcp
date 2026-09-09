@@ -415,6 +415,7 @@ Tickets, preferences (`src/tickets.js`, `src/preferences.js`):
 | `DIZKO_PREFERENCES_PATH` | `./data/preferences.json` | `EVENTCHAT_PREFERENCES_PATH` | Preference store file. |
 | `DIZKO_PREFERENCE_RETENTION_DAYS` | `730` | `EVENTCHAT_PREFERENCE_RETENTION_DAYS` | Inactive profiles are pruned after this many days. |
 | `DIZKO_MAX_PROFILES` | `10000` | `EVENTCHAT_MAX_PROFILES` | Ceiling on stored profiles. At the ceiling, profiles that were created but never used or consented to are evicted oldest-first; only if that frees nothing does creation fail with `profile_limit_reached`. |
+| `DIZKO_MAX_PROFILE_BYTES` | `98304` | `EVENTCHAT_MAX_PROFILE_BYTES` | Ceiling on one serialized profile. Over it, the oldest feedback entries are dropped to fit (their signal already lives in `learned`); a profile still too large with no feedback left is refused with `profile_too_large`. |
 | `EVENTCHAT_ALLOW_LEGACY_PROFILE_IDS` | unset | none | `true` lets pre-secret legacy profiles be read without a secret. Keep it unset in production. |
 
 HTTP server (`src/httpServer.js`, `EVENTCHAT_*` only):

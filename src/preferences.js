@@ -6,6 +6,7 @@ import { ToolInputError } from "./errors.js";
 const DEFAULT_PREFS_PATH = "./data/preferences.json";
 const DEFAULT_RETENTION_DAYS = 730;
 const DEFAULT_MAX_PROFILES = 10000;
+const DEFAULT_MAX_PROFILE_BYTES = 98304;
 const ABANDONED_PROFILE_GRACE_MS = 60 * 60 * 1000;
 const fileQueues = new Map();
 
@@ -44,9 +45,10 @@ export class FilePreferenceStore {
         updated_at: now
       };
 
-      data.users[profileId] = profile;
+      const stored = fitProfileToBudget(profile);
+      data.users[profileId] = stored;
       await this.write(data);
-      return { profile, profile_secret: profileSecret };
+      return { profile: stored, profile_secret: profileSecret };
     });
   }
 
@@ -68,9 +70,10 @@ export class FilePreferenceStore {
         updated_at: new Date().toISOString()
       };
 
-      data.users[profileId] = profile;
+      const stored = fitProfileToBudget(profile);
+      data.users[profileId] = stored;
       await this.write(data);
-      return profile;
+      return stored;
     });
   }
 
@@ -96,9 +99,10 @@ export class FilePreferenceStore {
         updated_at: entry.created_at
       };
 
-      data.users[profileId] = profile;
+      const stored = fitProfileToBudget(profile);
+      data.users[profileId] = stored;
       await this.write(data);
-      return { profile, feedback: entry };
+      return { profile: stored, feedback: entry };
     });
   }
 
@@ -214,6 +218,41 @@ function pruneExpiredProfiles(data, now = new Date()) {
   return { changed };
 }
 
+export function maxProfileBytes() {
+  const configured = Number(process.env.DIZKO_MAX_PROFILE_BYTES || process.env.EVENTCHAT_MAX_PROFILE_BYTES || DEFAULT_MAX_PROFILE_BYTES);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_PROFILE_BYTES;
+  return Math.floor(configured);
+}
+
+// The store is one JSON file rewritten per operation, so a profile's byte
+// size is a cost every other caller pays. Feedback is what grows without a
+// natural bound - 250 entries of free-text notes plus event snapshots dwarf
+// every taste list - and its signal has already been folded into `learned`,
+// so the oldest entries are dropped to fit rather than the write refused.
+// Only a profile that is still too large with no feedback left is rejected.
+function fitProfileToBudget(profile) {
+  const budget = maxProfileBytes();
+  if (byteSize(profile) <= budget) return profile;
+
+  let feedback = profile.feedback || [];
+  while (feedback.length && byteSize({ ...profile, feedback }) > budget) {
+    feedback = feedback.slice(Math.max(1, Math.ceil(feedback.length / 8)));
+  }
+
+  const trimmed = { ...profile, feedback };
+  if (byteSize(trimmed) > budget) {
+    throw new ToolInputError("This profile is too large to store.", {
+      code: "profile_too_large",
+      hint: `Saved preferences must serialize to under ${budget} bytes. Remove some saved terms, or use mode "replace" to start from a smaller set.`
+    });
+  }
+  return trimmed;
+}
+
+function byteSize(value) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
 export function maxStoredProfiles() {
   const configured = Number(process.env.DIZKO_MAX_PROFILES || process.env.EVENTCHAT_MAX_PROFILES || DEFAULT_MAX_PROFILES);
   if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_PROFILES;
@@ -292,10 +331,14 @@ const SCALAR_KEYS = ["max_price", "free", "nightlife"];
 const AVOID_THRESHOLDS = { genres: -2, vibe: -2, event_types: -2, venues: -1, promoters: -1, notes: -1 };
 
 // Stored-size caps. Per-call schema limits stop one huge argument; these stop
-// the slow version, where merge mode appends 25 fresh terms per call until a
+// the slow version, where merge mode appends fresh terms per call until a
 // profile is megabytes wide and every read, merge and write pays for it.
 // A person's real taste fits inside these numbers many times over.
-const MAX_SAVED_TERMS_PER_FIELD = 60;
+//
+// The per-field caps below are the readable bound; DIZKO_MAX_PROFILE_BYTES is
+// the one that actually holds, because feedback notes and event snapshots
+// dominate a large profile and no per-field count constrains them.
+const MAX_SAVED_TERMS_PER_FIELD = 100;
 const MAX_LEARNED_TERMS_PER_KEY = 200;
 const MAX_TERM_LENGTH = 120;
 const TASTE_KEYS = new Set(["genres", "vibe", "event_types"]);

@@ -149,6 +149,7 @@ Store characteristics:
 - A single JSON file. Writes are atomic (temp file + rename) and serialized per path within one process.
 - Safe for one replica only. Two replicas sharing the volume would race, so do not scale the service out until the store is moved behind an external store (Postgres, Redis, or the Dizko backend) that implements the same interface: `getProfile`, `createProfile`, `savePreferences`, `recordFeedback`, `deleteProfile`.
 - Inactive profiles are pruned on access after `DIZKO_PREFERENCE_RETENTION_DAYS` (alias `EVENTCHAT_PREFERENCE_RETENTION_DAYS`), defaulting to `730` days.
+- One profile serializes to at most `DIZKO_MAX_PROFILE_BYTES` (default `98304`). Past it the oldest feedback entries are dropped to fit, since their signal is already folded into `learned`. This is the bound that actually holds: free-text notes and event snapshots dominate a large profile, and no per-field term count constrains them.
 - The store holds at most `DIZKO_MAX_PROFILES` profiles (default `10000`). At the ceiling, profiles created but never used or consented to are evicted oldest-first; consented profiles are never evicted for space. If nothing can be freed, `dizko_create_profile` returns `profile_limit_reached` while every existing profile keeps working. Raising the ceiling raises the cost of every write, since the store is one JSON file rewritten per operation.
 
 Privacy invariants:
