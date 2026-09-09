@@ -13,6 +13,7 @@ import { buildNoResults } from "../src/relaxations.js";
 import { purchaseTicketOrder, quoteTicketOrder, resetConsumedQuotes } from "../src/tickets.js";
 import { callTool, tools } from "../src/tools.js";
 import { handleMcpRequest, negotiateProtocolVersion } from "../src/mcpServer.js";
+import { createHttpMcpServer, originAllowed } from "../src/httpServer.js";
 
 const CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
 const NOW = new Date("2026-09-08T12:00:00Z");
@@ -412,4 +413,48 @@ test("the initialize handshake negotiates a protocol version instead of echoing 
     assert.equal(result.protocolVersion, "2025-11-25");
   }
   assert.equal(negotiateProtocolVersion("2025-06-18"), "2025-06-18");
+});
+
+// Origin validation -------------------------------------------------------
+// An allowlist that only shapes the CORS response header is enforced by the
+// browser, which does not help against DNS rebinding: after a rebind the
+// attacker page IS the target origin and CORS never applies.
+
+async function probeOrigin(server, origin) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/health`, {
+      headers: origin ? { origin } : {}
+    });
+    return { status: response.status, allowOrigin: response.headers.get("access-control-allow-origin") };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+test("a configured origin allowlist rejects other origins at the server, not just in the header", async () => {
+  const options = { allowedOrigins: ["https://good.example"], fetch: async () => Response.json({ count: 0, events: [] }) };
+
+  const allowed = await probeOrigin(createHttpMcpServer(options), "https://good.example");
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.allowOrigin, "https://good.example");
+
+  const rejected = await probeOrigin(createHttpMcpServer(options), "https://evil.example");
+  assert.equal(rejected.status, 403, "a non-allowlisted browser origin must be refused, not merely un-CORSed");
+
+  // Non-browser clients send no Origin at all and must keep working.
+  const headless = await probeOrigin(createHttpMcpServer(options), null);
+  assert.equal(headless.status, 200);
+});
+
+test("the default public configuration still serves every origin", async () => {
+  const open = await probeOrigin(
+    createHttpMcpServer({ fetch: async () => Response.json({ count: 0, events: [] }) }),
+    "https://evil.example"
+  );
+  assert.equal(open.status, 200, "the hosted read API is intentionally public");
+  assert.equal(open.allowOrigin, "*");
+
+  assert.equal(originAllowed({ headers: { origin: "https://any.example" } }, { allowedOrigins: ["*"] }), true);
+  assert.equal(originAllowed({ headers: {} }, { allowedOrigins: [] }), true);
 });

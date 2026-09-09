@@ -30,7 +30,8 @@ Do not include another person's profile secret, private notes, or personal data 
 
 ## Security Posture
 
-- The hosted endpoint is a public read API. CORS is `*` by default (`EVENTCHAT_MCP_ALLOWED_ORIGINS` narrows it) and the server performs no Origin or Host validation on `/mcp`, so with no bearer token any web page can call the discovery tools cross-origin. That is acceptable for public event inventory; anything that writes is protected by the profile secret, not by the transport.
+- The hosted endpoint is a public read API. CORS is `*` by default, so with no bearer token any web page can call the discovery tools cross-origin. That is acceptable for public event inventory; anything that writes is protected by the profile secret, not by the transport.
+- Setting `EVENTCHAT_MCP_ALLOWED_ORIGINS` to a real list makes the server refuse a request whose `Origin` is outside it (403), not merely omit the CORS header. Header-only enforcement relies on the browser, which does not help against DNS rebinding: after a rebind the attacker's page is the target origin and CORS never applies. Any deployment reachable from a browser on a private network or localhost should set this list. Requests with no `Origin`, which is every non-browser MCP client, are unaffected.
 - Profile writes (`dizko_update_profile`, `dizko_record_feedback`, `dizko_delete_profile`) and reads (`dizko_get_profile`) require both `profile_id` and `profile_secret`; the service stores only a hash of the secret and compares it in constant time.
 - Short links under `/e/<id>/cal|map|ics` are intentionally public: they bypass `EVENTCHAT_MCP_BEARER_TOKEN` when one is configured, but they share the `/mcp` rate limiter and expose only public event data.
 - `EVENTCHAT_ALLOW_LEGACY_PROFILE_IDS=true` disables secret checks for legacy profiles that have no stored secret hash. It must stay unset (off) in production.

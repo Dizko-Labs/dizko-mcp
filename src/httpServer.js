@@ -45,6 +45,19 @@ export function createHttpMcpServer(options = {}) {
     try {
       const url = new URL(request.url, "http://localhost");
 
+      // An origin allowlist that only shapes the response header is enforced
+      // by the browser, which is enough for an ordinary cross-origin read but
+      // not for DNS rebinding: after a rebind the attacker page IS the target
+      // origin, so CORS never applies. The MCP spec asks servers to validate
+      // Origin for exactly this reason, so a configured allowlist rejects
+      // here as well. The default "*" keeps the public API open and this is a
+      // no-op for it; a request with no Origin (every non-browser client)
+      // is unaffected.
+      if (!originAllowed(request, settings)) {
+        sendJson(response, 403, { error: "Origin not allowed." }, corsHeaders(request, settings));
+        return;
+      }
+
       if (request.method === "OPTIONS") {
         sendNoBody(response, 204, corsHeaders(request, settings));
         return;
@@ -488,6 +501,17 @@ export function clientIp(request, trustedProxies = 1) {
   if (!hops.length) return socketAddress;
   const hopCount = Number.isFinite(trustedProxies) && trustedProxies > 0 ? Math.floor(trustedProxies) : 1;
   return hops[Math.max(0, hops.length - hopCount)] || socketAddress;
+}
+
+// A browser always sends Origin on a cross-origin request; a curl, an MCP
+// client or a server-to-server call sends none, and those are not the
+// requests this guard is about.
+export function originAllowed(request, settings) {
+  const allowed = settings.allowedOrigins || [];
+  if (allowed.includes("*") || !allowed.length) return true;
+  const origin = request.headers?.origin;
+  if (!origin) return true;
+  return allowed.includes(origin);
 }
 
 function corsHeaders(request, settings) {

@@ -425,7 +425,7 @@ HTTP server (`src/httpServer.js`, `EVENTCHAT_*` only):
 | `PORT` / `EVENTCHAT_MCP_PORT` | `8787` | Listen port (`PORT` wins). |
 | `HOST` / `EVENTCHAT_MCP_HOST` | `0.0.0.0` | Listen host. |
 | `EVENTCHAT_MCP_BEARER_TOKEN` | unset (public) | When set, `/mcp` requires `Authorization: Bearer <token>`. Short links and public pages stay open. |
-| `EVENTCHAT_MCP_ALLOWED_ORIGINS` | `*` | Comma list for `Access-Control-Allow-Origin`. |
+| `EVENTCHAT_MCP_ALLOWED_ORIGINS` | `*` | Comma list for `Access-Control-Allow-Origin`. When set to anything but `*`, a request carrying an `Origin` outside the list is refused with 403 rather than only being denied by the browser. Requests with no `Origin` (every non-browser client) are unaffected. |
 | `EVENTCHAT_MCP_RATE_LIMIT_MAX` | `600` | Requests per window per client IP on `/mcp` and short links. |
 | `EVENTCHAT_MCP_RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window. |
 | `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` | empty | Comma list of IP prefixes exempt from the limiter (hosted assistants call from shared egress addresses). |
