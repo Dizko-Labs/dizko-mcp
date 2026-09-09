@@ -1,3 +1,8 @@
+import {
+  DEFAULT_NEGOTIATED_PROTOCOL_VERSION,
+  LATEST_PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS as SDK_SUPPORTED_PROTOCOL_VERSIONS
+} from "@modelcontextprotocol/server";
 import { StdioServerTransport, serveStdio } from "@modelcontextprotocol/server/stdio";
 import { MCP_SERVER_INSTRUCTIONS, TOOL_VERSION } from "./config.js";
 import { callTool, getPrompt, prompts, tools } from "./tools.js";
@@ -22,10 +27,12 @@ export async function handleMcpRequest(request, options = {}) {
       instructions: MCP_SERVER_INSTRUCTIONS
     }, CACHE_HINTS["server/discover"]);
   case "initialize":
-    // 2025-era handshake. Echo the client's revision as before; the
-    // stateless path carries the version in _meta instead.
+    // 2025-era handshake. The version is negotiated, not echoed: replying
+    // with whatever the client asked for would agree to a revision this
+    // server does not speak, and would drift from the SDK that serves the
+    // real transports. The stateless path carries the version in _meta.
     return {
-      protocolVersion: request.params?.protocolVersion || "2025-11-25",
+      protocolVersion: negotiateProtocolVersion(request.params?.protocolVersion),
       capabilities: { tools: {}, prompts: {} },
       serverInfo: { name: "dizko", version: TOOL_VERSION },
       instructions: MCP_SERVER_INSTRUCTIONS
@@ -43,6 +50,15 @@ export async function handleMcpRequest(request, options = {}) {
   default:
     throw new Error(`Unsupported MCP method: ${request.method}`);
   }
+}
+
+// Mirrors the SDK: a revision it supports is agreed to, anything else falls
+// back to the SDK's default rather than being accepted on the client's word.
+// The supported list comes from the SDK so it cannot go stale here.
+export function negotiateProtocolVersion(requested) {
+  if (typeof requested === "string" && SDK_SUPPORTED_PROTOCOL_VERSIONS.includes(requested)) return requested;
+  if (requested === undefined || requested === null) return LATEST_PROTOCOL_VERSION;
+  return DEFAULT_NEGOTIATED_PROTOCOL_VERSION;
 }
 
 function complete(result, cacheHint) {

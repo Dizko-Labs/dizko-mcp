@@ -12,6 +12,7 @@ import { avoidPattern, scoreEvent } from "../src/rank.js";
 import { buildNoResults } from "../src/relaxations.js";
 import { purchaseTicketOrder, quoteTicketOrder, resetConsumedQuotes } from "../src/tickets.js";
 import { callTool, tools } from "../src/tools.js";
+import { handleMcpRequest, negotiateProtocolVersion } from "../src/mcpServer.js";
 
 const CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
 const NOW = new Date("2026-09-08T12:00:00Z");
@@ -385,4 +386,30 @@ test("a burst of one-off queries does not evict a repeatedly read entry", async 
   }
 
   assert.equal(cityFetches, 1, "the repeatedly used entry must survive the flood");
+});
+
+// Protocol conformance ----------------------------------------------------
+// The in-process helper used to echo whatever protocolVersion a client sent,
+// which agrees to a revision this server does not speak and drifts from the
+// SDK that serves the real transports.
+
+test("the initialize handshake negotiates a protocol version instead of echoing one", async () => {
+  const supported = await handleMcpRequest({ method: "initialize", params: { protocolVersion: "2025-03-26" } });
+  assert.equal(supported.protocolVersion, "2025-03-26", "a revision the SDK supports is agreed to");
+
+  // A revision the SDK does not know falls back to its default. "2026-07-28"
+  // belongs here too: that revision opens with server/discover, not
+  // initialize, so a client asking for it on this handshake is confused.
+  for (const claimed of ["1999-01-01", "2026-07-28", "", 42, { a: 1 }]) {
+    const result = await handleMcpRequest({ method: "initialize", params: { protocolVersion: claimed } });
+    assert.notEqual(result.protocolVersion, claimed, `must not echo ${JSON.stringify(claimed)}`);
+    assert.equal(result.protocolVersion, "2025-03-26");
+  }
+
+  // No stated revision, explicit or omitted, means the latest we support.
+  for (const params of [{}, { protocolVersion: null }]) {
+    const result = await handleMcpRequest({ method: "initialize", params });
+    assert.equal(result.protocolVersion, "2025-11-25");
+  }
+  assert.equal(negotiateProtocolVersion("2025-06-18"), "2025-06-18");
 });
