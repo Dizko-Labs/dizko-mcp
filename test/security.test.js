@@ -496,11 +496,19 @@ test("the initialize handshake negotiates a protocol version instead of echoing 
 // browser, which does not help against DNS rebinding: after a rebind the
 // attacker page IS the target origin and CORS never applies.
 
-async function probeOrigin(server, origin) {
+// The guard covers the tool surface. /health and the short links are
+// deliberately public, so they are probed separately below.
+async function probeOrigin(server, origin, path = "/mcp") {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/health`, {
-      headers: origin ? { origin } : {}
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: path === "/mcp" ? "POST" : "GET",
+      headers: {
+        ...(origin ? { origin } : {}),
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream"
+      },
+      ...(path === "/mcp" ? { body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }) } : {})
     });
     return { status: response.status, allowOrigin: response.headers.get("access-control-allow-origin") };
   } finally {
@@ -521,12 +529,19 @@ test("a configured origin allowlist rejects other origins at the server, not jus
   // Non-browser clients send no Origin at all and must keep working.
   const headless = await probeOrigin(createHttpMcpServer(options), null);
   assert.equal(headless.status, 200);
+
+  // Short links and the health endpoint publish already-public event data,
+  // so gating them would break embedding a calendar link from another site
+  // to protect nothing.
+  const publicPage = await probeOrigin(createHttpMcpServer(options), "https://evil.example", "/health");
+  assert.equal(publicPage.status, 200, "the intentionally public surface stays public");
 });
 
 test("the default public configuration still serves every origin", async () => {
   const open = await probeOrigin(
     createHttpMcpServer({ fetch: async () => Response.json({ count: 0, events: [] }) }),
-    "https://evil.example"
+    "https://evil.example",
+    "/health"
   );
   assert.equal(open.status, 200, "the hosted read API is intentionally public");
   assert.equal(open.allowOrigin, "*");

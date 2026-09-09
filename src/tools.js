@@ -94,7 +94,7 @@ const rawTools = [
         profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
         fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS }, description: "Extra per-event fields to include: description, images, coordinates, socials, promoters, source. Omit for the compact default." },
         limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, default: 12, description: `Events to return per page (1-${MAX_SEARCH_LIMIT}, default 12). count is the total available; page with offset.` },
-        offset: { type: "integer", minimum: 0, default: 0, description: "Pagination offset." }
+        offset: { type: "integer", minimum: 0, default: 0, description: "Pagination cursor: pass back the next_offset from the previous page, never a number you computed. Applies to relevance ranking only; taste ranking scores one window and ignores it." }
       },
       dependentRequired: { profile_id: ["profile_secret"], profile_secret: ["profile_id"] }
     }
@@ -631,7 +631,12 @@ const handlers = {
       const hints = profile
         ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(singleDay) })
         : rankingHintsFromRequest(input);
-      const response = await recommendEvents({ ...searchInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
+      // Taste scores one candidate window as a whole, so an offset has no
+      // cursor to move: passing it upstream shifted the window and quietly
+      // returned different events for the same request, with has_more false
+      // and no next_offset to explain it. It is dropped, and the note says so.
+      const { offset: _ignoredOffset, ...tasteInput } = searchInput;
+      const response = await recommendEvents({ ...tasteInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
       const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
       // Taste ranks a candidate window rather than walking the inventory in
       // order, so there is no stable cursor to hand back. Say so instead of
@@ -647,7 +652,9 @@ const handlers = {
         offset: input.offset ?? 0,
         has_more: false,
         next_offset: null,
-        paging_note: "Taste ranking scores one candidate window; raise limit rather than paging.",
+        paging_note: (input.offset ?? 0) > 0
+          ? "Taste ranking scores one candidate window, so offset does not apply and was not used. Raise limit instead, or pass rank: \"relevance\" to page the inventory in order."
+          : "Taste ranking scores one candidate window; raise limit rather than paging.",
         ...(emptyTaste ? { no_results: emptyTaste } : {}),
         app_download_url: config.appDownloadUrl,
         assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : EVENT_LINKS_INSTRUCTION

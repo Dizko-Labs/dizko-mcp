@@ -53,7 +53,13 @@ export function createHttpMcpServer(options = {}) {
       // here as well. The default "*" keeps the public API open and this is a
       // no-op for it; a request with no Origin (every non-browser client)
       // is unaffected.
-      if (!originAllowed(request, settings)) {
+      //
+      // Scoped to the tool surface. Short links and the public pages serve
+      // published event data and nothing else, and SECURITY.md calls them
+      // intentionally public, so gating them would break embedding a calendar
+      // or directions link from another site to protect data that is already
+      // public.
+      if (isToolSurface(url.pathname) && !originAllowed(request, settings)) {
         sendJson(response, 403, { error: "Origin not allowed." }, corsHeaders(request, settings));
         return;
       }
@@ -506,6 +512,12 @@ export function clientIp(request, trustedProxies = 1) {
 // A browser always sends Origin on a cross-origin request; a curl, an MCP
 // client or a server-to-server call sends none, and those are not the
 // requests this guard is about.
+// Everything that can reach a tool. The short links under /e/ and the static
+// public pages are deliberately not here.
+export function isToolSurface(pathname) {
+  return pathname === "/mcp" || pathname.startsWith("/mcp/");
+}
+
 export function originAllowed(request, settings) {
   const allowed = settings.allowedOrigins || [];
   if (allowed.includes("*")) return true;
