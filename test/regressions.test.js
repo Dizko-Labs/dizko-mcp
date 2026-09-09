@@ -62,8 +62,25 @@ test("paging advances by rows consumed upstream, not rows that survived filterin
   const overlap = firstIds.filter((id) => secondIds.includes(id));
 
   assert.deepEqual(overlap, [], "a second page must not repeat events from the first");
-  assert.equal(first.next_offset, 200, "the cursor advances by the rows read upstream, not the rows returned");
   assert.ok(first.returned < 200, "the page really was filtered down");
+
+  // Non-overlap alone is a weak property: a cursor that skips most of the day
+  // also never repeats itself. Walking to exhaustion is what catches that, so
+  // this asserts on the whole sequence, not on two pages.
+  const seen = [];
+  let offset = 0;
+  for (let guard = 0; guard < 200; guard += 1) {
+    const body = await page(offset);
+    seen.push(...body.events.map((event) => event.id));
+    if (body.next_offset === null) break;
+    assert.notEqual(body.next_offset, offset, "a cursor that repeats itself loops forever");
+    offset = body.next_offset;
+  }
+
+  assert.equal(new Set(seen).size, seen.length, "no event may be delivered twice across the walk");
+  // Half the fixture ended before `now`; the rest is everything the caller
+  // must be able to reach, capped by what one upstream fetch returns.
+  assert.equal(seen.length, 100, "paging must reach every event of the day it fetched, not a sample of them");
 });
 
 test("a page whose events were all filtered out never points back at itself", async () => {

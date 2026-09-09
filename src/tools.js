@@ -652,15 +652,31 @@ const handlers = {
     // same-day presets fetch the whole day (one cached upstream call).
     const sameDay = isSameDayPreset(input.when);
     const pageLimit = input.limit ?? 12;
-    const response = await searchEvents({ ...searchInput, limit: sameDay ? MAX_SEARCH_LIMIT : pageLimit }, { ...options, config });
+    const offset = input.offset ?? 0;
+    // A single-day search fetches the whole day and pages over it locally,
+    // because dropping events that already ended and sorting the day by start
+    // time both need the full set: sorting inside a 12-row page would order
+    // pages wrongly against each other. So `offset` indexes the day's own
+    // list here, and the upstream request is the same URL for every page,
+    // which also means every page after the first is a cache hit.
+    const response = await searchEvents(
+      { ...searchInput, limit: sameDay ? MAX_SEARCH_LIMIT : pageLimit, ...(sameDay ? { offset: 0 } : {}) },
+      { ...options, config }
+    );
     const now = options.now || new Date();
     const fresh = sameDay ? dropEndedEvents(response.events || [], now, input.when, timezone) : (response.events || []);
     const deduped = dedupeSameShow(fresh).sort(sortBy === "soonest" ? compareStartTime : () => 0);
-    const events = deduped.slice(0, pageLimit).map((event) => summarizeEvent(event, summaryOptions));
-    const offset = input.offset ?? 0;
+    const page = sameDay ? deduped.slice(offset, offset + pageLimit) : deduped.slice(0, pageLimit);
+    const events = page.map((event) => summarizeEvent(event, summaryOptions));
     const count = response.count ?? events.length;
     const consumed = (response.events || []).length;
-    const hasMore = consumed > 0 && offset + consumed < count;
+    // Advancing by rows CONSUMED upstream is right only when the page and the
+    // fetch are the same size. On the single-day path they are not - the
+    // fetch covers the whole day - so the cursor moves by rows delivered.
+    const hasMore = sameDay
+      ? offset + events.length < deduped.length
+      : consumed > 0 && offset + consumed < count;
+    const truncatedDay = sameDay && consumed >= MAX_SEARCH_LIMIT;
     const empty = events.length ? null : await noResultsPayload(searchInput, cityDisplayName(city), { ...options, config });
     return {
       ...(sameDay ? { filtered_out: (response.events || []).length - fresh.length, filter_note: "Events that already ended today are omitted." } : {}),
@@ -671,13 +687,14 @@ const handlers = {
       count,
       returned: events.length,
       offset,
-      // Advance the cursor by the rows CONSUMED upstream, not the rows that
-      // survived filtering and deduping. Advancing by the smaller number
-      // re-reads rows the caller already has, and when a whole page is
-      // filtered out it would hand back the offset it was given - a client
-      // looping on next_offset would never terminate.
+      // On the multi-day path the cursor advances by the rows the upstream
+      // consumed, not by the rows that survived filtering and deduping:
+      // advancing by the smaller number re-reads rows the caller already has,
+      // and a fully filtered page would hand back the offset it was given, so
+      // a client looping on next_offset would never terminate.
       has_more: hasMore,
-      next_offset: hasMore ? offset + consumed : null,
+      next_offset: hasMore ? offset + (sameDay ? events.length : consumed) : null,
+      ...(truncatedDay ? { paging_note: `This day has more than ${MAX_SEARCH_LIMIT} listings and is capped at that; narrow with genres, neighborhoods or a venue to see the rest.` } : {}),
       search_fallback: response.search_fallback ?? null,
       events,
       ...(empty ? { no_results: empty } : {}),
