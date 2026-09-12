@@ -10,6 +10,7 @@ const EVENT = {
   end_time: "2026-06-14T04:00:00+00:00",
   venue_name: "Knockdown Center",
   venue_city: "new york",
+  venue_address: "52-19 Flushing Ave, Queens, NY 11378",
   lat: 40.7141,
   lng: -73.9082,
   ticket_url: "https://ra.co/events/123",
@@ -49,6 +50,7 @@ test("googleCalendarUrl builds a prefilled link with dates, location, and event 
   assert.match(url, /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
   assert.match(url, /dates=20260613T220000Z%2F20260614T040000Z/);
   assert.match(url, /Knockdown\+Center/);
+  assert.equal(new URL(url).searchParams.get("location"), "Knockdown Center, 52-19 Flushing Ave, Queens, NY 11378");
   assert.ok(url.includes(encodeURIComponent("events/evt-1")), "details should link back to the event card");
 });
 

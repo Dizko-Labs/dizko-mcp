@@ -25,6 +25,7 @@ export function summarizeEvent(event, options = {}) {
     ends_at: event.end_time || null,
     venue: event.venue_name || null,
     city: event.venue_city || null,
+    address: event.venue_address || null,
     price: formatPrice(event),
     currency: event.currency || null,
     genres: event.genres || [],
@@ -101,7 +102,7 @@ export function googleCalendarUrl(summary) {
     text: summary.title || "Dizko Event",
     dates: `${start}/${end}`
   });
-  const location = [summary.venue, summary.city].filter(Boolean).join(", ");
+  const location = [summary.venue, summary.address || summary.city].filter(Boolean).join(", ");
   if (location) params.set("location", location);
   const details = [
     summary.event_url ? `Event: ${summary.event_url}` : null,
