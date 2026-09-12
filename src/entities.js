@@ -2,14 +2,19 @@ import {
   getDjDirectoryProfile,
   getDjInsights,
   getPromoter,
+  getPublicArtistPage,
   getSceneProfile,
   listPromoters,
   searchEvents,
   searchScene
 } from "./api.js";
 import { getConfig } from "./config.js";
-import { getArtistEvents } from "./artistEvents.js";
+import { cityTimezone } from "./cities.js";
+import { isoDate } from "./dateRange.js";
+import { ToolInputError } from "./errors.js";
+import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
 import { summarizeEvent } from "./format.js";
+import { artistProminence, decisivelyAhead, promoterProminence, venueProminence } from "./prominence.js";
 
 const SCENE_KIND = {
   artist: "dj",
@@ -17,153 +22,148 @@ const SCENE_KIND = {
   collective: "collective"
 };
 
+const UPCOMING_APPEARANCES_CAP = 10;
+const PAST_APPEARANCES_CAP = 5;
+const PRESS_CAP = 6;
+
+// Legacy entry point kept for callers of the old find_scene_entities tool.
 export async function findSceneEntities(input = {}, options = {}) {
   const kind = normalizeEntityKind(input.kind);
-  if (!kind) {
+  if (input.kind && !kind) {
     return entityError("kind must be artist, venue, collective, or promoter", "invalid_entity_kind");
   }
-  if (input.id) return getEntityProfile(kind, String(input.id).trim(), input, options);
-  if (!String(input.query || "").trim()) {
+  if (!input.id && !String(input.query || "").trim()) {
     return entityError("Pass an entity id or a search query", "missing_entity_lookup");
   }
-  return searchEntities(kind, input, options);
+  if (input.id && !kind) {
+    return entityError("Looking up an id needs a kind: artist, venue, collective, or promoter.", "missing_entity_kind");
+  }
+  if (kind === "venue") return findVenue(input, options);
+  if (kind === "promoter" || kind === "collective") return findPromoter({ ...input, kind }, options);
+  if (kind === "artist") return findArtist(input, options);
+  return findAnyEntity(input, options);
 }
 
-async function searchEntities(kind, input, options) {
+function requireLookup(input) {
+  if (input.id) return;
+  if (!String(input.query || "").trim()) {
+    throw new ToolInputError("Pass a name to search for, or an id from a previous result.", { field: "query" });
+  }
+}
+
+// ---------- artists ----------
+
+export async function findArtist(input = {}, options = {}) {
+  requireLookup(input);
+  if (input.id) return artistProfile(String(input.id).trim(), input, options);
   const query = String(input.query).trim();
   const limit = boundedLimit(input.limit, 10, 20);
-  if (kind === "promoter") {
-    if (!String(input.city || "").trim()) {
-      return entityError("Promoter search requires a city", "missing_city");
-    }
-    const response = await listPromoters(input.city, 200, options);
-    const needle = normalizeText(query);
-    const genre = normalizeText(input.genre);
-    const entities = (response.promoters || [])
-      .filter((item) => !needle || normalizeText(`${item.name} ${item.slug}`).includes(needle))
-      .filter((item) => !genre || (item.genres || []).some((value) => normalizeText(value).includes(genre)))
-      .slice(0, limit)
-      .map((item) => promoterSummary(item, response.city || input.city));
-    return {
-      mode: "search",
-      kind,
-      query,
-      city: response.city || input.city,
-      count: entities.length,
-      entities
-    };
-  }
-
-  const response = await searchScene({
-    query,
-    kind: SCENE_KIND[kind],
-    city: input.city,
-    genre: input.genre,
-    limit
-  }, options);
+  const response = await searchScene({ query, kind: "dj", city: input.city, genre: input.genre, limit }, options);
+  const relevant = relevantItems(response.items, query);
+  const named = relevant.items.map((profile) => sceneProfileSummary(profile, "artist"));
+  const ranked = await applyArtistProminence(named, relevant.tiers, options);
+  const entities = ranked.entities;
   return {
     mode: "search",
-    kind,
+    kind: "artist",
     query,
     city: input.city || null,
-    count: response.count ?? response.items?.length ?? 0,
+    count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
-    entities: (response.items || []).map((profile) => sceneProfileSummary(profile, kind))
+    entities,
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
+    ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
 }
 
-async function getEntityProfile(kind, id, input, options) {
-  if (kind === "promoter") {
-    if (!String(input.city || "").trim()) {
-      return entityError("Promoter lookup requires a city", "missing_city");
-    }
-    const profile = await getPromoter(input.city, id, options);
-    const config = { ...getConfig(options.env), ...(options.config || {}) };
-    return {
-      mode: "profile",
-      kind,
-      entity: {
-        ...promoterSummary(profile, profile.city || input.city),
-        past_count: profile.past_count ?? 0,
-        venues: profile.venues || [],
-        external_url: profile.external_url || null,
-        claimed: Boolean(profile.claimed)
-      },
-      upcoming_events: (profile.events || []).map((event) => summarizeEvent(event, {
-        webBaseUrl: config.webBaseUrl,
-        linkBaseUrl: config.mcpUrl
-      }))
-    };
-  }
-
-  const profile = await getSceneProfile(SCENE_KIND[kind], id, options);
-  const entity = sceneProfileSummary(profile, kind);
-  if (kind === "collective") {
-    return {
-      mode: "profile",
-      kind,
-      entity,
-      data_note: "Dizko has no verified collective-to-event links for this profile."
-    };
-  }
-
-  if (kind === "artist") {
-    const [insights, calendar, directory] = await Promise.all([
-      getDjInsights(id, options),
-      getArtistEvents({
-        artists: [profile.name],
-        city: input.city,
-        date_from: input.date_from,
-        date_to: input.date_to,
-        limit_per_artist: boundedLimit(input.limit, 8, 10)
-      }, options),
-      getDjDirectoryProfile(id, options).catch(() => null)
-    ]);
-    const pageProfile = directory?.dj || null;
-    return {
-      mode: "profile",
-      kind,
-      entity: {
-        ...entity,
-        ...directoryProfileFields(pageProfile)
-      },
-      insights: {
-        indexed_events: insights.indexed_events ?? 0,
-        upcoming_events: insights.upcoming_events ?? 0,
-        first_event_at: insights.first_event_at || null,
-        latest_event_at: insights.latest_event_at || null,
-        top_venues: insights.top_venues || [],
-        related_artists: insights.related_djs || [],
-        modified_at: insights.modified_at || null
-      },
-      upcoming_events: calendar.artists?.[0]?.events || []
-    };
-  }
-
-  const config = { ...getConfig(options.env), ...(options.config || {}) };
-  const city = input.city || profile.cities?.[0];
-  const response = await searchEvents({
-    city,
-    venue: profile.name,
-    date_from: input.date_from,
-    date_to: input.date_to,
-    limit: 50
-  }, { ...options, config });
-  const venueKey = normalizeText(profile.name);
-  const upcomingEvents = (response.events || [])
-    .filter((event) => normalizeText(event.venue_name) === venueKey)
-    .slice(0, boundedLimit(input.limit, 10, 20))
-    .map((event) => summarizeEvent(event, {
-      webBaseUrl: config.webBaseUrl,
-      linkBaseUrl: config.mcpUrl
-    }));
+async function artistProfile(id, input, options) {
+  const profile = await getSceneProfile("dj", id, options);
+  const entity = sceneProfileSummary(profile, "artist");
+  const handle = artistHandle(profile.id);
+  const [insights, calendar, directory, page] = await Promise.all([
+    getDjInsights(id, options).catch(() => ({})),
+    getArtistEvents({
+      artists: [profile.name],
+      city: input.city,
+      date_from: input.date_from,
+      date_to: input.date_to,
+      limit_per_artist: boundedLimit(input.limit, 8, 10),
+      fields: input.fields
+    }, options),
+    getDjDirectoryProfile(id, options).catch(() => null),
+    getPublicArtistPage(handle, options).catch(() => null)
+  ]);
+  const pageProfile = directory?.dj || null;
+  const today = isoDate(options.now || new Date(), cityTimezone(input.city) || "UTC");
+  const appearances = splitAppearances(pageProfile?.appearances, today);
   return {
     mode: "profile",
-    kind,
-    entity,
-    returned_event_count: upcomingEvents.length,
-    upcoming_events: upcomingEvents
+    kind: "artist",
+    entity: {
+      ...entity,
+      ...directoryProfileFields(pageProfile),
+      ...appearances
+    },
+    page: publishedPage(page, handle),
+    insights: {
+      indexed_events: insights.indexed_events ?? 0,
+      upcoming_events: insights.upcoming_events ?? 0,
+      first_event_at: insights.first_event_at || null,
+      latest_event_at: insights.latest_event_at || null,
+      top_venues: insights.top_venues || [],
+      related_artists: (insights.related_djs || []).slice(0, 8),
+      modified_at: insights.modified_at || null
+    },
+    upcoming_events: calendar.artists?.[0]?.events || []
   };
+}
+
+// The published microsite, if any, with stable embed ids for deep links.
+function publishedPage(page, handle) {
+  const pageUrl = `https://www.dizko.app/${encodeURIComponent(handle)}`;
+  if (!page) return { published: false, handle, page_url: null, embeds: [] };
+  const blocks = Array.isArray(page.page?.blocks) ? page.page.blocks : [];
+  const embeds = blocks
+    .filter((block) => block && block.type === "embed" && typeof block.id === "string")
+    .map((block) => ({
+      id: block.id,
+      title: String(block.payload?.title || ""),
+      provider: String(block.payload?.provider || ""),
+      url: String(block.payload?.url || ""),
+      deep_link: `${pageUrl}?mix=${encodeURIComponent(block.id)}`
+    }));
+  return {
+    published: true,
+    handle,
+    page_url: pageUrl,
+    slug: typeof page.slug === "string" ? page.slug : null,
+    published_at: typeof page.published_at === "string" ? page.published_at : null,
+    embeds
+  };
+}
+
+function splitAppearances(appearances, today) {
+  if (!Array.isArray(appearances) || !appearances.length) return {};
+  const rows = appearances.map((appearance) => compactObject({
+    id: appearance.id,
+    title: appearance.title,
+    date: typeof appearance.date === "string" ? appearance.date.slice(0, 10) : null,
+    city: appearance.city,
+    venue: appearance.venue,
+    event_url: appearance.event_url,
+    is_festival: appearance.is_festival
+  }));
+  const upcoming = rows.filter((row) => row.date && row.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const past = [
+    ...rows.filter((row) => row.date && row.date < today).sort((a, b) => b.date.localeCompare(a.date)),
+    ...rows.filter((row) => !row.date)
+  ];
+  return compactObject({
+    upcoming_appearances: upcoming.slice(0, UPCOMING_APPEARANCES_CAP),
+    upcoming_appearances_count: upcoming.length,
+    recent_past_appearances: past.slice(0, PAST_APPEARANCES_CAP),
+    past_appearances_count: past.length
+  });
 }
 
 function directoryProfileFields(profile) {
@@ -171,25 +171,15 @@ function directoryProfileFields(profile) {
   return compactObject({
     experience_level: profile.experience_level,
     event_types: profile.event_types || [],
-    venues_played: profile.venues_played || [],
+    venues_played: (profile.venues_played || []).slice(0, 12),
     mixes: (profile.mixes || []).slice(0, 8).map((mix) => compactObject({
       id: mix.id,
       title: mix.title,
       url: mix.url,
       published_at: mix.published_at,
-      duration: mix.duration,
-      artwork_url: mix.artwork_url
+      duration: mix.duration
     })),
-    appearances: (profile.appearances || []).slice(0, 40).map((appearance) => compactObject({
-      id: appearance.id,
-      title: appearance.title,
-      date: appearance.date,
-      city: appearance.city,
-      venue: appearance.venue,
-      event_url: appearance.event_url,
-      is_festival: appearance.is_festival
-    })),
-    press_clips: (profile.press_clips || []).slice(0, 12).map((clip) => compactObject({
+    press_clips: (profile.press_clips || []).slice(0, PRESS_CAP).map((clip) => compactObject({
       title: clip.title,
       publication: clip.publication,
       url: clip.url,
@@ -198,19 +188,480 @@ function directoryProfileFields(profile) {
   });
 }
 
-// Public artist URLs are the camelCase directory handle (capitals encode the
-// id's word breaks): /NinaKraviz, not a slug. Keep in sync with the web.
-function artistHandle(artistId) {
+// Public artist URLs are the camelCase directory handle: /NinaKraviz.
+// Non-ASCII letters are kept so diacritic ids do not lose characters.
+export function artistHandle(artistId) {
   return String(artistId || "")
     .trim()
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean)
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join("");
 }
 
-function sceneProfileSummary(profile, kind) {
+// ---------- venues ----------
+
+export async function findVenue(input = {}, options = {}) {
+  requireLookup(input);
+  if (input.id) return venueProfile(String(input.id).trim(), input, options);
+  const query = String(input.query).trim();
+  const limit = boundedLimit(input.limit, 10, 20);
+  const response = await searchScene({ query, kind: "venue", city: input.city, genre: input.genre, limit }, options);
+  const relevant = relevantItems(response.items, query);
+  const named = relevant.items.map((profile) => sceneProfileSummary(profile, "venue"));
+  const ranked = applyRowProminence(named, relevant.tiers, venueProminence);
+  const entities = ranked.entities;
+  return {
+    mode: "search",
+    kind: "venue",
+    query,
+    city: input.city || null,
+    count: response.count ?? entities.length,
+    total_indexed: response.total_indexed ?? null,
+    entities,
+    best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
+    ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
+  };
+}
+
+async function venueProfile(id, input, options) {
+  const profile = await getSceneProfile("venue", id, options);
+  const entity = sceneProfileSummary(profile, "venue");
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const city = input.city || profile.cities?.[0];
+  const events = await venueEvents(profile.name, { city, date_from: input.date_from, date_to: input.date_to }, { ...options, config });
+  const upcomingEvents = events
+    .slice(0, boundedLimit(input.limit, 10, 20))
+    .map((event) => summarizeEvent(event, { ...options, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl, fields: input.fields }));
+  return {
+    mode: "profile",
+    kind: "venue",
+    entity,
+    returned_event_count: upcomingEvents.length,
+    upcoming_events: upcomingEvents
+  };
+}
+
+// Upstream `venue=` is a text match and event venue strings vary ("Tresor /
+// Globus", "Berghain | Panorama Bar | Säule", "RSO.BERLIN"). Query by the
+// profile's most distinctive token, then keep rows whose venue tokens agree.
+async function venueEvents(profileName, filters, options) {
+  const tokens = venueTokens(profileName);
+  const candidates = unique([tokens[0], tokens[tokens.length - 1], profileName].filter(Boolean));
+  const pages = [];
+  for (const needle of candidates) {
+    const response = await searchEvents({ ...filters, venue: needle, sort_by: "soonest", limit: 60 }, options);
+    pages.push(response.events || []);
+    const matches = venueRows(pages.at(-1), profileName, { strict: true });
+    if (matches.length) return matches;
+  }
+  // Nothing named this room exactly. Only now accept a listing that names the
+  // venue by a short form of its full name - "Renate" for "Salon zur Wilden
+  // Renate" - which is why this pass runs second: a room that has its own
+  // listings must never be padded out with its building's.
+  for (const page of pages) {
+    const matches = venueRows(page, profileName, { strict: false });
+    if (matches.length) return matches;
+  }
+  return [];
+}
+
+function venueRows(events, profileName, options) {
+  const matches = dedupeSameShow(events.filter((event) => venueMatches(profileName, event.venue_name, options)));
+  return matches.sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || "")));
+}
+
+const VENUE_STOP_WORDS = new Set(["the", "club", "bar", "berlin", "london", "nyc", "ny", "new", "york", "la", "of", "and", "at", "im", "am", "der", "die", "das", "de", "le", "la", "el"]);
+
+export function venueTokens(name) {
+  return normalizeText(name)
+    .split(/[\s/|.,&()\-–—:+]+/)
+    .map((token) => token.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter((token) => token && !VENUE_STOP_WORDS.has(token));
+}
+
+// Listings name a room, or a slash-separated list of rooms in one building:
+// "Berghain | Panorama Bar | Säule", "Kantine am Berghain". Splitting on
+// those separators keeps the rooms apart, while a comma is left alone
+// because "Kantine, Berghain" is one room named by its building, not two.
+export function venueRooms(name) {
+  return normalizeText(name)
+    .split(/[/|]+/)
+    .map((room) => venueTokens(room))
+    .filter((tokens) => tokens.length);
+}
+
+// A profile matches an event when every distinguishing word of the profile's
+// name appears in one of the event's rooms. The direction matters: Berghain
+// contains Kantine, so a Berghain query may return a Kantine listing, but a
+// Kantine query must never return Berghain's Klubnacht. Matching on a shared
+// first token did exactly that - asking about Berghain Kantine returned four
+// main-room events among six real ones.
+function sameRoom(left, right) {
+  if (left.length !== right.length) return false;
+  const inRight = new Set(right);
+  return left.every((token) => inRight.has(token));
+}
+
+export function venueMatches(profileName, eventVenue, { strict = true } = {}) {
+  const profileRooms = venueRooms(profileName);
+  const eventRoomList = venueRooms(eventVenue);
+  if (!profileRooms.length || !eventRoomList.length) return false;
+
+  if (profileRooms.some((profileRoom) => eventRoomList.some((eventRoom) => sameRoom(profileRoom, eventRoom)))) {
+    return true;
+  }
+  if (strict) return false;
+
+  // A colloquial short form has to carry the head word of the full name, and
+  // the full name has to be long enough to plausibly have one: "Renate"
+  // answers for "Salon zur Wilden Renate". A two-word name is not a formal
+  // title with a nickname, it is usually a room and its building, so
+  // "Berghain" never answers for "Berghain Kantine". This is a heuristic on
+  // names, which is why it runs only when nothing matched exactly.
+  return profileRooms.some((profileRoom) => {
+    if (profileRoom.length < 3) return false;
+    const head = profileRoom[profileRoom.length - 1];
+    const inProfile = new Set(profileRoom);
+    return eventRoomList.some((eventRoom) =>
+      eventRoom.includes(head) && eventRoom.every((token) => inProfile.has(token)));
+  });
+}
+
+// ---------- promoters and collectives ----------
+
+export async function findPromoter(input = {}, options = {}) {
+  requireLookup(input);
+  if (input.id) return promoterProfile(String(input.id).trim(), input, options);
+  const query = String(input.query).trim();
+  const limit = boundedLimit(input.limit, 10, 20);
+  const needle = normalizeText(query);
+  const genre = normalizeText(input.genre);
+  const [collectives, promoters] = await Promise.all([
+    input.kind === "promoter" ? Promise.resolve({ items: [] }) : searchScene({ query, kind: "collective", genre: input.genre, limit }, options).catch(() => ({ items: [] })),
+    input.city && input.kind !== "collective" ? listPromoters(input.city, 200, options).catch(() => ({ promoters: [] })) : Promise.resolve({ promoters: [] })
+  ]);
+  const promoterRows = (promoters.promoters || [])
+    .filter((item) => !needle || normalizeText(`${item.name} ${item.slug}`).includes(needle))
+    .filter((item) => !genre || (item.genres || []).some((value) => normalizeText(value).includes(genre)))
+    .slice(0, limit)
+    .map((item) => promoterSummary(item, promoters.city || input.city));
+  const collectiveRows = relevantItems(collectives.items, query, { max: 5 }).items.map((profile) => sceneProfileSummary(profile, "collective"));
+  // Promoters and collectives come from two catalogs, so the merged list is
+  // in merge order, not answer order. Rank it the same way the artist and
+  // venue searches are ranked so best_match means the same thing everywhere.
+  const merged = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, limit);
+  const promoterTiers = merged.map((entity) => matchTier(entity?.name, query)).filter((tier) => tier !== null);
+  const ranked = applyRowProminence(merged, promoterTiers, promoterProminence);
+  const entities = ranked.entities;
+  return {
+    mode: "search",
+    kind: input.kind || "promoter",
+    query,
+    city: input.city || null,
+    count: entities.length,
+    entities,
+    best_match: bestMatchPayload(entities, query, entities.length > 0, promoterTiers, ranked.scores, ranked.displaced),
+    ...(input.city ? {} : { note: "Pass a city to include promoters with upcoming Dizko event listings; collectives are searched worldwide." })
+  };
+}
+
+async function promoterProfile(id, input, options) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const wantCollective = input.kind !== "promoter";
+  const wantPromoter = input.kind !== "collective" && Boolean(input.city);
+  const [promoter, collective] = await Promise.all([
+    wantPromoter ? getPromoter(input.city, id, options).catch((error) => (error?.status === 404 ? null : Promise.reject(error))) : Promise.resolve(null),
+    wantCollective ? getSceneProfile("collective", id, options).catch((error) => (error?.status === 404 ? null : Promise.reject(error))) : Promise.resolve(null)
+  ]);
+  if (!promoter && !collective) {
+    if (!input.city && input.kind !== "collective") {
+      throw new ToolInputError("Promoter lookup by id needs a city (promoter ids are per city). Pass city, or search by name first.", { field: "city", code: "missing_city" });
+    }
+    const error = new Error("Scene entity not found");
+    error.status = 404;
+    throw error;
+  }
+  const entity = compactObject({
+    ...(collective ? sceneProfileSummary(collective, "collective") : {}),
+    ...(promoter ? {
+      ...promoterSummary(promoter, promoter.city || input.city),
+      past_count: promoter.past_count ?? 0,
+      venues: promoter.venues || [],
+      external_url: promoter.external_url || null,
+      claimed: Boolean(promoter.claimed)
+    } : {}),
+    kind: promoter && collective ? "promoter" : promoter ? "promoter" : "collective",
+    collective_url: collective ? `https://www.dizko.app/collectives/${encodeURIComponent(collective.id)}` : null
+  });
+  return {
+    mode: "profile",
+    kind: entity.kind,
+    entity,
+    upcoming_events: (promoter?.events || []).map((event) => summarizeEvent(event, {
+      ...options,
+      webBaseUrl: config.webBaseUrl,
+      linkBaseUrl: config.mcpUrl,
+      fields: input.fields
+    })),
+    ...(promoter ? {} : { data_note: "Dizko has no verified collective-to-event links for this profile; pass a city to look up its promoter listings." })
+  };
+}
+
+// ---------- any kind ----------
+
+async function findAnyEntity(input, options) {
+  const query = String(input.query || "").trim();
+  const limit = boundedLimit(input.limit, 10, 20);
+  const response = await searchScene({ query, city: input.city, genre: input.genre, limit }, options);
+  const entities = (response.items || []).map((profile) => sceneProfileSummary(profile, kindFromScene(profile.kind)));
+  return {
+    mode: "search",
+    kind: "any",
+    query,
+    city: input.city || null,
+    count: response.count ?? entities.length,
+    total_indexed: response.total_indexed ?? null,
+    entities
+  };
+}
+
+// ---------- shared ----------
+
+// The scene index is semantic and always fills the page; keep rows that
+// actually matched the text (or contain the query), never fewer than 3.
+// The scene index is semantic and always fills the page, so "no row matched
+// the name" still comes back with rows. Report that, because a fallback row
+// must never be presented as a confident match.
+// How closely a catalog name answers what the user typed. Lower is better.
+// Upstream relevance cannot make this call: its score put Nina Kraviz last of
+// nineteen "Nina" profiles, behind Nina Nana and Nina Ly, and its `authority`
+// field is the same 0.59 for every artist in the catalog.
+export const MATCH_TIER = { exact: 0, prefix: 1, word: 2, substring: 3 };
+
+export function matchTier(name, query) {
+  const candidate = normalizeText(name);
+  const needle = normalizeText(query);
+  if (!candidate || !needle) return null;
+  if (candidate === needle) return MATCH_TIER.exact;
+  // Only the forward direction counts: the catalog name has to contain what
+  // the user typed. Accepting the reverse - the query starting with the name
+  // - meant a catalog entry called "A" was a prefix match for "Amelie Lens",
+  // and "Honey" for "Honey Dijon". Alone in its tier, each of those was then
+  // handed back as a confident answer about the wrong artist.
+  if (candidate.startsWith(needle)) return MATCH_TIER.prefix;
+  if (!candidate.includes(needle)) return null;
+  // A whole-word hit ("Ben Klock" for "klock") beats one buried inside a
+  // longer word ("Medlock"), which the upstream fuzzy search also returns.
+  const words = candidate.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const needleWords = needle.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const startsAWord = needleWords.length ? words.some((word, index) =>
+    needleWords.every((part, offset) => words[index + offset] === part)) : false;
+  return startsAWord ? MATCH_TIER.word : MATCH_TIER.substring;
+}
+
+// Orders already-selected entities by how well their names answer the query,
+// keeping the incoming order inside a tier. Names that do not match at all
+// keep their place behind the ones that do.
+export function rankByMatch(entities, query) {
+  return entities
+    .map((entity, index) => ({ entity, index, tier: matchTier(entity?.name, query) }))
+    .sort((a, b) => {
+      const left = a.tier === null ? Number.MAX_SAFE_INTEGER : a.tier;
+      const right = b.tier === null ? Number.MAX_SAFE_INTEGER : b.tier;
+      return left - right || a.index - b.index;
+    })
+    .map((row) => row.entity);
+}
+
+// Prominence is only worth fetching when it can change the answer, which is
+// when two or more profiles are tied at the best name tier. The common case,
+// one clear name winner, costs nothing extra. The fetch is bounded so a
+// query matching a dozen profiles cannot fan out without limit.
+const MAX_PROMINENCE_LOOKUPS = 6;
+
+// Who is actually competing for the answer: the best name tier, plus the one
+// immediately below it. One step, deliberately. A catalog carries the same
+// real venue at two name qualities - "Berghain" as a one-line encyclopedia
+// stub and "Berghain / Panorama Bar" as the record with the capacity, the
+// genres and the bio - and the fuller record is the better answer even
+// though the stub wins the name. A buried substring match is two steps down
+// and never competes, however prominent it is.
+function contenders(tiers) {
+  if (!tiers.length) return 0;
+  const best = tiers[0];
+  // One step down, and never below a whole-word match. "Medlock Hall" holds
+  // "lock" inside a longer word, which is close to a coincidence: a big
+  // venue named that must not win a search for "Lock" over "The Lock Room",
+  // however complete its record is.
+  const ceiling = Math.max(best, Math.min(best + 1, MATCH_TIER.word));
+  return tiers.filter((tier) => tier <= ceiling).length;
+}
+
+// Puts the leader first. The name ranking decides unless a candidate one
+// tier down is decisively more of an answer, which is the stub-versus-real
+// case; a near miss never displaces the name.
+function promoteLeader(scored, rest) {
+  if (scored.length < 2) return { entities: [...scored, ...rest], scores: scored.map((entity) => entity.prominence), displaced: false };
+
+  const byProminence = [...scored].sort((a, b) => b.prominence - a.prominence);
+  const nameLeader = scored[0];
+  const displaced = byProminence[0] !== nameLeader && decisivelyAhead(byProminence[0].prominence, nameLeader.prominence);
+  const ordered = displaced
+    ? [byProminence[0], ...scored.filter((entity) => entity !== byProminence[0])]
+    : scored;
+
+  return { entities: [...ordered, ...rest], scores: ordered.map((entity) => entity.prominence), displaced };
+}
+
+// Artist evidence costs two upstream calls per candidate, so it is fetched
+// only when something is actually competing. A query one profile answers
+// outright still costs a single request.
+async function applyArtistProminence(entities, tiers, options) {
+  const competing = contenders(tiers);
+  if (competing < 2) return { entities, scores: [], displaced: false };
+  const leaders = entities.slice(0, Math.min(competing, MAX_PROMINENCE_LOOKUPS));
+
+  const scored = await Promise.all(leaders.map(async (entity) => {
+    // A profile with no insights or directory row simply scores what its
+    // missing evidence is worth: zero. It must never fail the lookup.
+    const [insights, directory] = await Promise.all([
+      getDjInsights(entity.id, options).catch(() => ({})),
+      getDjDirectoryProfile(entity.id, options).catch(() => null)
+    ]);
+    return { ...entity, prominence: artistProminence({ insights, directory: directory?.dj || {} }) };
+  }));
+
+  return promoteLeader(scored, entities.slice(leaders.length));
+}
+
+// Venues and promoters carry their evidence in the rows the search already
+// returned, so their scores cost no extra request and are always attached.
+function applyRowProminence(entities, tiers, score) {
+  const scored = entities.map((entity) => ({ ...entity, prominence: score(entity) }));
+  const competing = contenders(tiers);
+  if (competing < 2) return { entities: scored, scores: scored.map((entity) => entity.prominence), displaced: false };
+  return promoteLeader(scored.slice(0, competing), scored.slice(competing));
+}
+
+function relevantItems(items, query, { max = 20 } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const needle = normalizeText(query);
+  const strong = list
+    .map((item, index) => ({ item, index, tier: matchTier(item?.name, needle) }))
+    .filter((entry) => entry.tier !== null);
+  if (strong.length) {
+    // Sort by how well the name answers the query, keeping the upstream order
+    // inside each tier so a tie is never reordered arbitrarily. Without this
+    // an exact "Berghain" ranked below "Berghain / Panorama Bar" purely
+    // because the API returned it second.
+    strong.sort((a, b) => a.tier - b.tier || a.index - b.index);
+    return { items: strong.slice(0, max).map((entry) => entry.item), matched: true, tiers: strong.map((entry) => entry.tier) };
+  }
+  const textMatches = list.filter((item) => item?.matched_text === true);
+  if (textMatches.length) return { items: textMatches.slice(0, Math.min(max, 5)), matched: true, tiers: [] };
+  return { items: list.slice(0, Math.min(max, 5)), matched: false, tiers: [] };
+}
+
+// Confidence licenses the model to answer without asking, so it has to mean
+// "there is one obvious answer", not "something matched". A fragment like
+// "Klock" matches both Ben Klock and BJ Klock as whole words, so neither is
+// confident and the model asks. "Berghain" is confident because exactly one
+// profile carries that name exactly, even though two others contain it.
+function isConfidentMatch(query, entities, matched, tiers = [], scores = [], displaced = false) {
+  // A leader that took the lead by being decisively more of an answer has
+  // already cleared a higher bar than the name ranking sets, so it is
+  // confident whatever the name said.
+  if (displaced && matched && entities.length) return true;
+  if (!matched || !entities.length) return false;
+  const needle = normalizeText(query);
+  const top = normalizeText(entities[0].name);
+  if (!needle || !top) return false;
+
+  // A whole-word hit counts: "Panorama Bar" names exactly one venue even
+  // though the profile is called "Berghain / Panorama Bar". A hit buried
+  // inside a longer word ("Medlock" for "klock") never does.
+  const bestTier = tiers.length ? tiers[0] : matchTier(top, needle);
+  if (bestTier === null || bestTier > MATCH_TIER.word) return false;
+
+  // Two rows for the same name are one answer, not an ambiguity: catalogs
+  // carry "Berghain" and "berghain" as separate scrapes, and asking the user
+  // to choose between them is asking about nothing.
+  const atBestTier = entities.filter((entity, index) => (
+    tiers.length ? tiers[index] === bestTier : matchTier(entity.name, needle) === bestTier
+  ));
+  const contenders = new Set(atBestTier.map((entity) => normalizeText(entity.name))).size;
+  if (contenders <= 1) return true;
+
+  // Several profiles answer the name equally well. The name has said all it
+  // can, so how much of an answer each one actually is decides: "Klock" is
+  // Ben Klock, who has nine listed dates and twelve press clips, not BJ
+  // Klock, who has one appearance. Two comparable artists stay ambiguous.
+  if (scores.length < contenders) return false;
+  const tied = [...scores.slice(0, contenders)].sort((a, b) => b - a);
+  return decisivelyAhead(tied[0], tied[1]);
+}
+
+// What the model needs to ask a useful question when confidence is withheld.
+function matchAlternatives(entities) {
+  return entities.slice(1, 6).map((entity) => ({
+    id: entity.id,
+    name: entity.name,
+    cities: entity.cities || [],
+    genres: (entity.genres || []).slice(0, 3),
+    ...(entity.prominence === undefined ? {} : { prominence: entity.prominence })
+  }));
+}
+
+function bestMatchPayload(entities, query, matched, tiers, scores = [], displaced = false) {
+  if (!entities[0]) return null;
+  const confident = isConfidentMatch(query, entities, matched, tiers, scores, displaced);
+  return {
+    id: entities[0].id,
+    name: entities[0].name,
+    confident,
+    ...(entities[0].prominence === undefined ? {} : { prominence: entities[0].prominence }),
+    ...(entities.length > 1 ? { alternatives: matchAlternatives(entities) } : {})
+  };
+}
+
+// A promoter row (has event listings) wins over a collective row with the
+// same name: its id and URL are the ones that lead to upcoming events.
+// A promoter row (which has event listings) and a collective row for the
+// same crew describe one thing and are merged, with the promoter's id
+// winning because that is the id that leads to events. Two rows of the SAME
+// kind are two different entities that happen to share a display name, and
+// merging them would report one entity's dates under another's id.
+function mergeByName(rows) {
+  const unique = new Map();
+  for (const row of rows) {
+    const key = `${row.kind}:${row.id}`;
+    if (!unique.has(key)) unique.set(key, row);
+  }
+  const merged = new Map();
+  for (const row of unique.values()) {
+    const nameKey = normalizeText(row.name);
+    const existing = merged.get(nameKey);
+    if (!existing) { merged.set(nameKey, row); continue; }
+    if (existing.kind === row.kind) {
+      // Same name, same kind: two different entities. Keep both.
+      merged.set(`${nameKey}:${row.id}`, row);
+      continue;
+    }
+    const promoter = existing.kind === "promoter" ? existing : row;
+    const other = promoter === existing ? row : existing;
+    merged.set(nameKey, { ...other, ...promoter, kind: "promoter", collective_id: other.kind === "collective" ? other.id : undefined });
+  }
+  return [...merged.values()].map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
+}
+
+function kindFromScene(kind) {
+  if (kind === "dj") return "artist";
+  return kind || "entity";
+}
+
+export function sceneProfileSummary(profile, kind) {
   const links = compactObject({
     profile: profile.profile_url,
     website: profile.website_url,
@@ -237,6 +688,7 @@ function sceneProfileSummary(profile, kind) {
     typical_capacity: profile.typical_capacity,
     founded: profile.founded,
     dizko_url: dizkoUrl,
+    match_score: typeof profile.score === "number" ? Math.round(profile.score * 1000) / 1000 : undefined,
     links
   });
 }
@@ -252,7 +704,6 @@ function promoterSummary(profile, fallbackCity) {
     genres: profile.genres || [],
     upcoming_count: profile.upcoming_count ?? 0,
     next_event_at: profile.next_event_at,
-    image_url: profile.image_url,
     dizko_url: citySlug && profile.slug
       ? `https://www.dizko.app/promoters/${encodeURIComponent(citySlug)}/${encodeURIComponent(profile.slug)}`
       : null
@@ -278,7 +729,20 @@ function normalizeEntityKind(value) {
 }
 
 function normalizeText(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .normalize("NFD")
+    // Fold accents so an ASCII query reaches an accented name and the other
+    // way round. Live, the catalog stores "Sven Vath" while the correct
+    // spelling is "Sven Väth", so typing the name properly was the one way
+    // to be told it was not a confident match.
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function unique(values) {
+  return [...new Set(values)];
 }
 
 function boundedLimit(value, fallback, max) {

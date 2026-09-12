@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EventChatNetworkError } from "../src/api.js";
+import { DizkoNetworkError } from "../src/api.js";
 import { formatCliError, helpText, runCli } from "../src/cli.js";
 
 function fakeIo() {
@@ -42,7 +42,7 @@ test("unknown commands exit 1 and include usage", async () => {
 });
 
 test("formatCliError includes code, host, url, retryability, and a doctor hint", () => {
-  const error = new EventChatNetworkError("Event search failed: DNS lookup for backend.example.test failed (EAI_AGAIN).", {
+  const error = new DizkoNetworkError("Event search failed: DNS lookup for backend.example.test failed (EAI_AGAIN).", {
     code: "EAI_AGAIN",
     hostname: "backend.example.test",
     url: "https://backend.example.test/events?city=los+angeles",

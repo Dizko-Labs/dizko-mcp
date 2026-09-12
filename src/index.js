@@ -1,7 +1,6 @@
 // Public library entry point for agent frameworks (Hermes, OpenClaw,
 // LangGraph, OpenAI Agents SDK, custom loops) that want to embed the
 // Dizko Events tools in-process or self-host the MCP server.
-// rather than connect to the hosted endpoint over MCP.
 //
 // Three embed styles:
 //   1. Register tools as native function-calls:
@@ -14,13 +13,21 @@
 //   3. Call the data layer directly:
 //        import { searchEvents, recommendEvents } from "dizko-events";
 //
-// Autonomous ticket purchase (the Hermes/OpenClaw integration point) is
-// only injectable in styles 1 and 2 - pass a ticketPurchaseProvider with
-// canPurchase(event, summary) and purchase({ quote, confirmation_text,
-// delivery_email, add_to_calendar }). The hosted endpoint cannot accept
-// an adapter because the process is ours, so it returns checkout handoff.
+// Autonomous ticket purchase is only injectable in styles 1 and 2 - pass a
+// ticketPurchaseProvider with canPurchase(event, summary) and
+// purchase({ quote, confirmation_text, delivery_email, add_to_calendar }).
+// Set DIZKO_QUOTE_SIGNING_SECRET so signed quote tokens survive restarts.
 
-export { tools, callTool, toolJson, EVENT_LINKS_INSTRUCTION } from "./tools.js";
+export {
+  tools,
+  prompts,
+  callTool,
+  getPrompt,
+  toolJson,
+  buildSearchFollowups,
+  LEGACY_TOOL_ALIASES,
+  EVENT_LINKS_INSTRUCTION
+} from "./tools.js";
 export {
   getConfig,
   SUPPORTED_CITIES,
@@ -31,6 +38,9 @@ export {
   DEFAULT_WEB_BASE_URL,
   DEFAULT_MCP_URL
 } from "./config.js";
+export { CITY_TABLE, resolveCity, cityTimezone, cityDisplayName, nearestCoveredCity } from "./cities.js";
+export { resolveDateRange, WHEN_PRESETS, isoDate, weekdayName } from "./dateRange.js";
+export { ToolInputError } from "./errors.js";
 export {
   searchEvents,
   getEvent,
@@ -43,6 +53,11 @@ export {
   getPromoter,
   buildEventQuery,
   clearEventCache,
+  MAX_SEARCH_LIMIT,
+  SORT_OPTIONS,
+  DizkoAPIError,
+  DizkoNetworkError,
+  // Pre-0.8 aliases for the same classes.
   EventChatAPIError,
   EventChatNetworkError
 } from "./api.js";
@@ -50,10 +65,11 @@ export { recommendEvents, planNight } from "./planner.js";
 export { dailyRoundup } from "./roundup.js";
 export { getArtistEvents } from "./artistEvents.js";
 export { getArtistPage } from "./artistPage.js";
-export { findSceneEntities } from "./entities.js";
+export { findArtist, findVenue, findPromoter, findSceneEntities } from "./entities.js";
 export { cityPulse } from "./cityPulse.js";
-export { summarizeEvent, eventUrl } from "./format.js";
+export { summarizeEvent, eventUrl, EVENT_FIELD_OPTIONS } from "./format.js";
 export { TICKET_PURCHASE_POLICY } from "./tickets.js";
+export { validateInput } from "./validate.js";
 
 // MCP transports - mount in a custom host or run the canonical servers.
 export { handleMcpRequest, runMcpServer } from "./mcpServer.js";

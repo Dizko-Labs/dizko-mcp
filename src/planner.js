@@ -1,35 +1,69 @@
 import { getConfig } from "./config.js";
 import { searchEvents } from "./api.js";
+import { dedupeSameShow } from "./artistEvents.js";
 import { summarizeEvent } from "./format.js";
 import { rankEvents } from "./rank.js";
 
+// Ranked search. Explicit request fields are upstream filters (they are in
+// `input`); `input.preferences` carries saved and learned taste as ranking
+// hints only. Fetches a wider candidate page than it returns so the ranker
+// has something to rank.
 export async function recommendEvents(input = {}, options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
-  const response = await searchEvents({ ...input, limit: input.limit ?? 50 }, { ...options, config });
-  const ranked = rankEvents(response.events || [], input.preferences || input, options.now);
-  const limit = input.result_limit ?? input.limit ?? 10;
+  const resultLimit = Math.max(1, Math.min(Number(input.result_limit ?? input.limit ?? 10) || 10, 50));
+  const candidates = Math.min(200, Math.max(Number(input.candidate_limit) || 0, resultLimit * 4, 60));
+  const response = await searchEvents({ ...input, limit: candidates, offset: input.offset ?? 0 }, { ...options, config });
+  const hints = input.preferences || rankingHintsFromRequest(input);
+  // Two sources listing one show would otherwise both survive ranking and
+  // appear as separate recommendations.
+  const ranked = rankEvents(dedupeSameShow(response.events || []), hints, options.now);
+  const summaryOptions = { ...options, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl, fields: input.fields };
   return {
-    count: ranked.length,
-    events: ranked.slice(0, limit).map((event) => ({
-      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
+    count: response.count ?? ranked.length,
+    ranked_count: ranked.length,
+    search_fallback: response.search_fallback ?? null,
+    events: ranked.slice(0, resultLimit).map((event) => ({
+      ...summarizeEvent(event, summaryOptions),
       recommendation_score: event.recommendation_score,
       recommendation_reasons: event.recommendation_reasons
     }))
   };
 }
 
+// Without a profile, the request itself is the taste: genres, vibe, avoid
+// terms, and a soft budget (max_price) rank; price_max is the hard cap.
+export function rankingHintsFromRequest(input = {}) {
+  return {
+    genres: input.genres,
+    vibe: input.vibe,
+    event_types: input.event_types,
+    venues: input.venue,
+    featuring: input.featuring,
+    avoid: input.avoid,
+    max_price: input.max_price ?? input.budget ?? input.price_max,
+    free: input.free,
+    nightlife: input.nightlife
+  };
+}
+
 export async function planNight(input = {}, options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
-  const response = await searchEvents({ ...input, limit: input.limit ?? 75 }, { ...options, config });
-  const ranked = rankEvents(response.events || [], input.preferences || input, options.now);
+  const response = await searchEvents({ ...input, limit: input.candidate_limit ?? 75 }, { ...options, config });
+  const hints = input.preferences || rankingHintsFromRequest(input);
+  // Without this the same party can be both the primary option and its own
+  // "alternate", because two sources list it under slightly different venues.
+  const ranked = rankEvents(dedupeSameShow(response.events || []), hints, options.now);
   const plan = buildPlan(ranked, input);
+  const summaryOptions = { ...options, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl, fields: input.fields };
 
   return {
     city: input.city || null,
     when: input.when || input.date_from || null,
     strategy: "Lead with the strongest taste match, then keep a nearby fallback and a later fallback when the inventory supports them.",
+    count: response.count ?? ranked.length,
+    search_fallback: response.search_fallback ?? null,
     events: plan.map((event) => ({
-      ...summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
+      ...summarizeEvent(event, summaryOptions),
       recommendation_score: event.recommendation_score,
       recommendation_reasons: event.recommendation_reasons,
       plan_role: event.plan_role,
@@ -74,12 +108,15 @@ export function buildPlan(events, input = {}) {
   return selected;
 }
 
+// Best-scoring event within walking or short-ride distance, not merely
+// the closest one: a 1.7 km option that fits the taste beats a 0.6 km one
+// that does not.
 function bestNearbyFallback(primary, events) {
   const candidates = events
     .filter((event) => hasCoordinates(primary) && hasCoordinates(event))
     .map((event) => ({ event, distance: distanceBetween(primary, event) }))
     .filter(({ distance }) => distance != null && distance <= 6)
-    .sort((a, b) => a.distance - b.distance || scoreOf(b.event) - scoreOf(a.event));
+    .sort((a, b) => scoreOf(b.event) - scoreOf(a.event) || a.distance - b.distance);
   return candidates[0] || null;
 }
 
@@ -91,7 +128,7 @@ function bestLaterFallback(primary, events, selected) {
     .filter((event) => !selected.some((chosen) => chosen.id === event.id))
     .map((event) => ({ event, start: Date.parse(event.start_time || "") }))
     .filter(({ start }) => Number.isFinite(start) && start > primaryStart)
-    .sort((a, b) => a.start - b.start || scoreOf(b.event) - scoreOf(a.event))[0]?.event || null;
+    .sort((a, b) => scoreOf(b.event) - scoreOf(a.event) || a.start - b.start)[0]?.event || null;
 }
 
 function withPlanRole(event, role, distance) {
@@ -121,7 +158,7 @@ function hasCoordinates(event) {
     && Number.isFinite(Number(event.lng));
 }
 
-function distanceBetween(a, b) {
+export function distanceBetween(a, b) {
   if (!hasCoordinates(a) || !hasCoordinates(b)) return null;
   const earthRadiusKm = 6371;
   const lat1 = toRadians(Number(a.lat));

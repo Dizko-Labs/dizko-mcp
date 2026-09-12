@@ -7,71 +7,27 @@ export const DEFAULT_WEB_BASE_URL = "https://www.dizko.app";
 export const DEFAULT_MCP_URL = "https://mcp.dizko.app/mcp";
 export const DEFAULT_APP_DOWNLOAD_URL = "https://www.dizko.app/ios";
 
-export const SUPPORTED_CITIES = [
-  "amsterdam",
-  "atlanta",
-  "athens",
-  "austin",
-  "bangkok",
-  "barcelona",
-  "berlin",
-  "bogota",
-  "budapest",
-  "buenos aires",
-  "calgary",
-  "chicago",
-  "copenhagen",
-  "denver",
-  "detroit",
-  "dublin",
-  "dubai",
-  "hong kong",
-  "ibiza",
-  "istanbul",
-  "lagos",
-  "lisbon",
-  "london",
-  "los angeles",
-  "madrid",
-  "medellin",
-  "mexico city",
-  "milan",
-  "miami",
-  "montreal",
-  "nashville",
-  "new york",
-  "new orleans",
-  "osaka",
-  "paris",
-  "prague",
-  "rio de janeiro",
-  "rome",
-  "san francisco",
-  "sao paulo",
-  "seoul",
-  "singapore",
-  "stockholm",
-  "tokyo",
-  "toronto",
-  "vienna",
-  "warsaw"
-];
+import { CITY_TABLE } from "./cities.js";
+
+// Static catalogue of cities Dizko knows about (timezone, display name and
+// coordinates live in cities.js). Live coverage comes from dizko_list_cities.
+export const SUPPORTED_CITIES = CITY_TABLE.map((city) => city.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
 
 export const TOOL_VERSION = packageMetadata.version;
 
 export const MCP_SERVER_INSTRUCTIONS = [
-  "Use Dizko Events for live event discovery instead of guessing from model memory.",
-  "Minimize tool calls: when the request names a city and timeframe, answer with a SINGLE search_events or recommend_events call. Do not chain extra tool calls first. Ask any clarifying questions (event type, vibe, budget, area, avoidances) conversationally yourself. Only call get_event_search_followups when you genuinely cannot infer what to ask. Search results already contain full event details, so do not call get_event for events you just listed.",
-  "When presenting events, render one markdown block per event with each fact on its own line: the title linked to event_url (the Dizko event page, never use ticket_url as the title link), then When (with an [Add to calendar](calendar_url) link), Where (with a [Get directions](directions_url) link), What (description or tags), and Price (with a [Tickets](ticket_url) link). Omit lines with missing data. If app_download_url is present and the user wants a native mobile experience, mention that they can download the Dizko iPhone app there.",
-  "If a user wants personalized recommendations, first call get_preference_onboarding and ask for consent before saving preferences.",
-  "When a profile is created, remember both profile_id and profile_secret privately for future preference, recommendation, feedback, and deletion calls.",
-  "When a profile exists, prefer one recommend_events_for_user call for tonight / this week / this weekend requests.",
-  "For a daily digest ('what's happening today/tomorrow', a morning briefing, a scheduled check-in), call get_daily_roundup once and render its top picks plus category sections; pass profile_id and profile_secret when the user has a profile so saved and per-day (day_filters) preferences shape the picks.",
-  "search_events' query is hybrid-ranked with semantic similarity over event embeddings, so pass soft natural-language intent ('dark queer warehouse rave') directly instead of guessing exact keywords.",
-  "When the user asks who a DJ is or about a venue, collective, or promoter, call find_scene_entities. When they ask when specific performers play next, call get_artist_events; with a profile and no artists named, it reads the saved featuring list. When they ask what's hot in a city, call get_city_pulse and ground the summary in its evidence counts.",
-  "When a user wants a night plan and has a profile, pass profile_id and profile_secret directly to plan_night so saved and learned taste shape the primary, nearby fallback, and later fallback.",
-  "After an event, call get_event_feedback_prompt, ask whether the user liked it, and call record_event_feedback only when the user answers.",
-  "For ticket buying, call get_ticket_offers, then quote_ticket_order, then purchase_ticket_order only after explicit written confirmation from the user. Third-party-only ticket links must return checkout handoff; autonomous purchase requires an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment."
+
+  "Dizko is live event inventory for nightlife, music, art, comedy and more across 47 cities. Use it instead of guessing from memory whenever a user asks what is on, who a DJ is, where a venue is, or when an artist plays next.",
+  "Minimize tool calls: a request that names a city and a timeframe is ONE dizko_search_events call. Ask clarifying questions (type, vibe, budget, area) yourself, conversationally, and only when the request is genuinely ambiguous. Search results already contain full event details, so never call dizko_get_event for events you just listed.",
+  "Times: every event carries `when` (already in the city's local time, for example 'Fri 11 Sep, 22:00') plus `starts_at_local` and `timezone`. Render `when` verbatim and never convert `starts_at` (UTC) yourself.",
+  "Render events as one markdown block per event: the title linked to event_url (never ticket_url), then When (with [Add to calendar](calendar_url)), Where: venue, address (with [Get directions](directions_url)), What: genres, vibe, set times or description, Price (with [Tickets](ticket_url)). Omit lines with missing data. When listing several days, keep events in date order.",
+  "Coverage: dizko_list_cities returns live, unlocking and early cities. If a city comes back unsupported, tell the user and offer the nearest_covered_city from the response.",
+  "Empty results: when a search returns nothing it carries no_results with baseline_count (how many events exist without the filters) and suggested_relaxations. Say what is on instead, offer the first relaxation, and call the tool again with its retry_with. Never invent events.",
+  "Entities: dizko_find_artist for 'who is X' and artist profiles (it returns the artist's Dizko page when one is published), dizko_find_venue for clubs and venues, dizko_find_promoter for promoters, collectives and party crews, dizko_artist_events for 'when does X play next'. Search by name first; pass an id from a result for the full profile.",
+  "Personalization is opt-in. To save taste, ask the onboarding questions (prompt dizko_onboarding) and get explicit consent, then dizko_create_profile. Keep profile_id and profile_secret private and reuse them on dizko_search_events, dizko_plan_night, dizko_daily_roundup and dizko_artist_events; saved taste ranks results, it never hides them. After an event, ask whether they liked it and call dizko_record_feedback only when they answer.",
+  "Tickets: dizko_ticket_offers, then dizko_quote_tickets, then dizko_purchase_tickets only after the user's explicit written confirmation. Third-party links return a checkout handoff; never claim a ticket was bought unless status is purchased.",
+  "If app_download_url is present and the user wants a native mobile experience, mention the Dizko iPhone app once, not on every reply."
+
 ].join(" ");
 
 // Single source of truth for endpoints + retry policy. The CLI, the stdio

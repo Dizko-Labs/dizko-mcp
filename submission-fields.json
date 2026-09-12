@@ -1,7 +1,7 @@
 {
   "app_name": "Dizko Events",
   "short_description": "Find current concerts, parties, nightlife, festivals, and cultural events from Dizko's live event inventory.",
-  "long_description": "Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across major cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, price, attendance, and event type, then returns verifiable event links and ticket URLs. Recommendation tools include explainable taste matching, compact night plans with fallbacks, daily city roundups with top picks and category sections, consent-based saved preferences with per-weekday day filters, current-context follow-up questions, and post-event feedback learning. Ticket tools can show offers, create locked quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.",
+  "long_description": "Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across 47 cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, promoter, price, and event type, then returns verifiable event links, ticket URLs, and local times. It also looks up DJs, venues, and promoters with their upcoming dates, and gives daily city roundups and city trend reads. Recommendation tools include explainable taste ranking, compact night plans with fallbacks, consent-based saved preferences with per-weekday day filters, and post-event feedback learning. Ticket tools can show offers, create signed quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider such as Hermes, OpenClaw, Dizko Checkout, a partner API, or delegated payment when configured.",
   "mcp_endpoint": "https://mcp.dizko.app/mcp",
   "company_url": "https://www.dizko.app",
   "privacy_policy_url": "https://mcp.dizko.app/privacy-policy.html",
@@ -19,7 +19,7 @@
   },
   "authentication": {
     "type": "noauth",
-    "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory. Ticket purchase requires a locked event quote and explicit written confirmation; third-party-only links return checkout handoff unless an integrated purchase provider is configured."
+    "notes": "Basic event search is public and does not require a personal account. Saved preference, feedback, personalized recommendation, read, update, and deletion tools require the connector profile_id plus the private profile_secret returned when the user opts in to preference memory. Ticket purchase requires a signed event quote and explicit written confirmation; third-party-only links return checkout handoff unless an integrated purchase provider is configured."
   },
   "do_not_submit_urls": [],
   "discovery_phrases": [
@@ -29,6 +29,7 @@
     "Plan a night out in New York with underground music.",
     "Find free cultural events in Paris.",
     "Show events at a specific venue.",
+    "Who is this DJ and when do they play next?",
     "Remember what kind of events I like and recommend something for this weekend.",
     "I went to that event yesterday; I liked the music but not the crowd.",
     "Give me a Dizko roundup of everything happening in Berlin today."
@@ -36,40 +37,44 @@
   "review_test_prompts": [
     {
       "prompt": "Find five techno events in Berlin this weekend.",
-      "expected_behavior": "Calls search_events or recommend_events and returns live events with event URLs and ticket/source links when available."
+      "expected_behavior": "Makes one dizko_search_events call and returns live events with local times, event URLs, and ticket/source links when available."
     },
     {
       "prompt": "Find something good tonight in Berlin, but ask me what kind of event and vibe first.",
-      "expected_behavior": "Calls get_event_search_followups, asks concise current-context questions, then searches or recommends."
+      "expected_behavior": "Asks one or two concise clarifying questions conversationally (the optional dizko_search_followups prompt lists them), then makes one dizko_search_events call."
+    },
+    {
+      "prompt": "Who is Nina Kraviz and when does she play next?",
+      "expected_behavior": "Calls dizko_find_artist by name, then by id for the profile and upcoming dates (or dizko_artist_events), and links the published Dizko page only when page.published is true."
     },
     {
       "prompt": "Ask what kind of events I generally like, save my preferences after I consent, ask what type/vibe I want this weekend, and recommend events.",
-      "expected_behavior": "Calls get_preference_onboarding, creates or updates a preference profile only after consent, then calls recommend_events_for_user using saved and current-context preferences."
+      "expected_behavior": "Asks the dizko_onboarding questions, creates or updates a preference profile only after consent, then calls dizko_search_events with profile_id and profile_secret so saved and current-context preferences rank the results."
     },
     {
       "prompt": "Ask me a follow-up about whether I liked a returned event, record my answer, and explain how future recommendations changed.",
-      "expected_behavior": "Calls get_event_feedback_prompt before record_event_feedback, records only liked/disliked, rating, or notes, then explains saved positive or negative learning signals."
+      "expected_behavior": "Asks the dizko_post_event_feedback questions before dizko_record_feedback, records only liked/disliked, rating, or notes, then explains saved positive or negative learning signals."
     },
     {
       "prompt": "Show ticket options for a returned event, quote 2 tickets with a max total, and ask me for written confirmation before purchase.",
-      "expected_behavior": "Calls get_ticket_offers and quote_ticket_order, asks for explicit written confirmation, then calls purchase_ticket_order only after confirmation. Third-party-only offers return checkout handoff instead of claiming autonomous purchase."
+      "expected_behavior": "Calls dizko_ticket_offers and dizko_quote_tickets, asks for explicit written confirmation, then calls dizko_purchase_tickets only after confirmation. Third-party-only offers return checkout handoff instead of claiming autonomous purchase."
     },
     {
       "prompt": "Delete my Dizko saved event preferences and feedback history.",
-      "expected_behavior": "Confirms the Dizko-only deletion scope, then calls delete_event_preferences with confirm_delete true only for the user's Dizko connector profile."
+      "expected_behavior": "Confirms the Dizko-only deletion scope, then calls dizko_delete_profile with confirm_delete true only for the user's Dizko connector profile."
     }
   ],
   "privacy_notes": [
     "Basic event search does not require a personal account.",
-    "Search location is limited to user-provided city, neighborhood, venue, or event-area filters; the connector does not request GPS coordinates, street addresses, or full chat transcripts.",
-    "Preference learning is opt-in and requires explicit consent before create_event_preference_profile or save_event_preferences.",
-    "Profile access uses an opaque profile_id plus a private one-time profile_secret; the MCP service stores only a hash of the secret.",
-    "Stored connector data can include saved event preferences, event feedback, ratings, notes, event ids, timestamps, derived taste signals, learned avoid signals, and personalization summaries.",
+    "Search location is limited to user-provided city, neighborhood, venue, or event-area filters; the connector does not request GPS coordinates, street addresses, or full chat transcripts. origin_lat/origin_lng are accepted only for distance sorting when the user supplies them.",
+    "Preference learning is opt-in and requires explicit consent before dizko_create_profile or dizko_update_profile.",
+    "Profile access uses an opaque profile_id (dzk_...) plus a private one-time profile_secret (dzs_...); the MCP service stores only a hash of the secret.",
+    "Stored connector data can include saved event preferences, event feedback, ratings, notes, event ids, timestamps, derived taste signals, learned avoid signals, and personalization summaries. Saved and learned taste rank results; they never hide events.",
     "Saved preference profiles are retained until user deletion or 24 months of inactivity; technical logs are normally retained for up to 30 days.",
-    "Users can delete saved connector preferences and feedback through delete_event_preferences after confirming the Dizko-only deletion scope."
+    "Users can delete saved connector preferences and feedback through dizko_delete_profile after confirming the Dizko-only deletion scope."
   ],
   "submission_checklist": [
-    "Use the verified branded MCP endpoint at https://mcp.dizko.app/mcp.",
+    "Use the hosted MCP endpoint at https://mcp.dizko.app/mcp.",
     "Run npm run preflight:submission immediately before submitting.",
     "Run npm run submission:status and confirm ready_for_openai_dashboard_submission is true.",
     "Use submission-evidence/latest-summary.md while filling dashboard fields.",

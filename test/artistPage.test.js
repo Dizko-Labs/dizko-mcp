@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getArtistPage } from "../src/artistPage.js";
 import { callTool, tools } from "../src/tools.js";
+import { handleMcpRequest } from "../src/mcpServer.js";
 
 const PUBLISHED = {
   slug: "avalon-emerson",
@@ -67,13 +68,38 @@ test("get_artist_page tool steers to fallback when nothing is published", async 
 
   const body = JSON.parse(result.content[0].text);
   assert.equal(body.published, false);
+  assert.match(body.assistant_instruction, /dizko_find_artist/);
   assert.match(body.assistant_instruction, /SoundCloud/);
 });
 
-test("get_artist_page is registered as a read-only tool", () => {
-  const descriptor = tools.find((tool) => tool.name === "get_artist_page");
+test("get_artist_page tool requires a handle without a request", async () => {
+  let called = false;
+  const result = await callTool("get_artist_page", {}, {
+    fetch: async () => { called = true; return new Response("x"); }
+  });
 
-  assert.ok(descriptor);
-  assert.equal(descriptor.annotations.readOnlyHint, true);
-  assert.notEqual(descriptor.annotations.destructiveHint, true);
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent.code, "invalid_argument");
+  assert.equal(result.structuredContent.field, "handle");
+  assert.equal(called, false);
+});
+
+test("get_artist_page is a legacy alias: unlisted but still callable, superseded by dizko_find_artist", async () => {
+  const listed = await handleMcpRequest({ method: "tools/list" });
+  assert.equal(tools.find((tool) => tool.name === "get_artist_page"), undefined);
+  assert.equal(listed.tools.some((tool) => tool.name === "get_artist_page"), false);
+
+  const artist = listed.tools.find((tool) => tool.name === "dizko_find_artist");
+  assert.ok(artist, "dizko_find_artist is the listed replacement");
+  assert.equal(artist.annotations.readOnlyHint, true);
+  assert.equal(artist.annotations.destructiveHint, false);
+  assert.match(artist.description, /Dizko page/);
+
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_artist_page", arguments: { handle: "AvalonEmerson" } }
+  }, { fetch: fetchReturning(Response.json(PUBLISHED)) });
+  assert.equal(response.isError, false);
+  assert.equal(response.structuredContent.published, true);
+  assert.equal(response.structuredContent.page_url, "https://www.dizko.app/AvalonEmerson");
 });

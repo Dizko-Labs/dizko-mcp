@@ -46,7 +46,7 @@ async function main() {
     mcp_tool_count: mcp.body?.result?.tools?.length || 0,
     next_step: ok
       ? "Custom domain is ready for MCP review traffic."
-      : "Verify the Vercel proxy route and DNS, then rerun this check."
+      : "Verify the Railway custom domain, its DNS records, and the current deployment, then rerun this check."
   };
 
   console.log(JSON.stringify(result, null, 2));

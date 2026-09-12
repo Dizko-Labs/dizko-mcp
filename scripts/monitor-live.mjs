@@ -4,7 +4,7 @@ const endpoint = resolveMcpEndpoint();
 const timeoutMs = Number(process.env.EVENTCHAT_MONITOR_TIMEOUT_MS || 10000);
 const expectedToolCount = process.env.EVENTCHAT_MONITOR_TOOL_COUNT
   ? Number(process.env.EVENTCHAT_MONITOR_TOOL_COUNT)
-  : undefined; // defaults to the package's real tool registry size
+  : undefined; // defaults to the package's real tool registry size (19 in 0.8)
 const city = process.env.EVENTCHAT_MONITOR_CITY || "berlin";
 
 async function main() {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import { buildEventQuery, EventChatAPIError, getEvent, searchEvents } from "../src/api.js";
+import { buildEventQuery, DizkoAPIError, EventChatAPIError, getEvent, searchEvents } from "../src/api.js";
 import { clearEventCache } from "../src/api.js";
 
 beforeEach(() => clearEventCache());
@@ -89,7 +89,7 @@ test("searchEvents times out slow upstream calls", async () => {
       }
     }),
     (error) => {
-      assert.equal(error instanceof EventChatAPIError, true);
+      assert.equal(error instanceof DizkoAPIError, true);
       assert.equal(error.status, 504);
       assert.match(error.message, /timed out/);
       return true;
@@ -151,8 +151,11 @@ test("searchEvents surfaces DNS details and retryable=true after exhausting retr
       }
     }),
     (error) => {
-      assert.equal(error.name, "EventChatNetworkError");
+      assert.equal(error.name, "DizkoNetworkError");
+      // The pre-0.8 export is an alias for the same class, so instanceof
+      // keeps working for embedders that imported the old name.
       assert.equal(error instanceof EventChatAPIError, true);
+      assert.equal(error instanceof DizkoAPIError, true);
       assert.equal(error.code, "EAI_AGAIN");
       assert.equal(error.classification, "dns");
       assert.equal(error.retryable, true);

@@ -105,7 +105,7 @@ export async function rpcCall(endpoint, method, params = undefined, options = {}
     method: "POST",
     headers: {
       "mcp-method": method,
-      ...(method === "tools/call" && params?.name ? { "mcp-name": params.name } : {})
+      ...((method === "tools/call" || method === "prompts/get") && params?.name ? { "mcp-name": params.name } : {})
     },
     body: {
       jsonrpc: "2.0",
@@ -181,12 +181,12 @@ export async function runMonitorChecks(options = {}) {
     }),
     live_search: await runCheck("live_search", endpoint, async () => {
       const result = await rpcCall(endpoint, "tools/call", {
-        name: "search_events",
+        name: "dizko_search_events",
         arguments: { city, when: "week", limit: 1 }
       }, { fetchImpl, timeoutMs, check: "live_search" });
       const structured = result?.structuredContent || {};
       if (result?.isError) {
-        throw new LiveCheckError(`search_events tool error: ${structured.error || "unknown"}`, {
+        throw new LiveCheckError(`dizko_search_events tool error: ${structured.error || "unknown"}`, {
           check: "live_search",
           classification: structured.classification || "tool_error",
           code: structured.code || null,
@@ -198,7 +198,7 @@ export async function runMonitorChecks(options = {}) {
       }
       const events = structured.events || [];
       if (!events.length) {
-        throw new LiveCheckError(`search_events returned 0 events for "${city}" this week`, {
+        throw new LiveCheckError(`dizko_search_events returned 0 events for "${city}" this week`, {
           check: "live_search",
           classification: "no_results",
           url: String(endpoint),
