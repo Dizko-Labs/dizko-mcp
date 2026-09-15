@@ -13,13 +13,13 @@ https://mcp.dizko.app/mcp
 Railway project:
 
 ```text
-radar-backend
+dizko-backend (Railway project id cab5c6fa-26dd-44d3-af60-d2329ae65f56; formerly `radar-backend`)
 ```
 
 Railway service:
 
 ```text
-eventchat-events-mcp
+dizko-mcp (formerly `eventchat-events-mcp`)
 ```
 
 Custom-domain readiness check:
@@ -99,7 +99,7 @@ submission-evidence/latest-summary.md
 Tail the current deployment logs:
 
 ```bash
-railway logs --service eventchat-events-mcp --environment production --tail 120
+railway logs --service dizko-mcp --environment production --tail 120
 ```
 
 Tail a specific deployment:
@@ -123,7 +123,7 @@ If a deployment breaks `/health`, `/mcp`, or preference-memory behavior:
 1. Find the last successful deployment:
 
 ```bash
-railway deployment list --service eventchat-events-mcp --environment production --limit 5 --json
+railway deployment list --service dizko-mcp --environment production --limit 5 --json
 ```
 
 2. Redeploy the last known-good local state or use Railway's dashboard rollback controls.

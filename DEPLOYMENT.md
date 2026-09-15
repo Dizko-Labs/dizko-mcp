@@ -68,7 +68,7 @@ Preference profiles are automatically pruned after `EVENTCHAT_PREFERENCE_RETENTI
 ```bash
 railway login
 railway domain mcp.dizko.app \
-  --service eventchat-events-mcp \
+  --service dizko-mcp \
   --environment production \
   --project cab5c6fa-26dd-44d3-af60-d2329ae65f56 \
   --json

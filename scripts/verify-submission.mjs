@@ -10,7 +10,7 @@ const baseUrl = endpoint.replace(/\/mcp\/?$/, "");
 const companyUrl = process.env.EVENTCHAT_COMPANY_URL || "https://www.dizko.app";
 const requestTimeoutMs = Number(process.env.EVENTCHAT_VERIFY_TIMEOUT_MS || 15000);
 const evidenceOutputPath = process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || null;
-const railwayService = process.env.EVENTCHAT_RAILWAY_SERVICE || "eventchat-events-mcp";
+const railwayService = process.env.DIZKO_RAILWAY_SERVICE || process.env.EVENTCHAT_RAILWAY_SERVICE || "dizko-mcp";
 
 const requiredTools = [
   "get_preference_onboarding",
