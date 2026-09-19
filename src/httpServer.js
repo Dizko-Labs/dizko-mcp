@@ -7,7 +7,8 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { getEvent } from "./api.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { eventLinkTargets } from "./format.js";
-import { createSdkMcpServer } from "./sdkServer.js";
+import { createSdkMcpServer, SERVER_INFO } from "./sdkServer.js";
+import { CONNECTOR_CONTRACT_VERSION } from "./connectorV1.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -39,7 +40,7 @@ export function createHttpMcpServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/health") {
-        sendJson(response, 200, { ok: true, name: "dizko" }, corsHeaders(request, settings));
+        sendJson(response, 200, { ok: true, name: "dizko", version: SERVER_INFO.version, contract_version: CONNECTOR_CONTRACT_VERSION, transport: "streamable-http", authentication: settings.bearerToken ? "bearer" : "none" }, corsHeaders(request, settings));
         return;
       }
 

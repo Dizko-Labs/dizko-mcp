@@ -4,6 +4,7 @@ import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, recommendEvents } from "./planner.js";
+import { connectorPage, decodeEventCursor } from "./connectorV1.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
@@ -220,6 +221,20 @@ const rawTools = [
       openWorldHint: false
     },
     inputSchema: sceneEntityInputSchema()
+  },
+  {
+    name: "get_artist",
+    title: "Get Artist",
+    description: "Use this when a user wants a canonical artist profile, graph context, published links, and upcoming events. Pass an id or a name query; this does not enumerate the artist catalog.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: connectorEntityInputSchema()
+  },
+  {
+    name: "get_venue",
+    title: "Get Venue",
+    description: "Use this when a user wants a canonical venue profile, graph context, and upcoming events. Pass an id or a name query; this does not enumerate the venue catalog.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: connectorEntityInputSchema()
   },
   {
     name: "search_events",
@@ -478,15 +493,7 @@ function compactInputSchema(value) {
 
 function withNoAuthSecurity(tool) {
   const securitySchemes = [{ type: "noauth" }];
-  const {
-    idempotentHint: _idempotentHint,
-    destructiveHint,
-    ...baseAnnotations
-  } = tool.annotations || {};
-  const annotations = {
-    ...baseAnnotations,
-    ...(!baseAnnotations.readOnlyHint ? { destructiveHint } : {})
-  };
+  const annotations = { ...(tool.annotations || {}) };
   return {
     ...tool,
     annotations,
@@ -619,12 +626,31 @@ export async function callTool(name, input = {}, options = {}) {
         } : {})
       }, Boolean(result.error));
     }
+    case "get_artist":
+    case "get_venue": {
+      const kind = name === "get_artist" ? "artist" : "venue";
+      let result = await findSceneEntities({ ...input, kind }, options);
+      if (!input.id && input.query && result.mode === "search") {
+        const needle = String(input.query).trim().toLowerCase();
+        const exact = (result.entities || []).filter((entity) => String(entity.name || "").trim().toLowerCase() === needle);
+        if (exact.length === 1) result = await findSceneEntities({ ...input, id: exact[0].id, kind }, options);
+      }
+      return toolJson({
+        contract_version: "2026-09-19",
+        ...result,
+        assistant_instruction: result.mode === "search"
+          ? "The name did not resolve to one exact entity. Present these matches and ask the user to choose; do not guess."
+          : "Use only returned graph facts and upcoming events. Preserve source links and say when a field is missing."
+      }, Boolean(result.error));
+    }
     case "search_events": {
       const config = { ...getConfig(options.env), ...(options.config || {}) };
-      const response = await searchEvents(input, { ...options, config });
+      const offset = input.cursor ? decodeEventCursor(input.cursor) : Math.max(0, Number(input.offset || 0));
+      const limit = Math.min(100, Math.max(1, Number(input.limit || 12)));
+      const response = await searchEvents({ ...input, offset, limit }, { ...options, config });
+      const events = (response.events || []).map((event) => summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }));
       return toolJson({
-        count: response.count ?? response.events?.length ?? 0,
-        events: (response.events || []).map((event) => summarizeEvent(event, { webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl })),
+        ...connectorPage({ events, total: response.count ?? events.length, limit, offset }),
         app_download_url: config.appDownloadUrl,
         assistant_instruction: EVENT_LINKS_INSTRUCTION
       });
@@ -1134,9 +1160,27 @@ function eventSearchSchema() {
       promoter: { type: "string", description: "Promoter slug or display name." },
       avoid: { type: "array", items: { type: "string" }, description: "Terms to penalize in recommendations." },
       limit: { type: "number", default: 12, description: "Results per page (default 12). The response's count field is the TOTAL matching events. Raise limit or use offset to page through more." },
-      offset: { type: "number", default: 0 },
+      offset: { type: "number", default: 0, description: "Legacy pagination offset. Prefer cursor." },
+      cursor: { type: "string", description: "Opaque next_cursor returned by a prior search_events call." },
       result_limit: { type: "number", default: 10 }
-    }
+    },
+    additionalProperties: false
+  };
+}
+
+function connectorEntityInputSchema() {
+  return {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Canonical Dizko entity id." },
+      query: { type: "string", description: "Artist or venue name when the id is unknown." },
+      city: { type: "string" },
+      date_from: { type: "string" },
+      date_to: { type: "string" },
+      limit: { type: "number", minimum: 1, maximum: 20, default: 10 }
+    },
+    anyOf: [{ required: ["id"] }, { required: ["query"] }],
+    additionalProperties: false
   };
 }
 
@@ -1808,6 +1852,14 @@ function eventSummarySchema() {
       lineup: stringArray(),
       attendance_count: nullableNumber(),
       source: nullableString(),
+      source_url: nullableString(),
+      source_provenance: { type: ["object", "null"], additionalProperties: true },
+      last_updated_at: nullableString(),
+      retrieved_at: { type: "string" },
+      availability: { type: "object", additionalProperties: true },
+      price_min: nullableNumber(),
+      price_max: nullableNumber(),
+      price_freshness: { type: "object", additionalProperties: true },
       description: { ...nullableString(), description: "Short one-line event description for display." },
       ticket_url: nullableString(),
       event_url: { type: "string" },
