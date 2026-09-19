@@ -1,4 +1,5 @@
-import { getEvent, listCities, searchEvents } from "./api.js";
+import { connectorWrite, getEvent, listCities, searchEvents } from "./api.js";
+import { requireScope } from "./authContext.js";
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { summarizeEvent } from "./format.js";
@@ -452,6 +453,22 @@ const rawTools = [
     outputSchema: ticketPurchaseOutputSchema()
   },
   {
+    name: "save_event",
+    title: "Save Event",
+    description: "Use this when a user confirms they want to save one Dizko event to the connected user's account only after explicit confirmation.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
+    name: "add_to_dizko_plan",
+    title: "Add to Dizko Plan",
+    description: "Use this when a user confirms they want to add one Dizko event to the connected user's persistent plan only after explicit confirmation.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
     name: "create_event_calendar_file",
     title: "Create Event Calendar File",
     description: "Use this when a user wants to add a Dizko event to their calendar after choosing or buying tickets.",
@@ -477,10 +494,15 @@ export const tools = rawTools.map(publicToolDefinition);
 
 function publicToolDefinition(tool) {
   const { outputSchema: _outputSchema, ...definition } = tool;
-  return withNoAuthSecurity({
+  return definition.securitySchemes ? withSecurity({
     ...definition,
     inputSchema: compactInputSchema(definition.inputSchema)
-  });
+  }) : withNoAuthSecurity({ ...definition, inputSchema: compactInputSchema(definition.inputSchema) });
+}
+
+function withSecurity(tool) {
+  const securitySchemes=tool.securitySchemes;
+  return { ...tool, _meta: { ...(tool._meta || {}), securitySchemes, "openai/toolInvocation/invoking":"Working", "openai/toolInvocation/invoked":"Ready" } };
 }
 
 function compactInputSchema(value) {
@@ -806,6 +828,14 @@ export async function callTool(name, input = {}, options = {}) {
     }
     case "purchase_ticket_order":
       return toolJson(await purchaseTicketOrder(input, options));
+    case "save_event":
+    case "add_to_dizko_plan": {
+      const scope = requireScope(options.authContext, "saved:write");
+      if (!scope.ok) return toolJson({ error: scope.code, required_scope: "saved:write" }, true);
+      if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required" }, true);
+      const path = name === "save_event" ? "/connector/v1/saved-events" : "/connector/v1/plan/events";
+      return toolJson(await connectorWrite(path, { event_id: input.event_id, confirmed: true }, { ...options, idempotencyKey: input.idempotency_key }));
+    }
     case "create_event_calendar_file": {
       const event = await getEvent(input.event_id, options);
       return toolJson({
