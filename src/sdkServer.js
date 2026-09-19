@@ -1,6 +1,7 @@
 import { Server } from "@modelcontextprotocol/server";
 import { MCP_SERVER_INSTRUCTIONS, TOOL_VERSION } from "./config.js";
 import { callTool, tools } from "./tools.js";
+import { currentAuthContext } from "./authContext.js";
 
 export const SERVER_INFO = { name: "dizko", version: TOOL_VERSION };
 
@@ -27,7 +28,7 @@ export function createSdkMcpServer(options = {}) {
 
   server.setRequestHandler("tools/list", async () => ({ tools }));
   server.setRequestHandler("tools/call", async (request) => {
-    return callTool(request.params.name, request.params.arguments || {}, options);
+    return callTool(request.params.name, request.params.arguments || {}, { ...options, authContext: currentAuthContext() });
   });
 
   return server;
