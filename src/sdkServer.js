@@ -2,6 +2,7 @@ import { Server } from "@modelcontextprotocol/server";
 import { MCP_SERVER_INSTRUCTIONS, TOOL_VERSION } from "./config.js";
 import { callTool, tools } from "./tools.js";
 import { currentAuthContext } from "./authContext.js";
+import { cityFromInput, recordToolCall } from "./telemetry.js";
 
 export const SERVER_INFO = { name: "dizko", version: TOOL_VERSION };
 
@@ -28,7 +29,11 @@ export function createSdkMcpServer(options = {}) {
 
   server.setRequestHandler("tools/list", async () => ({ tools }));
   server.setRequestHandler("tools/call", async (request) => {
-    return callTool(request.params.name, request.params.arguments || {}, { ...options, authContext: currentAuthContext() });
+    const started=performance.now(); const input=request.params.arguments || {};
+    const result=await callTool(request.params.name,input,{...options,authContext:currentAuthContext()});
+    const data=result?.structuredContent || {};
+    void recordToolCall({tool:request.params.name,city:cityFromInput(input),latency_ms:Math.round(performance.now()-started),outcome:result?.isError?"error":"success",...(result?.isError&&data.code?{error_code:String(data.code).slice(0,80)}:{}),...(Number.isInteger(data.count)?{result_count:data.count}: {})},options);
+    return result;
   });
 
   return server;
