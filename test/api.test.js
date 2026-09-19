@@ -232,3 +232,23 @@ test("retries can be disabled with retries: 0", async () => {
   );
   assert.equal(calls, 1);
 });
+
+test("connector OAuth writes use the public issuer instead of the protected private upstream", async () => {
+  let requestUrl;
+  const { connectorWrite } = await import("../src/api.js");
+  const result = await connectorWrite("/connector/v1/saved-events", { event_id: "event-id", confirmed: true }, {
+    config: {
+      apiBaseUrl: "http://backend.railway.internal:8000",
+      oauthIssuer: "https://api.dizko.app",
+      apiTimeoutMs: 1000
+    },
+    authContext: { token: "user-oauth-token" },
+    idempotencyKey: "1234567890123456",
+    fetch: async (url) => {
+      requestUrl = String(url);
+      return Response.json({ saved: true });
+    }
+  });
+  assert.equal(requestUrl, "https://api.dizko.app/connector/v1/saved-events");
+  assert.deepEqual(result, { saved: true });
+});
