@@ -30,7 +30,14 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(health.status, 200);
     assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/api\.dizko\.app https:\/\/www\.dizko\.app/);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
-    assert.deepEqual(await health.json(), { ok: true, name: "dizko" });
+    assert.deepEqual(await health.json(), {
+      ok: true,
+      name: "dizko",
+      version: "0.8.0",
+      contract_version: "2026-09-19",
+      transport: "streamable-http",
+      authentication: "none"
+    });
 
     const metadata = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(metadata.status, 200);

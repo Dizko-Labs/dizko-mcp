@@ -18,6 +18,9 @@ export function shortLinkBase(options = {}) {
 
 export function summarizeEvent(event, options = {}) {
   const webBaseUrl = options.webBaseUrl || DEFAULT_WEB_BASE_URL;
+  const retrievedAt = options.retrievedAt || new Date().toISOString();
+  const sourceName = event.source_display || event.source || null;
+  const sourceUrl = event.source_url || event.ticket_url || null;
   const summary = {
     id: event.id,
     title: event.title,
@@ -40,7 +43,34 @@ export function summarizeEvent(event, options = {}) {
     lat: event.lat ?? null,
     lng: event.lng ?? null,
     attendance_count: event.attendance_count || null,
-    source: event.source_display || event.source || null,
+    source: sourceName,
+    source_url: sourceUrl,
+    source_provenance: sourceName ? {
+      provider: sourceName,
+      url: sourceUrl,
+      last_updated_at: event.updated_at || event.modified_at || event.last_seen_at || null,
+      retrieved_at: retrievedAt
+    } : null,
+    last_updated_at: event.updated_at || event.modified_at || event.last_seen_at || null,
+    retrieved_at: retrievedAt,
+    availability: {
+      status: event.availability_status || (event.ticket_url ? "link_available_unverified" : "unknown"),
+      confidence: event.availability_confidence || (event.ticket_url ? "low" : "unknown"),
+      checked_at: event.availability_checked_at || null,
+      note: event.ticket_url
+        ? "A ticket link is present, but live inventory and price are not guaranteed until checkout."
+        : "Dizko has no live ticket availability signal for this event."
+    },
+    price_min: event.price_min ?? null,
+    price_max: event.price_max ?? null,
+    price_freshness: event.price_checked_at ? {
+      checked_at: event.price_checked_at,
+      status: "checked"
+    } : {
+      checked_at: null,
+      status: "unverified",
+      note: "Price may have changed; verify on the ticket page before acting."
+    },
     description: shortDescription(event.description),
     ticket_url: event.ticket_url || null,
     event_url: eventUrl(event, webBaseUrl)

@@ -49,6 +49,8 @@ test("MCP lists event tools", async () => {
     "get_event_search_followups",
     "list_cities",
     "find_scene_entities",
+    "get_artist",
+    "get_venue",
     "search_events",
     "recommend_events",
     "recommend_events_for_user",
@@ -113,7 +115,7 @@ test("MCP tool list stays compact while preserving input contracts", async () =>
   // Budget raised 19_600 -> 20_500 for get_artist_page (artist microsite
   // deep links, 2026-09-02). Keep the list lean: short descriptions, no
   // outputSchema unless a client needs it.
-  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 20_500);
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 23_000);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("dj"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("artist"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("venue"), true);
