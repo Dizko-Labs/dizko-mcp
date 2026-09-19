@@ -94,6 +94,9 @@ export function getConfig(env = process.env) {
     apiRetries: nonNegativeNumber(env.DIZKO_API_RETRIES || env.EVENTCHAT_API_RETRIES, 2),
     apiRetryBaseDelayMs: positiveNumber(env.DIZKO_API_RETRY_BASE_DELAY_MS || env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),
     upstreamSecret: env.DIZKO_MCP_UPSTREAM_SECRET || env.EVENTCHAT_MCP_UPSTREAM_SECRET || "",
+    oauthIssuer: (env.DIZKO_OAUTH_ISSUER || "https://api.dizko.app").replace(/\/+$/, ""),
+    oauthResource: env.DIZKO_OAUTH_RESOURCE || DEFAULT_MCP_URL,
+    introspectionSecret: env.DIZKO_OAUTH_INTROSPECTION_SECRET || "",
     // Event inventory updates on a 6h scrape cadence, so a short response
     // cache is risk-free. 0 disables. Stale window: how long an expired
     // entry may still be served when the upstream fails (resilience).

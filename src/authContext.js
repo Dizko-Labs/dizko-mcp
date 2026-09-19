@@ -4,7 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 const storage = new AsyncLocalStorage();
 
 export function currentAuthContext() {
-  return storage.getStore() || { authenticated: false, subject: null, scopes: [] };
+  return storage.getStore() || { authenticated: false, subject: null, clientId: null, token: null, scopes: [] };
 }
 
 export function runWithAuthContext(context, operation) {
@@ -13,18 +13,18 @@ export function runWithAuthContext(context, operation) {
 
 export async function authenticateConnectorRequest(request, options = {}, staticToken = "") {
   const authorization = String(request.headers.authorization || "");
-  if (!authorization) return { authenticated: false, subject: null, scopes: [] };
+  if (!authorization) return { authenticated: false, subject: null, clientId: null, token: null, scopes: [] };
   if (!authorization.startsWith("Bearer ")) return null;
   const token = authorization.slice("Bearer ".length);
-  if (typeof options.verifyBearerToken === "function") {
-    const verified = await options.verifyBearerToken(token);
-    if (!verified?.subject || !Array.isArray(verified.scopes)) return null;
-    return freezeContext({ authenticated: true, subject: verified.subject, scopes: verified.scopes });
-  }
   if (staticToken && safeEqual(token, staticToken)) {
     // A shared transport token cannot identify a Dizko user. It may gate read
     // traffic, but must never gain saved:read or saved:write.
-    return { authenticated: true, subject: "shared-transport", scopes: ["events:read"] };
+    return { authenticated: true, subject: "shared-transport", clientId: null, token: null, scopes: ["events:read"] };
+  }
+  if (typeof options.verifyBearerToken === "function") {
+    const verified = await options.verifyBearerToken(token);
+    if (!verified?.subject || !Array.isArray(verified.scopes)) return null;
+    return freezeContext({ authenticated: true, subject: verified.subject, clientId: verified.clientId, token, scopes: verified.scopes });
   }
   return null;
 }
@@ -39,6 +39,8 @@ function freezeContext(context) {
   return Object.freeze({
     authenticated: Boolean(context?.authenticated),
     subject: context?.subject ? String(context.subject) : null,
+    clientId: context?.clientId ? String(context.clientId) : null,
+    token: context?.token ? String(context.token) : null,
     scopes: Object.freeze([...new Set((context?.scopes || []).map(String))].sort())
   });
 }

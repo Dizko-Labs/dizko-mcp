@@ -10,10 +10,14 @@ import { eventLinkTargets } from "./format.js";
 import { createSdkMcpServer, SERVER_INFO } from "./sdkServer.js";
 import { CONNECTOR_CONTRACT_VERSION } from "./connectorV1.js";
 import { authenticateConnectorRequest, runWithAuthContext } from "./authContext.js";
+import { verifyConnectorBearer } from "./connectorAuth.js";
+import { getConfig } from "./config.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function createHttpMcpServer(options = {}) {
+  const oauthConfig = getConfig(options.env);
+  const verifyBearerToken = options.verifyBearerToken || ((token) => verifyConnectorBearer(token, options));
   const settings = {
     maxBodyBytes: Number(options.maxBodyBytes || process.env.EVENTCHAT_MCP_MAX_BODY_BYTES || 1024 * 1024),
     bearerToken: options.bearerToken ?? process.env.EVENTCHAT_MCP_BEARER_TOKEN,
@@ -37,6 +41,11 @@ export function createHttpMcpServer(options = {}) {
 
       if (request.method === "OPTIONS") {
         sendNoBody(response, 204, corsHeaders(request, settings));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+        sendJson(response, 200, { resource: oauthConfig.oauthResource, authorization_servers: [oauthConfig.oauthIssuer], scopes_supported: ["events:read", "saved:read", "saved:write"], bearer_methods_supported: ["header"] }, corsHeaders(request, settings));
         return;
       }
 
@@ -121,11 +130,11 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      const authContext = await authenticateConnectorRequest(request, options, settings.bearerToken);
+      const authContext = await authenticateConnectorRequest(request, { ...options, verifyBearerToken }, settings.bearerToken);
       if (!authContext || (settings.bearerToken && !authContext.authenticated)) {
         sendJson(response, 401, { error: "Unauthorized" }, {
           ...corsHeaders(request, settings),
-          "WWW-Authenticate": "Bearer"
+          "WWW-Authenticate": `Bearer resource_metadata="${oauthConfig.oauthResource.replace(/\/mcp$/, "/.well-known/oauth-protected-resource")}"`
         });
         return;
       }

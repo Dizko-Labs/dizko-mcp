@@ -64,6 +64,8 @@ test("MCP lists event tools", async () => {
     "get_ticket_offers",
     "quote_ticket_order",
     "purchase_ticket_order",
+    "save_event",
+    "add_to_dizko_plan",
     "create_event_calendar_file"
   ]);
 });
@@ -99,8 +101,9 @@ test("MCP tool metadata is review-friendly", async () => {
     assert.match(tool.description, /^Use this (when|only when)\b/, `${tool.name} description should start with "Use this..."`);
     assert.equal(typeof tool.inputSchema, "object", `${tool.name} is missing inputSchema`);
     assert.equal(tool.outputSchema, undefined, `${tool.name} should omit redundant outputSchema`);
-    assert.deepEqual(tool.securitySchemes, [{ type: "noauth" }], `${tool.name} should advertise noauth securitySchemes`);
-    assert.deepEqual(tool._meta?.securitySchemes, [{ type: "noauth" }], `${tool.name} should mirror noauth securitySchemes in _meta`);
+    const expectedSecurity = ["save_event", "add_to_dizko_plan"].includes(tool.name) ? [{ type: "oauth2", scopes: ["saved:write"] }] : [{ type: "noauth" }];
+    assert.deepEqual(tool.securitySchemes, expectedSecurity, `${tool.name} should advertise its security scheme`);
+    assert.deepEqual(tool._meta?.securitySchemes, expectedSecurity, `${tool.name} should mirror securitySchemes in _meta`);
     assert.equal(typeof tool._meta?.["openai/toolInvocation/invoking"], "string", `${tool.name} should define invoking status text`);
     assert.equal(typeof tool._meta?.["openai/toolInvocation/invoked"], "string", `${tool.name} should define invoked status text`);
     assert.ok(tool._meta["openai/toolInvocation/invoking"].length <= 64, `${tool.name} invoking status is too long`);
@@ -115,7 +118,7 @@ test("MCP tool list stays compact while preserving input contracts", async () =>
   // Budget raised 19_600 -> 20_500 for get_artist_page (artist microsite
   // deep links, 2026-09-02). Keep the list lean: short descriptions, no
   // outputSchema unless a client needs it.
-  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 23_000);
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 25_000);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("dj"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("artist"), true);
   assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes("venue"), true);
