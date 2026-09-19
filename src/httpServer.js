@@ -9,6 +9,7 @@ import { buildCalendarEvent } from "./calendar.js";
 import { eventLinkTargets } from "./format.js";
 import { createSdkMcpServer, SERVER_INFO } from "./sdkServer.js";
 import { CONNECTOR_CONTRACT_VERSION } from "./connectorV1.js";
+import { authenticateConnectorRequest, runWithAuthContext } from "./authContext.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -120,7 +121,8 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      if (!isAuthorized(request, settings)) {
+      const authContext = await authenticateConnectorRequest(request, options, settings.bearerToken);
+      if (!authContext || (settings.bearerToken && !authContext.authenticated)) {
         sendJson(response, 401, { error: "Unauthorized" }, {
           ...corsHeaders(request, settings),
           "WWW-Authenticate": "Bearer"
@@ -161,7 +163,7 @@ export function createHttpMcpServer(options = {}) {
 
       const payload = await readJson(request, settings.maxBodyBytes);
       validateJsonRpcPayload(payload);
-      await mcpHandler(request, response, payload);
+      await runWithAuthContext(authContext, () => mcpHandler(request, response, payload));
     } catch (error) {
       const safeError = safeJsonRpcError(error);
       sendJson(response, safeError.status, {
@@ -359,12 +361,6 @@ function validateJsonRpc(request) {
   if (!request || typeof request !== "object") throw new Error("Invalid JSON-RPC request");
   if (request.jsonrpc && request.jsonrpc !== "2.0") throw new Error("Unsupported JSON-RPC version");
   if (!request.method || typeof request.method !== "string") throw new Error("Missing JSON-RPC method");
-}
-
-function isAuthorized(request, settings) {
-  if (!settings.bearerToken) return true;
-  const expected = `Bearer ${settings.bearerToken}`;
-  return request.headers.authorization === expected;
 }
 
 function createRateLimiter(settings) {
