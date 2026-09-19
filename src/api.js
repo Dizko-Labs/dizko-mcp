@@ -304,12 +304,17 @@ export async function connectorWrite(path, input, { authContext, idempotencyKey,
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   if (!authContext?.token) throw new EventChatAPIError("Connector OAuth access token required", { status: 401 });
   const doFetch = options.fetch || fetch;
-  const response = await doFetch(new URL(path, config.apiBaseUrl), {
+  // User-bound OAuth writes must use the public API origin. The private
+  // Railway upstream host is protected by the service-to-service secret and
+  // intentionally rejects the user's bearer token before the connector
+  // endpoint can validate it.
+  const writeBaseUrl = config.oauthIssuer || config.apiBaseUrl;
+  const response = await doFetch(new URL(path, writeBaseUrl), {
     method: "POST",
     signal: AbortSignal.timeout(config.apiTimeoutMs),
     headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${authContext.token}`, "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(input)
   });
-  if (!response.ok) throw new EventChatAPIError(`Connector write failed with HTTP ${response.status}`, { status: response.status, body: await safeText(response), url: String(new URL(path, config.apiBaseUrl)) });
+  if (!response.ok) throw new EventChatAPIError(`Connector write failed with HTTP ${response.status}`, { status: response.status, body: await safeText(response), url: String(new URL(path, writeBaseUrl)) });
   return response.json();
 }
