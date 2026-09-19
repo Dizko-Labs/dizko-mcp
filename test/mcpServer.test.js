@@ -556,3 +556,17 @@ test("MCP error responses never expose upstream hosts, URLs, or causes", async (
   assert.doesNotMatch(serialized, /https?:\/\//i);
   assert.doesNotMatch(serialized, /traceback|stack detail/i);
 });
+
+test("MCP event results include bounded HTTPS flyer resource links", async () => {
+  const response = await handleMcpRequest({ method: "tools/call", params: { name: "search_events", arguments: { city: "berlin" } } }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({ count: 2, events: [
+      { id: "1", title: "Night One", genres: [], vibe: [], event_types: [], lineup: [], image_url: "https://images.example.test/one.jpg" },
+      { id: "2", title: "Unsafe", genres: [], vibe: [], event_types: [], lineup: [], image_url: "http://images.example.test/two.jpg" }
+    ] })
+  });
+  const links = response.content.filter((block) => block.type === "resource_link");
+  assert.equal(links.length, 1);
+  assert.equal(links[0].uri, "https://images.example.test/one.jpg");
+  assert.match(links[0].name, /Night One/);
+});

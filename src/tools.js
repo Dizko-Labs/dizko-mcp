@@ -961,6 +961,7 @@ function publicToolError(error, { retryable, entity = false }) {
 }
 
 export function toolJson(value, isError = false) {
+  const media = isError ? [] : eventImageResources(value);
   return {
     structuredContent: toStructuredContent(value),
     content: [
@@ -970,10 +971,28 @@ export function toolJson(value, isError = false) {
         // clients that only read content, and pretty-printing a 25-event
         // result costs the model thousands of wasted tokens.
         text: JSON.stringify(value)
-      }
+      },
+      ...media
     ],
     isError
   };
+}
+
+function eventImageResources(value) {
+  const candidates = value?.events || value?.recommendations || (value?.event ? [value.event] : []);
+  const seen = new Set();
+  return candidates.flatMap((event) => {
+    const uri = event?.image_url;
+    if (!uri || seen.has(uri) || !/^https:\/\//i.test(uri) || seen.size >= 6) return [];
+    seen.add(uri);
+    return [{
+      type: "resource_link",
+      uri,
+      name: `Flyer: ${String(event.title || "Dizko event").slice(0, 120)}`,
+      title: event.title || "Dizko event flyer",
+      description: "Event flyer from the source listing. Open only if the client renders linked media."
+    }];
+  });
 }
 
 function toStructuredContent(value) {
