@@ -23,8 +23,11 @@ const SHORT_BASE = DEFAULT_MCP_URL.replace(/\/mcp$/, "");
 test("summarizeEvent emits short calendar and directions links plus the event card", () => {
   const summary = summarizeEvent(EVENT, { env: {} });
   assert.match(summary.event_url, /\/events\/evt-1$/);
-  assert.equal(summary.calendar_url, `${SHORT_BASE}/e/evt-1/cal`);
+  assert.equal(summary.calendar_url, `${SHORT_BASE}/e/evt-1/ics`);
   assert.equal(summary.directions_url, `${SHORT_BASE}/e/evt-1/map`);
+  assert.equal(summary.dizko_url, summary.event_url);
+  assert.equal(summary.venue_name, "Knockdown Center");
+  assert.equal(summary.lineup_artists, undefined);
 });
 
 test("short links are omitted when the underlying data is missing", () => {
@@ -41,7 +44,7 @@ test("shortLinkBase honors env override and explicit linkBaseUrl", () => {
 
 test("summarizeEvent strips null and empty fields but keeps id/title/event_url/pick", () => {
   const summary = summarizeEvent({ id: "evt-2", title: "Mystery" }, { env: {} });
-  assert.deepEqual(Object.keys(summary).sort(), ["availability", "event_url", "id", "pick", "price_freshness", "retrieved_at", "title"]);
+  assert.deepEqual(Object.keys(summary).sort(), ["availability", "dizko_url", "event_url", "id", "pick", "price_freshness", "retrieved_at", "title"]);
   assert.equal(summary.pick, false);
 });
 
@@ -75,7 +78,7 @@ test("directionsUrl prefers coordinates, falls back to venue text, skips placeho
 test("formatEventList prints short directions and calendar lines", () => {
   const text = formatEventList([EVENT], { env: {} });
   assert.match(text, /Directions: .*\/e\/evt-1\/map/);
-  assert.match(text, /Add to calendar: .*\/e\/evt-1\/cal/);
+  assert.match(text, /Add to calendar: .*\/e\/evt-1\/ics/);
   assert.match(text, /Event: .*\/events\/evt-1/);
 });
 

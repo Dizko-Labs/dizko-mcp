@@ -27,13 +27,12 @@ import {
 } from "./tickets.js";
 
 export const EVENT_LINKS_INSTRUCTION = [
-  "Render events as a markdown list with one block per event and each fact on its own line, using this template:",
-  "**[<title>](<event_url>)**",
-  "- When: <weekday, date, start time> · [Add to calendar](<calendar_url>)",
-  "- Where: <venue>, <city> · [Get directions](<directions_url>)",
-  "- What: <description, or genres/vibe tags if no description>",
-  "- Price: <price> · [Tickets](<ticket_url>)",
-  "Always link the event title to event_url (the Dizko event page), never to ticket_url. Make every link clickable markdown. Omit any line whose data is missing. Do not merge facts onto one line."
+  "Render each event as three compact, scannable lines plus one action row:",
+  "[<title>](<dizko_url>)",
+  "<venue_name> · <local start time>-<local end time>",
+  "<lineup artists> · <genre/vibe tags> · <going_count> going · <price>",
+  "[Tickets](<ticket_url>) · [Calendar](<calendar_url>) · [Directions](<directions_url>)",
+  "Use only fields present in the tool result. Omit missing facts and missing actions rather than inventing them. The title must link to dizko_url, never ticket_url. calendar_url is a downloadable .ics link. Keep one event visually separate from the next."
 ].join("\n");
 
 const WEEKDAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -1834,6 +1833,7 @@ function calendarEventSchema() {
       starts_at: nullableString(),
       ends_at: nullableString(),
       venue: nullableString(),
+      venue_name: nullableString(),
       city: nullableString(),
       event_url: nullableString(),
       ticket_url: nullableString(),
@@ -1922,6 +1922,7 @@ function eventSummarySchema() {
       starts_at: nullableString(),
       ends_at: nullableString(),
       venue: nullableString(),
+      venue_name: nullableString(),
       city: nullableString(),
       price: nullableString(),
       currency: nullableString(),
@@ -1929,7 +1930,9 @@ function eventSummarySchema() {
       vibe: stringArray(),
       event_types: stringArray(),
       lineup: stringArray(),
+      lineup_artists: stringArray(),
       attendance_count: nullableNumber(),
+      going_count: nullableNumber(),
       source: nullableString(),
       source_url: nullableString(),
       source_provenance: { type: ["object", "null"], additionalProperties: true },
@@ -1941,11 +1944,12 @@ function eventSummarySchema() {
       price_freshness: { type: "object", additionalProperties: true },
       description: { ...nullableString(), description: "Short one-line event description for display." },
       ticket_url: nullableString(),
+      dizko_url: { type: "string", description: "Canonical Dizko event page. Use this for the title link." },
       event_url: { type: "string" },
-      calendar_url: { ...nullableString(), description: "Prefilled Google Calendar link. Offer as 'Add to calendar'." },
+      calendar_url: { ...nullableString(), description: "Downloadable .ics calendar link. Offer as 'Calendar'." },
       directions_url: { ...nullableString(), description: "Google Maps directions link. Offer as 'Get directions'." }
     },
-    required: ["id", "title", "event_url"]
+    required: ["id", "title", "dizko_url", "event_url"]
   };
 }
 

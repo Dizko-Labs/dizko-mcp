@@ -27,6 +27,7 @@ export function summarizeEvent(event, options = {}) {
     starts_at: event.start_time || null,
     ends_at: event.end_time || null,
     venue: event.venue_name || null,
+    venue_name: event.venue_name || null,
     city: event.venue_city || null,
     address: event.venue_address || null,
     price: formatPrice(event),
@@ -35,6 +36,7 @@ export function summarizeEvent(event, options = {}) {
     vibe: event.vibe || [],
     event_types: event.event_types || [],
     lineup: event.lineup || [],
+    lineup_artists: event.lineup || [],
     pick: Boolean(event.ra_pick || event.featured_at),
     price_trend: event.price_trend || null,
     sound_tags: event.sound_tags || [],
@@ -43,6 +45,7 @@ export function summarizeEvent(event, options = {}) {
     lat: event.lat ?? null,
     lng: event.lng ?? null,
     attendance_count: event.attendance_count || null,
+    going_count: event.attendance_count || null,
     source: sourceName,
     source_url: sourceUrl,
     source_provenance: sourceName ? {
@@ -73,13 +76,14 @@ export function summarizeEvent(event, options = {}) {
     },
     description: shortDescription(event.description),
     ticket_url: event.ticket_url || null,
+    dizko_url: eventUrl(event, webBaseUrl),
     event_url: eventUrl(event, webBaseUrl)
   };
   // Emit short redirect links only when the underlying full link exists,
   // so "calendar_url present" still means "this event has a start time".
   const targets = eventLinkTargets(event, options);
   const idPath = `${shortLinkBase(options)}/e/${encodeURIComponent(event.id)}`;
-  summary.calendar_url = targets.cal ? `${idPath}/cal` : null;
+  summary.calendar_url = targets.cal ? `${idPath}/ics` : null;
   summary.directions_url = targets.map ? `${idPath}/map` : null;
   return compactSummary(summary);
 }
@@ -93,6 +97,7 @@ export function eventLinkTargets(event, options = {}) {
     starts_at: event.start_time || null,
     ends_at: event.end_time || null,
     venue: event.venue_name || null,
+    venue_name: event.venue_name || null,
     city: event.venue_city || null,
     event_url: eventUrl(event, webBaseUrl),
     ticket_url: event.ticket_url || null
