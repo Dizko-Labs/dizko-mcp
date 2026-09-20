@@ -300,6 +300,21 @@ async function safeText(response) {
   }
 }
 
+export async function connectorRead(path, { authContext, ...options } = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  if (!authContext?.token) throw new EventChatAPIError("Connector OAuth access token required", { status: 401 });
+  const readBaseUrl = config.oauthIssuer || config.apiBaseUrl;
+  const url = new URL(path, readBaseUrl);
+  const doFetch = options.fetch || fetch;
+  const response = await doFetch(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(config.apiTimeoutMs),
+    headers: { Accept: "application/json", Authorization: `Bearer ${authContext.token}` }
+  });
+  if (!response.ok) throw new EventChatAPIError(`Connector read failed with HTTP ${response.status}`, { status: response.status, body: await safeText(response), url: String(url) });
+  return response.json();
+}
+
 export async function connectorWrite(path, input, { authContext, idempotencyKey, ...options } = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
   if (!authContext?.token) throw new EventChatAPIError("Connector OAuth access token required", { status: 401 });

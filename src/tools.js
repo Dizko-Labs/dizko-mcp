@@ -1,4 +1,4 @@
-import { connectorWrite, getEvent, listCities, searchEvents } from "./api.js";
+import { connectorRead, connectorWrite, getEvent, listCities, searchEvents } from "./api.js";
 import { requireScope } from "./authContext.js";
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
@@ -453,6 +453,22 @@ const rawTools = [
     outputSchema: ticketPurchaseOutputSchema()
   },
   {
+    name: "get_taste_profile",
+    title: "Get Taste Profile",
+    description: "Use this to read the connected user's learned Dizko taste, saved events, and binned events before personalizing recommendations.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:read"] }],
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "bin_event",
+    title: "Bin Event",
+    description: "Use this only after the user confirms an event is not for them. It hides the event and teaches the connected user's Dizko taste model.",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
     name: "save_event",
     title: "Save Event",
     description: "Use this when a user confirms they want to save one Dizko event to the connected user's account only after explicit confirmation.",
@@ -828,6 +844,20 @@ export async function callTool(name, input = {}, options = {}) {
     }
     case "purchase_ticket_order":
       return toolJson(await purchaseTicketOrder(input, options));
+    case "get_taste_profile": {
+      const scope = requireScope(options.authContext, "saved:read");
+      if (!scope.ok) return toolJson({ error: scope.code, required_scope: "saved:read" }, true);
+      return toolJson({
+        ...await connectorRead("/connector/v1/taste-profile", options),
+        assistant_instruction: "Use these learned signals as preference evidence, not as hard constraints. Saved means positive interest; binned means explicit negative interest. Combine this profile with the user's current request and life context."
+      });
+    }
+    case "bin_event": {
+      const scope = requireScope(options.authContext, "saved:write");
+      if (!scope.ok) return toolJson({ error: scope.code, required_scope: "saved:write" }, true);
+      if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required" }, true);
+      return toolJson(await connectorWrite("/connector/v1/binned-events", { event_id: input.event_id, confirmed: true }, { ...options, idempotencyKey: input.idempotency_key }));
+    }
     case "save_event":
     case "add_to_dizko_plan": {
       const scope = requireScope(options.authContext, "saved:write");
