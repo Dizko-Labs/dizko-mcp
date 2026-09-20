@@ -255,7 +255,12 @@ test("MCP search_events returns tool content", async () => {
         genres: [],
         vibe: [],
         event_types: [],
-        lineup: [],
+        lineup: ["DJ One", "DJ Two"],
+        venue_name: "Else",
+        start_time: "2026-09-20T12:00:00Z",
+        end_time: "2026-09-21T04:00:00Z",
+        ticket_url: "https://tickets.example/night-one",
+        attendance_count: 829,
         ra_pick: true,
         price_trend: "selling_fast",
         sound_tags: ["dub techno"],
@@ -277,6 +282,12 @@ test("MCP search_events returns tool content", async () => {
   assert.equal(response.structuredContent.events[0].image_url, "https://images.example.test/night-one.jpg");
   assert.equal(response.structuredContent.events[0].lat, 52.5);
   assert.equal(response.structuredContent.events[0].lng, 13.4);
+  assert.equal(response.structuredContent.events[0].dizko_url, response.structuredContent.events[0].event_url);
+  assert.equal(response.structuredContent.events[0].venue_name, "Else");
+  assert.deepEqual(response.structuredContent.events[0].lineup_artists, ["DJ One", "DJ Two"]);
+  assert.equal(response.structuredContent.events[0].going_count, 829);
+  assert.match(response.structuredContent.events[0].calendar_url, /\/e\/1\/ics$/);
+  assert.match(response.structuredContent.assistant_instruction, /three compact, scannable lines/);
   assert.equal(response.structuredContent.app_download_url, "https://www.dizko.app/ios");
 });
 
