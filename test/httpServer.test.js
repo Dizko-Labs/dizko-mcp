@@ -458,3 +458,40 @@ test("short links share the rate limiter so id scans cannot hammer the backend",
     server.close();
   }
 });
+
+test("security headers, CORS and rate-limit identity fail closed", async () => {
+  const server = createHttpMcpServer({
+    allowedOrigins: ["https://chatgpt.com"],
+    rateLimitMax: 1,
+    rateLimitWindowMs: 60_000
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const request = (forwarded, origin = "https://evil.example") => fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      Origin: origin,
+      "X-Forwarded-For": forwarded
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })
+  });
+  try {
+    const first = await request("198.51.100.1, 10.0.0.8");
+    assert.equal(first.status, 200);
+    assert.equal(first.headers.get("access-control-allow-origin"), null);
+    assert.match(first.headers.get("strict-transport-security"), /max-age=31536000/);
+    assert.match(first.headers.get("permissions-policy"), /camera=\(\)/);
+
+    // Changing the attacker-controlled leftmost value must not mint a new
+    // bucket when the edge-appended rightmost hop is unchanged.
+    const second = await request("203.0.113.99, 10.0.0.8");
+    assert.equal(second.status, 429);
+
+    const allowed = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: "https://chatgpt.com" } });
+    assert.equal(allowed.headers.get("access-control-allow-origin"), "https://chatgpt.com");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

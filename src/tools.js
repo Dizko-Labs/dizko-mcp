@@ -455,7 +455,7 @@ const rawTools = [
   {
     name: "get_taste_profile",
     title: "Get Taste Profile",
-    description: "Use this to read the connected user's learned Dizko taste, saved events, and binned events before personalizing recommendations.",
+    description: "Use this when personalizing for a connected user: read their learned Dizko taste plus saved and binned events.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     securitySchemes: [{ type: "oauth2", scopes: ["saved:read"] }],
     inputSchema: { type: "object", properties: {} }
@@ -463,7 +463,7 @@ const rawTools = [
   {
     name: "bin_event",
     title: "Bin Event",
-    description: "Use this only after the user confirms an event is not for them. It hides the event and teaches the connected user's Dizko taste model.",
+    description: "Use this only when the user confirms an event is not for them. It hides the event and teaches their Dizko taste model.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
     inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }

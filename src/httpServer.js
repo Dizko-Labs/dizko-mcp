@@ -357,6 +357,8 @@ function securityHeaders() {
       "style-src 'unsafe-inline'"
     ].join("; "),
     "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
     "X-Content-Type-Options": "nosniff"
   };
 }
@@ -423,9 +425,19 @@ function rateLimitHeadersFor(rateLimit) {
 }
 
 function clientIp(request) {
+  // The leftmost X-Forwarded-For value is caller-controlled on many edges.
+  // Key limits on the rightmost hop the edge appended. Operators may opt in
+  // to X-Real-IP only after proving their edge overwrites it.
+  if (parseBoolean(process.env.DIZKO_TRUST_X_REAL_IP || process.env.EVENTCHAT_MCP_TRUST_X_REAL_IP, false)) {
+    const real = request.headers["x-real-ip"];
+    if (typeof real === "string" && real.trim()) return real.trim();
+  }
   const forwarded = request.headers["x-forwarded-for"];
-  if (typeof forwarded === "string" && forwarded.trim()) return forwarded.split(",")[0].trim();
-  if (Array.isArray(forwarded) && forwarded.length > 0) return forwarded[0].split(",")[0].trim();
+  const raw = Array.isArray(forwarded) ? forwarded[forwarded.length - 1] : forwarded;
+  if (typeof raw === "string" && raw.trim()) {
+    const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
   return request.socket.remoteAddress || "unknown";
 }
 
@@ -435,10 +447,10 @@ function corsHeaders(request, settings) {
     ? "*"
     : settings.allowedOrigins.includes(origin)
       ? origin
-      : settings.allowedOrigins[0] || "";
+      : "";
 
   return {
-    "Access-Control-Allow-Origin": allowOrigin,
+    ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     // Mcp-Method / Mcp-Name are required on 2026-07-28 POSTs (SEP-2243);
     // MCP-Protocol-Version is the 2025-era header kept for old clients.
