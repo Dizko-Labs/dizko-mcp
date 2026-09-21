@@ -53,6 +53,7 @@ export const SUPPORTED_CITIES = [
   "stockholm",
   "tokyo",
   "toronto",
+  "vancouver",
   "vienna",
   "warsaw"
 ];
