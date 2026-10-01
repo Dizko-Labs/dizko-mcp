@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
+import { prompts as registryPrompts, tools as registryTools } from "../src/tools.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -12,41 +13,23 @@ const requestTimeoutMs = Number(process.env.EVENTCHAT_VERIFY_TIMEOUT_MS || 15000
 const evidenceOutputPath = process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || null;
 const railwayService = process.env.DIZKO_RAILWAY_SERVICE || process.env.EVENTCHAT_RAILWAY_SERVICE || "dizko-mcp";
 
-const requiredTools = [
-  "get_preference_onboarding",
-  "create_event_preference_profile",
-  "save_event_preferences",
-  "get_event_preferences",
-  "delete_event_preferences",
-  "record_event_feedback",
-  "get_event_feedback_prompt",
-  "get_event_search_followups",
-  "list_cities",
-  "search_events",
-  "recommend_events",
-  "recommend_events_for_user",
-  "plan_night",
-  "get_event",
-  "get_ticket_purchase_policy",
-  "get_ticket_offers",
-  "quote_ticket_order",
-  "purchase_ticket_order"
-];
+// Expected tools, order, annotations and security schemes come from the
+// package's own registry, so this preflight checks the live server against
+// what the package ships and cannot drift from it. The listed names are the
+// Muse connector contract surface.
+const requiredTools = registryTools.map((tool) => tool.name);
+const requiredPrompts = registryPrompts.map((prompt) => prompt.name);
+const ANNOTATION_KEYS = ["readOnlyHint", "destructiveHint", "openWorldHint"];
+const requiredAnnotations = Object.fromEntries(registryTools.map((tool) => [
+  tool.name,
+  Object.fromEntries(ANNOTATION_KEYS.map((key) => [key, tool.annotations?.[key]]))
+]));
+const requiredSecurity = Object.fromEntries(registryTools.map((tool) => [tool.name, JSON.stringify(tool.securitySchemes)]));
 
-const requiredAnnotations = {
-  list_cities: { readOnlyHint: true, openWorldHint: false },
-  search_events: { readOnlyHint: true, openWorldHint: false },
-  get_event: { readOnlyHint: true, openWorldHint: false },
-  create_event_preference_profile: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-  save_event_preferences: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-  record_event_feedback: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-  get_event_feedback_prompt: { readOnlyHint: true, openWorldHint: false },
-  get_event_search_followups: { readOnlyHint: true, openWorldHint: false },
-  delete_event_preferences: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-  get_ticket_offers: { readOnlyHint: true, openWorldHint: false },
-  quote_ticket_order: { readOnlyHint: true, openWorldHint: false },
-  purchase_ticket_order: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
-};
+// tools/list carries 30 tools with full parameter descriptions (about 47 KB).
+// main budgets 26 KB by stripping them; which budget the Muse review surface
+// should hold is an open decision, so this only stops unnoticed growth.
+const TOOLS_LIST_BYTE_BUDGET = 48_000;
 
 async function main() {
   const evidence = {
@@ -67,7 +50,9 @@ async function main() {
   evidence.checks.initialize = await checkLegacyInitialize();
   evidence.checks.initialized_notification = await checkInitializedNotification();
   evidence.checks.tools = await checkTools();
+  evidence.checks.prompts = await checkPrompts();
   evidence.checks.rate_limit_headers = await checkRateLimitHeaders();
+  evidence.checks.cities = await checkCities();
   evidence.checks.search_followups = await checkSearchFollowups();
   evidence.checks.live_search = await checkLiveSearch();
   evidence.checks.feedback_prompt = await checkFeedbackPrompt();
@@ -185,12 +170,14 @@ async function checkDiscover() {
   );
   assert(serverInfo?.name === "dizko", "server/discover returned unexpected serverInfo.name");
   assert(result.capabilities?.tools, "server/discover returned no tools capability");
+  assert(result.capabilities?.prompts, "server/discover returned no prompts capability");
   assertInstructions(result.instructions);
   return {
     ok: true,
     server_info: serverInfo,
     supported_versions: result.supportedVersions,
     tool_capabilities: result.capabilities.tools,
+    prompt_capabilities: result.capabilities.prompts,
     cache_scope: result.cacheScope,
     ttl_ms: result.ttlMs,
     instructions: result.instructions
@@ -225,35 +212,40 @@ async function checkLegacyInitialize() {
   assert(!body.error, `legacy initialize error: ${body.error?.message}`);
   assert(result?.serverInfo?.name === "dizko", "legacy initialize returned unexpected serverInfo.name");
   assert(result.capabilities?.tools, "legacy initialize returned no tools capability");
+  assert(result.capabilities?.prompts, "legacy initialize returned no prompts capability");
   assertInstructions(result.instructions);
   return {
     ok: true,
     server_info: result.serverInfo,
     protocol_version: result.protocolVersion,
     tool_capabilities: result.capabilities.tools,
+    prompt_capabilities: result.capabilities.prompts,
     instructions: result.instructions
   };
 }
 
+// The instructions carry the routing contract: one search call per
+// city-plus-timeframe request, consent-first memory, honest ticket flow.
 function assertInstructions(instructions) {
-  assert(typeof instructions === "string" && instructions.length > 0, "initialize returned no server instructions");
+  assert(typeof instructions === "string" && instructions.length > 0, "server returned no instructions");
   for (const phrase of [
-    "live event discovery",
-    "get_preference_onboarding",
+    "47 cities",
+    "ONE search_events call",
+    "nearest_covered_city",
+    "get_artist",
+    "dizko_onboarding",
     "consent",
     "profile_id and profile_secret",
-    "get_event_search_followups",
-    "recommend_events_for_user",
-    "get_event_feedback_prompt",
-    "record_event_feedback"
+    "record_event_feedback",
+    "get_ticket_offers"
   ]) {
-    assert(instructions.includes(phrase), `initialize instructions missing ${phrase}`);
+    assert(instructions.includes(phrase), `server instructions missing ${phrase}`);
   }
 }
 
 async function checkHealth() {
   const response = await fetchWithTimeout(`${baseUrl}/health`);
-  const body = await response.json();
+  const body = await readJsonBody(response, `${baseUrl}/health`);
   assert(response.ok, `Health endpoint returned HTTP ${response.status}`);
   assert(body.ok === true && body.name === "dizko", "Health body did not match expected service metadata");
   return {
@@ -266,9 +258,9 @@ async function checkHealth() {
 
 async function checkMetadata() {
   const response = await fetchWithTimeout(`${baseUrl}/`);
-  const body = await response.json();
+  const body = await readJsonBody(response, `${baseUrl}/`);
   assert(response.ok, `Metadata endpoint returned HTTP ${response.status}`);
-  for (const key of ["endpoint", "privacy", "support", "terms", "user_guide", "security", "logo"]) {
+  for (const key of ["endpoint", "install", "privacy", "support", "terms", "user_guide", "security", "logo"]) {
     assert(typeof body[key] === "string" && body[key].startsWith("/"), `Metadata missing ${key}`);
   }
   return {
@@ -330,6 +322,13 @@ async function checkPublicPages() {
     bytes: Buffer.byteLength(securityBody, "utf8")
   };
 
+  // /install is a redirect to the per-client guide; it must not be followed
+  // into www.dizko.app, only checked for the Location it advertises.
+  const install = await fetchWithTimeout(`${baseUrl}/install`, { redirect: "manual" });
+  assert(install.status === 302, `/install expected HTTP 302, got ${install.status}`);
+  assert(install.headers.get("location") === "https://www.dizko.app/mcp/install", `/install redirected to ${install.headers.get("location")}`);
+  pages.install = { ok: true, status: install.status, location: install.headers.get("location") };
+
   return pages;
 }
 
@@ -337,28 +336,41 @@ async function checkTools() {
   const response = await callRpc("tools/list");
   const toolNames = response.tools.map((tool) => tool.name);
   assertIncludes(toolNames, requiredTools);
+  assert(toolNames.length === requiredTools.length, `tools/list served ${toolNames.length} tools, expected ${requiredTools.length}: ${toolNames.join(", ")}`);
+  assert(JSON.stringify(toolNames) === JSON.stringify(requiredTools), `tools/list order differs from the package registry: ${toolNames.join(", ")}`);
+  assert(!toolNames.some((name) => name.startsWith("dizko_")), `tools/list exposes an unshipped dizko_ name: ${toolNames.filter((name) => name.startsWith("dizko_")).join(", ")}`);
 
   const toolsByName = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
   for (const tool of response.tools) {
     assert(typeof tool.title === "string" && tool.title.length > 0, `${tool.name} missing title`);
-    assert(/^Use this (when|only when)\b/.test(tool.description || ""), `${tool.name} description should start with "Use this..."`);
+    assert(typeof tool.description === "string" && tool.description.length > 40, `${tool.name} description is missing or too short`);
     assert(tool.inputSchema && typeof tool.inputSchema === "object", `${tool.name} missing inputSchema`);
     assert(tool.outputSchema === undefined, `${tool.name} should omit redundant outputSchema`);
-    assert(JSON.stringify(tool.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must advertise noauth securitySchemes`);
-    assert(JSON.stringify(tool._meta?.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must mirror noauth securitySchemes in _meta`);
+    assert(JSON.stringify(tool.securitySchemes) === requiredSecurity[tool.name], `${tool.name} must advertise ${requiredSecurity[tool.name]} securitySchemes`);
+    assert(JSON.stringify(tool._meta?.securitySchemes) === requiredSecurity[tool.name], `${tool.name} must mirror its securitySchemes in _meta`);
     assert(typeof tool._meta?.["openai/toolInvocation/invoking"] === "string", `${tool.name} missing openai/toolInvocation/invoking`);
     assert(typeof tool._meta?.["openai/toolInvocation/invoked"] === "string", `${tool.name} missing openai/toolInvocation/invoked`);
     assert(tool._meta["openai/toolInvocation/invoking"].length <= 64, `${tool.name} invoking status exceeds 64 chars`);
     assert(tool._meta["openai/toolInvocation/invoked"].length <= 64, `${tool.name} invoked status exceeds 64 chars`);
   }
 
-  assert(Buffer.byteLength(JSON.stringify(response), "utf8") < 19_600, "tools/list exceeds the 19,600-byte result budget");
+  assert(Buffer.byteLength(JSON.stringify(response), "utf8") < TOOLS_LIST_BYTE_BUDGET, `tools/list exceeds the ${TOOLS_LIST_BYTE_BUDGET.toLocaleString()}-byte result budget`);
+
+  const searchProperties = toolsByName.search_events.inputSchema?.properties || {};
+  for (const [name, property] of Object.entries(searchProperties)) {
+    assert(typeof property.description === "string" && property.description.length > 0, `search_events.${name} needs a description`);
+  }
+  assert(searchProperties.when?.description?.includes("YYYY-MM-DD"), "search_events.when must document the date form");
+  assert(Array.isArray(searchProperties.sort_by?.enum) && searchProperties.sort_by.enum.includes("distance"), "search_events.sort_by must enumerate distance");
+  assert(searchProperties.limit?.default === 12, "search_events.limit must serve its default");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("liked")), "record_event_feedback inputSchema must accept liked as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("rating")), "record_event_feedback inputSchema must accept rating as a feedback signal");
   assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("notes")), "record_event_feedback inputSchema must accept notes as a feedback signal");
   assert(toolsByName.delete_event_preferences.inputSchema?.properties?.confirm_delete?.type === "boolean", "delete_event_preferences inputSchema missing confirm_delete");
   assert(toolsByName.delete_event_preferences.inputSchema?.required?.includes("confirm_delete"), "delete_event_preferences inputSchema must require confirm_delete");
+  assert(toolsByName.create_event_preference_profile.inputSchema?.required?.includes("consent"), "create_event_preference_profile inputSchema must require consent");
   assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("confirmation_text"), "purchase_ticket_order inputSchema must require confirmation_text");
+  assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("quote_token"), "purchase_ticket_order inputSchema must require quote_token");
 
   for (const [toolName, annotations] of Object.entries(requiredAnnotations)) {
     const tool = toolsByName[toolName];
@@ -378,54 +390,85 @@ async function checkTools() {
   };
 }
 
+async function checkPrompts() {
+  const response = await callRpc("prompts/list");
+  const names = (response.prompts || []).map((prompt) => prompt.name);
+  assertIncludes(names, requiredPrompts);
+  for (const prompt of response.prompts) {
+    assert(typeof prompt.description === "string" && prompt.description.length > 0, `${prompt.name} prompt missing description`);
+  }
+  return { ok: true, count: names.length, names };
+}
+
+async function checkCities() {
+  const cities = await callTool("list_cities", {});
+  assert(Array.isArray(cities.cities) && cities.cities.length > 0, "list_cities returned no cities");
+  assert(cities.live_count > 0, "list_cities reported no live cities");
+  for (const city of cities.cities) {
+    assert(["live", "unlocking", "early"].includes(city.status), `${city.slug} has unexpected status ${city.status}`);
+    assert(typeof city.timezone === "string" && city.timezone.length > 0, `${city.slug} has no timezone`);
+  }
+  return {
+    ok: true,
+    count: cities.count,
+    live_count: cities.live_count,
+    sample: cities.cities.slice(0, 5).map((city) => `${city.slug} (${city.status})`)
+  };
+}
+
 async function checkLiveSearch() {
   const search = await callTool("search_events", { city: "berlin", when: "week", limit: 1 });
   assert(Array.isArray(search.events) && search.events.length > 0, "Live search returned no Berlin events");
+  const event = search.events[0];
+  assert(typeof search.timezone === "string", "Live search did not report the city timezone");
+  assert(typeof event.when === "string" && event.when.length > 0, "Live search event is missing the local `when`");
+  assert(typeof event.event_url === "string" && event.event_url.startsWith("https://"), "Live search event is missing event_url");
   return {
     ok: true,
+    timezone: search.timezone,
+    count: search.count,
     sample_event: {
-      id: search.events[0].id,
-      title: search.events[0].title,
-      url: search.events[0].url
+      id: event.id,
+      title: event.title,
+      when: event.when,
+      url: event.event_url
     }
   };
 }
 
+// The clarifying questions are served as a prompt; the assistant asks them
+// conversationally and only when a broad request is ambiguous.
 async function checkSearchFollowups() {
-  const followups = await callTool("get_event_search_followups", {
-    city: "berlin",
-    when: "tonight"
-  });
-  assert(followups.needs_followup === true, "Search followups should ask for missing details");
-  assert(followups.missing_fields?.includes("event_types"), "Search followups missing event_types");
-  assert(followups.missing_fields?.includes("vibe"), "Search followups missing vibe");
-  assert(followups.questions?.some((question) => question.includes("type of event")), "Search followups missing event type question");
-  assert(followups.questions?.some((question) => question.includes("vibe")), "Search followups missing vibe question");
+  const prompt = await getPrompt("dizko_search_followups", { city: "berlin", when: "tonight" });
+  assert(/search_events/.test(prompt.description || ""), "Search follow-ups prompt should point back at search_events");
+  assert(prompt.questions.some((question) => question.includes("type of event")), "Search follow-ups missing event type question");
+  assert(prompt.questions.some((question) => question.includes("vibe")), "Search follow-ups missing vibe question");
   return {
     ok: true,
-    missing_fields: followups.missing_fields,
-    question_count: followups.questions.length
+    prompt: "dizko_search_followups",
+    question_count: prompt.questions.length
   };
 }
 
 async function checkFeedbackPrompt() {
   const search = await callTool("search_events", { city: "berlin", when: "week", limit: 1 });
   assert(Array.isArray(search.events) && search.events.length > 0, "Feedback prompt could not get a live event id");
-  const prompt = await callTool("get_event_feedback_prompt", {
-    event_id: search.events[0].id,
-    attended_at: "2026-06-09"
-  });
-  assert(prompt.event?.id === search.events[0].id, "Feedback prompt returned the wrong event");
-  assert(Array.isArray(prompt.questions) && prompt.questions.some((question) => question.includes("Did you like")), "Feedback prompt missing like/dislike question");
-  assert(/record_event_feedback/.test(prompt.assistant_instruction || ""), "Feedback prompt missing record_event_feedback instruction");
+  const event = search.events[0];
+  const prompt = await getPrompt("dizko_post_event_feedback", { event_id: event.id });
+  assert((prompt.description || "").includes(event.title), "Feedback prompt did not name the event");
+  assert(prompt.questions.some((question) => question.includes("Did you like")), "Feedback prompt missing like/dislike question");
+  assert(/record_event_feedback/.test(prompt.description || ""), "Feedback prompt missing record_event_feedback instruction");
   return {
     ok: true,
-    event_id: prompt.event.id,
+    prompt: "dizko_post_event_feedback",
+    event_id: event.id,
     question_count: prompt.questions.length
   };
 }
 
 async function checkPreferenceMemory() {
+  await assertToolError("create_event_preference_profile", { consent: false, preferences: { genres: ["techno"] } });
+
   const created = await callTool("create_event_preference_profile", {
     consent: true,
     preferences: {
@@ -435,10 +478,12 @@ async function checkPreferenceMemory() {
       avoid: ["mainstream"]
     }
   });
-  const profileId = created.profile?.profile_id;
+  const profileId = created.profile_id;
   const profileSecret = created.profile_secret;
-  assert(/^upg_[0-9a-f-]{36}$/.test(profileId || ""), `Expected generated profile id, got ${profileId}`);
-  assert(/^ups_[A-Za-z0-9_-]+$/.test(profileSecret || ""), "Expected generated profile secret");
+  assert(created.created === true, "Profile creation did not report created: true");
+  assert(/^dzk_[0-9a-f-]{36}$/.test(profileId || ""), `Expected generated profile id, got ${profileId}`);
+  assert(/^dzs_[A-Za-z0-9_-]+$/.test(profileSecret || ""), "Expected generated profile secret");
+  assert(created.profile?.profile_id === profileId, "Profile creation public profile did not match profile_id");
   assert(created.access_instructions?.profile_id === profileId, "Profile creation missing access_instructions.profile_id");
   assert(created.access_instructions?.profile_secret === profileSecret, "Profile creation access_instructions did not include one-time profile_secret");
   assert(created.access_instructions?.profile_secret_returned_now === true, "Profile creation should mark profile_secret_returned_now true");
@@ -467,7 +512,7 @@ async function checkPreferenceMemory() {
     event_id: search.events[0].id
   });
 
-  await callTool("record_event_feedback", {
+  const recorded = await callTool("record_event_feedback", {
     profile_id: profileId,
     profile_secret: profileSecret,
     event_id: search.events[0].id,
@@ -475,6 +520,8 @@ async function checkPreferenceMemory() {
     rating: 5,
     notes: "Submission verifier liked the music but not the crowd, and it was too expensive."
   });
+  assert(recorded.saved === true, "Feedback was not saved");
+  assert(recorded.profile?.feedback_count >= 1, "Feedback response did not carry profile.feedback_count");
 
   const learned = await callTool("get_event_preferences", {
     profile_id: profileId,
@@ -486,7 +533,8 @@ async function checkPreferenceMemory() {
 
   await assertToolError("delete_event_preferences", {
     profile_id: profileId,
-    profile_secret: profileSecret
+    profile_secret: profileSecret,
+    confirm_delete: false
   });
 
   const deleted = await callTool("delete_event_preferences", {
@@ -499,6 +547,7 @@ async function checkPreferenceMemory() {
   return {
     ok: true,
     created_profile_id_prefix: profileId.slice(0, 8),
+    consent_required_enforced: true,
     secret_returned_once: true,
     access_card_returned_on_create: true,
     access_card_private: true,
@@ -540,6 +589,7 @@ async function checkRateLimitHeaders() {
 async function assertToolError(name, args) {
   const result = await callRpc("tools/call", { name, arguments: args });
   assert(result.isError === true, `${name} unexpectedly accepted invalid input`);
+  assert(typeof result.structuredContent?.code === "string", `${name} error is missing a code`);
 }
 
 async function callTool(name, args) {
@@ -549,6 +599,20 @@ async function callTool(name, args) {
   assert(result.structuredContent && typeof result.structuredContent === "object", `${name} returned no structuredContent`);
   assert(result.isError !== true, `${name} returned error: ${first.text}`);
   return JSON.parse(first.text);
+}
+
+// prompts/get answers with a description plus numbered questions in one
+// text message; return both so checks can assert on either.
+async function getPrompt(name, args) {
+  const result = await callRpc("prompts/get", { name, arguments: args });
+  const message = (result.messages || []).find((entry) => entry?.content?.type === "text");
+  assert(message, `${name} prompt returned no text message`);
+  const questions = message.content.text
+    .split("\n")
+    .filter((line) => /^\d+\.\s/.test(line))
+    .map((line) => line.replace(/^\d+\.\s/, ""));
+  assert(questions.length > 0, `${name} prompt returned no questions`);
+  return { description: result.description || "", text: message.content.text, questions };
 }
 
 // 2026-07-28 is stateless: the revision, the client's capabilities and its
@@ -572,7 +636,7 @@ async function callRpc(method, params = undefined) {
       // Required on 2026-07-28 POSTs so intermediaries can route without
       // parsing the body (SEP-2243).
       "Mcp-Method": method,
-      ...(method === "tools/call" && params?.name ? { "Mcp-Name": params.name } : {})
+      ...(["tools/call", "prompts/get"].includes(method) && params?.name ? { "Mcp-Name": params.name } : {})
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
@@ -611,6 +675,21 @@ async function fetchWithTimeout(url, options = {}) {
     });
   } catch (error) {
     throw new Error(`Request timed out or failed after ${requestTimeoutMs}ms: ${url} (${error.message})`);
+  }
+}
+
+// A proxy error page, a CDN 502 or a maintenance page all answer with HTML,
+// and response.json() then throws a bare SyntaxError whose message begins
+// "Unexpected token 'H'" - which says nothing about which endpoint failed or
+// what it actually returned. This reports the endpoint, the status and the
+// first line of the body instead.
+async function readJsonBody(response, url) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.trim().split("\n")[0].slice(0, 200) || "(empty body)";
+    throw new Error(`${url} returned HTTP ${response.status} with a non-JSON body: ${preview}`);
   }
 }
 

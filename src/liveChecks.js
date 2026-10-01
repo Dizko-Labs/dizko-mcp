@@ -105,7 +105,7 @@ export async function rpcCall(endpoint, method, params = undefined, options = {}
     method: "POST",
     headers: {
       "mcp-method": method,
-      ...(method === "tools/call" && params?.name ? { "mcp-name": params.name } : {})
+      ...((method === "tools/call" || method === "prompts/get") && params?.name ? { "mcp-name": params.name } : {})
     },
     body: {
       jsonrpc: "2.0",

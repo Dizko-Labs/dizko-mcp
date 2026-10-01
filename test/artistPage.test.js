@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getArtistPage } from "../src/artistPage.js";
 import { callTool, tools } from "../src/tools.js";
+import { handleMcpRequest } from "../src/mcpServer.js";
 
 const PUBLISHED = {
   slug: "avalon-emerson",
@@ -67,13 +68,36 @@ test("get_artist_page tool steers to fallback when nothing is published", async 
 
   const body = JSON.parse(result.content[0].text);
   assert.equal(body.published, false);
+  assert.match(body.assistant_instruction, /get_artist/);
   assert.match(body.assistant_instruction, /SoundCloud/);
 });
 
-test("get_artist_page is registered as a read-only tool", () => {
-  const descriptor = tools.find((tool) => tool.name === "get_artist_page");
+test("get_artist_page tool requires a handle without a request", async () => {
+  let called = false;
+  const result = await callTool("get_artist_page", {}, {
+    fetch: async () => { called = true; return new Response("x"); }
+  });
 
-  assert.ok(descriptor);
-  assert.equal(descriptor.annotations.readOnlyHint, true);
-  assert.notEqual(descriptor.annotations.destructiveHint, true);
+  assert.equal(result.isError, true);
+  assert.equal(result.structuredContent.code, "invalid_argument");
+  assert.equal(result.structuredContent.field, "handle");
+  assert.equal(called, false);
+});
+
+test("get_artist_page is a listed, read-only contract tool", async () => {
+  const listed = await handleMcpRequest({ method: "tools/list" });
+  const page = listed.tools.find((tool) => tool.name === "get_artist_page");
+  assert.ok(page, "get_artist_page is listed");
+  assert.ok(tools.find((tool) => tool.name === "get_artist_page"));
+  assert.equal(page.annotations.readOnlyHint, true);
+  assert.equal(page.annotations.destructiveHint, false);
+  assert.deepEqual(page.inputSchema.required, ["handle"]);
+
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_artist_page", arguments: { handle: "AvalonEmerson" } }
+  }, { fetch: fetchReturning(Response.json(PUBLISHED)) });
+  assert.equal(response.isError, false);
+  assert.equal(response.structuredContent.published, true);
+  assert.equal(response.structuredContent.page_url, "https://www.dizko.app/AvalonEmerson");
 });
