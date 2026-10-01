@@ -1,4 +1,6 @@
-import { getEvent, listCities, MAX_SEARCH_LIMIT, SORT_OPTIONS, searchEvents } from "./api.js";
+import { connectorRead, connectorWrite, getEvent, listCities, MAX_SEARCH_LIMIT, SORT_OPTIONS, searchEvents } from "./api.js";
+import { requireScope } from "./authContext.js";
+import { CONNECTOR_CONTRACT_VERSION, decodeEventCursor, encodeEventCursor } from "./connectorV1.js";
 import { getConfig } from "./config.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { cityDisplayName, cityTimezone, nearestCoveredCity, resolveCity } from "./cities.js";
@@ -12,7 +14,7 @@ import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
 import { cityPulse } from "./cityPulse.js";
-import { findArtist, findPromoter, findSceneEntities, findVenue } from "./entities.js";
+import { findArtist, findSceneEntities, findVenue } from "./entities.js";
 import {
   FilePreferenceStore,
   buildPreferenceHints,
@@ -30,13 +32,12 @@ import { applySchemaLimits, assertBoundedInput } from "./schemaLimits.js";
 import { firstErrorPayload, validateInput } from "./validate.js";
 
 export const EVENT_LINKS_INSTRUCTION = [
-  "Render events as a markdown list with one block per event and each fact on its own line, using this template:",
-  "**[<title>](<event_url>)**",
-  "- When: <when> · [Add to calendar](<calendar_url>)",
-  "- Where: <venue>, <address or city> · [Get directions](<directions_url>)",
-  "- What: <genres, vibe, set_times, or description>",
-  "- Price: <price> · [Tickets](<ticket_url>)",
-  "`when` is already in the city's local time - render it verbatim and never convert starts_at (UTC) yourself. Always link the title to event_url (the Dizko event page), never to ticket_url. Omit any line whose data is missing. Keep events in date order when they span several days. Do not merge facts onto one line."
+  "Render each event as three compact, scannable lines plus one action row:",
+  "[<title>](<dizko_url>)",
+  "<venue_name> · <when>",
+  "<lineup_artists> · <genre/vibe tags> · <going_count> going · <price>",
+  "[Tickets](<ticket_url>) · [Calendar](<calendar_url>) · [Directions](<directions_url>)",
+  "`when` is already in the city's local time: render it verbatim and never convert starts_at (UTC) yourself. Use only fields present in the tool result; omit missing facts and missing actions rather than inventing them. The title must link to dizko_url, never ticket_url. calendar_url is a downloadable .ics link. Keep events in date order when they span several days, and keep one event visually separate from the next."
 ].join("\n");
 
 export const ROUNDUP_INSTRUCTION = [
@@ -47,7 +48,7 @@ export const ROUNDUP_INSTRUCTION = [
 const ARTIST_EVENTS_INSTRUCTION = [
   "Answer per artist as one compact list: one line per upcoming event with `when` (already local time), venue, and city. Do not send per-event links on artist questions.",
   "Artists in not_found have no upcoming listed dates: say so plainly and never present another artist's event as theirs.",
-  "When an artist has a published Dizko page (page.published is true in dizko_find_artist), close with 'Stay up to date with all of <artist>'s dates, mixes, and press on their Dizko Page' plus page.page_url. Never guess a page URL."
+  "When an artist has a published Dizko page (page.published is true in get_artist), close with 'Stay up to date with all of <artist>'s dates, mixes, and press on their Dizko Page' plus page.page_url. Never guess a page URL."
 ].join("\n");
 
 const WEEKDAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -59,10 +60,202 @@ const WHEN_DESCRIPTION = `Timeframe preset resolved in the city's local timezone
 // what comes back, because not every client surfaces server instructions.
 // ---------------------------------------------------------------------------
 
+// recommend_events accepts the same filters as search_events and always ranks
+// one candidate window by taste, so the paging and rank inputs are left out
+// and result_limit (how many ranked events to return) is added.
+function recommendInputSchema() {
+  const search = rawTools.find((tool) => tool.name === "search_events").inputSchema;
+  const { offset: _offset, cursor: _cursor, rank: _rank, ...properties } = search.properties;
+  return {
+    ...search,
+    properties: {
+      ...properties,
+      result_limit: { type: "integer", minimum: 1, maximum: 50, default: 10, description: "How many ranked events to return (1-50, default 10)." }
+    }
+  };
+}
+
 const rawTools = [
   {
-    name: "dizko_search_events",
-    title: "Search Dizko Events",
+    name: "get_preference_onboarding",
+    title: "Get Preference Onboarding",
+    description: "Use this when a user wants consent-first questions before saving event preferences.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: "object", properties: { profile_id: { type: "string", description: "Stable user/profile id if already known." } } }
+  },
+  {
+    name: "create_event_preference_profile",
+    title: "Create Event Preference Profile",
+    description: "Create a private Dizko preference profile after the user explicitly agrees to save their taste. Returns profile_id and a one-time profile_secret to keep for future personalized calls. Ask the onboarding questions (get_preference_onboarding) and get consent first; consent must be true.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      ...preferenceInputDefinitions(),
+      type: "object",
+      properties: {
+        consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
+        preferences: { $ref: "#/$defs/preferences", description: "Initial taste: cities, event_types, genres, vibe, neighborhoods, venues, promoters, featuring, avoid, max_price, free, nightlife, day_filters." }
+      },
+      required: ["consent"]
+    }
+  },
+  {
+    name: "save_event_preferences",
+    title: "Save Event Preferences",
+    description: "Add to or replace saved preferences on an existing profile (mode merge or replace). Needs profile_id, profile_secret and consent=true. Use when the user shares new taste, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters).",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      ...preferenceInputDefinitions(),
+      type: "object",
+      properties: {
+        profile_id: { type: "string" },
+        profile_secret: { type: "string" },
+        consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
+        mode: { type: "string", enum: ["merge", "replace"], default: "merge", description: "merge adds to existing lists; replace overwrites everything." },
+        preferences: { $ref: "#/$defs/preferences" }
+      },
+      required: ["profile_id", "profile_secret", "consent", "preferences"]
+    }
+  },
+  {
+    name: "get_event_preferences",
+    title: "Get Event Preferences",
+    description: "Read a profile's saved preferences, learned taste (with scores) and feedback count. Use when the user asks what Dizko remembers about them.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: profileSchema()
+  },
+  {
+    name: "delete_event_preferences",
+    title: "Delete Event Preferences",
+    description: "Delete a profile's saved preferences and feedback history. Only after the user confirms they want their Dizko connector data deleted; confirm_delete must be true. Scoped to Dizko only.",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        profile_id: { type: "string" },
+        profile_secret: { type: "string" },
+        confirm_delete: { type: "boolean", description: "Must be true only after the user confirms deletion." }
+      },
+      required: ["profile_id", "profile_secret", "confirm_delete"]
+    }
+  },
+  {
+    name: "record_event_feedback",
+    title: "Record Event Feedback",
+    description: "Store post-event feedback (liked, 1-5 rating, notes) for a profile and update learned taste. A like promotes the event's genres, vibe and venue; a dislike marks the venue and promoter, and only penalizes genres when the notes blame the music. Call only after the user answers (get_event_feedback_prompt has the questions).",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        profile_id: { type: "string" },
+        profile_secret: { type: "string" },
+        event_id: { type: "string", description: "Event id from any Dizko result." },
+        liked: { type: "boolean" },
+        rating: { type: "number", minimum: 1, maximum: 5 },
+        notes: { type: "string", description: "Free text; mentions of music, crowd, venue, price or timing become learned signals." },
+        attended_at: { type: "string", description: "ISO date/time or YYYY-MM-DD." }
+      },
+      required: ["profile_id", "profile_secret", "event_id"],
+      anyOf: [{ required: ["liked"] }, { required: ["rating"] }, { required: ["notes"] }]
+    }
+  },
+  {
+    name: "get_event_feedback_prompt",
+    title: "Get Event Feedback Prompt",
+    description: "Use this when a user needs a short post-event feedback prompt.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        event_id: { type: "string" },
+        attended_at: { type: "string", description: "Optional ISO date/time or YYYY-MM-DD the user attended or planned to attend." }
+      },
+      required: ["event_id"]
+    }
+  },
+  {
+    name: "get_event_search_followups",
+    title: "Get Event Search Followups",
+    description: "Use this when an event search needs follow-up questions.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        city: { type: "string" }, when: { type: "string" }, date_from: { type: "string" }, query: { type: "string" },
+        event_types: { type: "array", items: { type: "string" } }, genres: { type: "array", items: { type: "string" } }, vibe: { type: "array", items: { type: "string" } }, neighborhoods: { type: "array", items: { type: "string" } },
+        venue: { type: "string" }, free: { type: "boolean" }, price_max: { type: "number" }, max_price: { type: "number" },
+        avoid: { type: "array", items: { type: "string" } }
+      }
+    }
+  },
+  {
+    name: "list_cities",
+    title: "List Covered Cities",
+    description: "Live coverage: every city Dizko serves with status (live, unlocking, early), event count, timezone and freshness. Use when a user asks where Dizko works, whether a city is covered, or how fresh the data is. Unlocking and early cities are searchable but thin.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "find_scene_entities",
+    title: "Find Scene Entities",
+    description: "Use this when a user asks who a DJ is or about a venue, collective, or promoter.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["dj", "artist", "venue", "collective", "promoter"] },
+        id: { type: "string" },
+        query: { type: "string" },
+        city: { type: "string" },
+        genre: { type: "string" },
+        date_from: { type: "string" },
+        date_to: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 20 }
+      },
+      required: ["kind"],
+      anyOf: [{ required: ["id"] }, { required: ["query"] }]
+    }
+  },
+  {
+    name: "get_artist",
+    title: "Get Artist",
+    description: "Use this when a user wants a canonical artist profile, graph context, published links, and upcoming events. Pass an id or a name query; this does not enumerate the artist catalog.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Canonical Dizko entity id." },
+        query: { type: "string", description: "Artist or venue name when the id is unknown." },
+        city: { type: "string" },
+        date_from: { type: "string" },
+        date_to: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 20, default: 10 }
+      },
+      anyOf: [{ required: ["id"] }, { required: ["query"] }],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "get_venue",
+    title: "Get Venue",
+    description: "Use this when a user wants a canonical venue profile, graph context, and upcoming events. Pass an id or a name query; this does not enumerate the venue catalog.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Canonical Dizko entity id." },
+        query: { type: "string", description: "Artist or venue name when the id is unknown." },
+        city: { type: "string" },
+        date_from: { type: "string" },
+        date_to: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 20, default: 10 }
+      },
+      anyOf: [{ required: ["id"] }, { required: ["query"] }],
+      additionalProperties: false
+    }
+  },
+  {
+    name: "search_events",
+    title: "Search Events",
     description: "Search live Dizko events in one city and timeframe. Use for any 'what's on' request that names a city, a venue, an artist, or a timeframe. Returns up to `limit` events with local times (`when`), venue and address, price, genres, vibe, lineup, set times and links; `count` is the total matching. Pass profile_id and profile_secret to rank by saved taste (saved taste ranks results, it never filters them). Filters you pass (genres, vibe, event_types, price_max, venue, featuring) are hard filters; `avoid` and `max_price` are ranking hints. When nothing matches, the result carries `no_results` with how many events exist without the filters and ordered `suggested_relaxations` you can retry directly.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -92,17 +285,46 @@ const rawTools = [
         rank: { type: "string", enum: ["relevance", "taste"], description: "relevance (default) keeps the API order; taste ranks the page by genres, vibe, avoid and budget from this request and from the profile when given. Defaults to taste when a profile is given." },
         profile_id: { type: "string", description: "Optional Dizko preference profile id; pass with profile_secret to rank by saved and learned taste." },
         profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
-        fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS }, description: "Extra per-event fields to include: description, images, coordinates, socials, promoters, source. Omit for the compact default." },
+        fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS }, description: "Extra per-event fields: description (long form), coordinates, socials, promoters (full objects). Images and source are always included. Omit for the compact default." },
         limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, default: 12, description: `Events to return per page (1-${MAX_SEARCH_LIMIT}, default 12). count is the total available; page with offset.` },
-        offset: { type: "integer", minimum: 0, default: 0, description: "Pagination cursor: pass back the next_offset from the previous page, never a number you computed. Applies to relevance ranking only; taste ranking scores one window and ignores it." }
+        offset: { type: "integer", minimum: 0, default: 0, description: "Legacy pagination offset; prefer cursor. Pass back next_offset from the previous page, never a number you computed. Applies to relevance ranking only; taste ranking scores one window and ignores it." },
+        cursor: { type: "string", description: "Opaque next_cursor returned by a prior search_events call. Takes precedence over offset." }
       },
       dependentRequired: { profile_id: ["profile_secret"], profile_secret: ["profile_id"] }
     }
   },
   {
-    name: "dizko_plan_night",
-    title: "Plan a Night Out",
-    description: "Build a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Use when the user wants a plan with backups rather than a list. Accepts the same filters as dizko_search_events and an optional profile for saved taste. An empty plan carries the same `no_results` guidance as search.",
+    name: "recommend_events",
+    title: "Recommend Events",
+    description: "Use this when a user wants live events ranked by taste, vibe, price, and exclusions. Every result carries recommendation_reasons. Request filters (genres, vibe, event_types, price_max, venue, featuring) are hard filters; avoid and max_price only rank.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: null
+  },
+  {
+    name: "recommend_events_for_user",
+    title: "Recommend Events For User",
+    description: "Use this when a user wants recommendations personalized with a saved Dizko profile. Saved and learned taste rank the results; they never hide them.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        profile_id: { type: "string" },
+        profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
+        city: { type: "string" }, when: { type: "string" }, date_from: { type: "string" }, date_to: { type: "string" },
+        query: { type: "string" },
+        event_types: { type: "array", items: { type: "string" } }, genres: { type: "array", items: { type: "string" } }, vibe: { type: "array", items: { type: "string" } }, neighborhoods: { type: "array", items: { type: "string" } },
+        venue: { type: "string" }, featuring: { type: "string" }, free: { type: "boolean" }, nightlife: { type: "boolean" },
+        avoid: { type: "array", items: { type: "string" } }, max_price: { type: "number" }, price_max: { type: "number" },
+        limit: { type: "number", default: 50 },
+        result_limit: { type: "number", default: 10 }
+      },
+      required: ["profile_id", "profile_secret"]
+    }
+  },
+  {
+    name: "plan_night",
+    title: "Plan Night",
+    description: "Build a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Use when the user wants a plan with backups rather than a list. Accepts the same filters as search_events and an optional profile for saved taste. An empty plan carries the same `no_results` guidance as search.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -118,7 +340,10 @@ const rawTools = [
         neighborhoods: { type: "array", items: { type: "string" } },
         venue: { type: "string" },
         featuring: { type: "string" },
+        promoter: { type: "string", description: "Promoter slug or display name." },
         free: { type: "boolean" },
+        pride: { type: "boolean", description: "Only Pride / LGBTQ+ flagged events." },
+        price_min: { type: "number", description: "Hard filter: minimum ticket price." },
         price_max: { type: "number", description: "Hard price cap." },
         max_price: { type: "number", description: "Soft budget for ranking." },
         avoid: { type: "array", items: { type: "string" }, description: "Ranking penalties." },
@@ -131,8 +356,8 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_daily_roundup",
-    title: "Daily City Roundup",
+    name: "get_daily_roundup",
+    title: "Get Daily Roundup",
     description: "One-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. Use for 'what's happening today/tomorrow', morning briefings and scheduled check-ins. With a profile, saved, learned and per-weekday taste rank the picks. Pass compact=true for a short push-style digest.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -140,7 +365,7 @@ const rawTools = [
       properties: {
         city: { type: "string", description: "City name or slug." },
         date: { type: "string", description: "Target day, YYYY-MM-DD (city-local). Defaults to today." },
-        when: { type: "string", description: "Single-day preset: today, tonight, tomorrow, or a weekday name. Ranges are rejected; use dizko_search_events for those." },
+        when: { type: "string", description: "Single-day preset: today, tonight, tomorrow, or a weekday name. Ranges are rejected; use search_events for those." },
         profile_id: { type: "string", description: "Optional profile id; pass with profile_secret to personalize." },
         profile_secret: { type: "string" },
         event_types: { type: "array", items: { type: "string" }, description: "Hard filter." },
@@ -161,103 +386,8 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_city_pulse",
-    title: "City Pulse",
-    description: "Aggregate read of a city's scene over the coming days: busiest nights (city-local dates), top venues (attendance-weighted), genre mix, headline events and free-event count, every stat with evidence counts. Use for 'what's hot', 'how busy is Berlin this week', or trend questions. Public inventory only.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        city: { type: "string", description: "City name or slug." },
-        days: { type: "integer", minimum: 1, maximum: 14, default: 7, description: "Window length in days from date_from (1-14)." },
-        date_from: { type: "string", description: "Inclusive start date, YYYY-MM-DD. Defaults to today in the city." },
-        event_types: { type: "array", items: { type: "string" }, description: "Optional event-type filter, for example party." }
-      },
-      required: ["city"]
-    }
-  },
-  {
-    name: "dizko_get_event",
-    title: "Get Event",
-    description: "Full detail for one Dizko event id: local times, venue and address, price, lineup, set times, artist socials, image, coordinates and links. Only call it for an id the user gave you or for extra detail on an event not in the current results; search results already contain what the template needs.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Event id (UUID) from any Dizko result." }
-      },
-      required: ["id"]
-    }
-  },
-  {
-    name: "dizko_list_cities",
-    title: "List Covered Cities",
-    description: "Live coverage: every city Dizko serves with status (live, unlocking, early), event count, timezone and freshness. Use when a user asks where Dizko works, whether a city is covered, or how fresh the data is. Unlocking and early cities are searchable but thin.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: { type: "object", properties: {} }
-  },
-  {
-    name: "dizko_find_artist",
-    title: "Find Artist or DJ",
-    description: "Look up a DJ, artist, or performer. Search by name (query) to get candidates with a best_match; pass an id from a result for the full profile: bio, cities, genres, links, upcoming events (deduplicated, date-ordered), insights (top venues, related artists), mixes, press, and the artist's published Dizko page with deep-linkable mixes when one exists. Use for 'who is X', 'what does X play', 'X's Dizko page' and 'X's latest mix'. Candidates are ranked by how well the name answers the query and, when several answer it equally well, by how much of an answer each artist is: listed dates, press and career depth. best_match.confident is true only when one candidate wins outright on the name or is decisively ahead on evidence, so 'Klock' resolves to Ben Klock over BJ Klock, while two comparable artists sharing a name stay ambiguous for you to ask about.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Artist name to search for." },
-        id: { type: "string", description: "Artist id from a previous result (for example nina-kraviz) for the full profile." },
-        city: { type: "string", description: "Optional city to bias search and scope upcoming events." },
-        genre: { type: "string", description: "Optional genre filter for search." },
-        date_from: { type: "string", description: "Inclusive start date for upcoming events, YYYY-MM-DD." },
-        date_to: { type: "string", description: "Inclusive end date for upcoming events, YYYY-MM-DD." },
-        limit: { type: "integer", minimum: 1, maximum: 20, default: 10, description: "Search candidates or upcoming events to return." },
-        fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS } }
-      },
-      anyOf: [{ required: ["query"] }, { required: ["id"] }]
-    }
-  },
-  {
-    name: "dizko_find_venue",
-    title: "Find Venue",
-    description: "Look up a club, venue or space. Search by name (query) for candidates with a best_match; pass an id for the profile: neighborhood, capacity, genres, bio, links, and upcoming events at that venue (date-ordered). Use for 'what's on at Berghain', 'where is Nowadays', 'tell me about fabric'.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Venue name to search for." },
-        id: { type: "string", description: "Venue id from a previous result (for example berghain) for the profile and its events." },
-        city: { type: "string", description: "Optional city to disambiguate." },
-        genre: { type: "string" },
-        date_from: { type: "string", description: "Inclusive start date for upcoming events, YYYY-MM-DD." },
-        date_to: { type: "string", description: "Inclusive end date for upcoming events, YYYY-MM-DD." },
-        limit: { type: "integer", minimum: 1, maximum: 20, default: 10 },
-        fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS } }
-      },
-      anyOf: [{ required: ["query"] }, { required: ["id"] }]
-    }
-  },
-  {
-    name: "dizko_find_promoter",
-    title: "Find Promoter or Collective",
-    description: "Look up a promoter, collective or party crew. Search by name (query); pass city to include promoters with upcoming Dizko listings (collectives are searched worldwide). Pass an id for the profile: genres, venues they use, upcoming events. Use for 'who runs Gegen', 'what does Cocktail d'Amore have coming up'.",
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Promoter or collective name." },
-        id: { type: "string", description: "Promoter slug or collective id from a previous result." },
-        city: { type: "string", description: "City slug. Needed to list promoter events; promoter ids are per city." },
-        kind: { type: "string", enum: ["promoter", "collective"], description: "Restrict to one kind. Omit to search both." },
-        genre: { type: "string" },
-        limit: { type: "integer", minimum: 1, maximum: 20, default: 10 },
-        fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS } }
-      },
-      anyOf: [{ required: ["query"] }, { required: ["id"] }]
-    }
-  },
-  {
-    name: "dizko_artist_events",
-    title: "Upcoming Events by Artist",
+    name: "get_artist_events",
+    title: "Get Artist Events",
     description: "Upcoming shows grouped by artist for up to 8 named DJs, performers or comedians, deduplicated across sources and date-ordered, optionally scoped to a city. Use for 'when does X play next' or 'is X playing in Berlin this month'. With a profile and no artists named, tracks the profile's saved featuring list.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -276,83 +406,51 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_create_profile",
-    title: "Create Preference Profile",
-    description: "Create a private Dizko preference profile after the user explicitly agrees to save their taste. Returns profile_id and a one-time profile_secret to keep for future personalized calls. Ask the onboarding questions (prompt dizko_onboarding) and get consent first; consent must be true.",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      ...preferenceInputDefinitions(),
-      type: "object",
-      properties: {
-        consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
-        preferences: { $ref: "#/$defs/preferences", description: "Initial taste: cities, event_types, genres, vibe, neighborhoods, venues, promoters, featuring, avoid, max_price, free, nightlife, day_filters." }
-      },
-      required: ["consent"]
-    }
-  },
-  {
-    name: "dizko_update_profile",
-    title: "Update Preference Profile",
-    description: "Add to or replace saved preferences on an existing profile (mode merge or replace). Needs profile_id, profile_secret and consent=true. Use when the user shares new taste, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters).",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      ...preferenceInputDefinitions(),
-      type: "object",
-      properties: {
-        profile_id: { type: "string" },
-        profile_secret: { type: "string" },
-        consent: { type: "boolean", description: "Must be true only after the user agreed to save preferences." },
-        mode: { type: "string", enum: ["merge", "replace"], default: "merge", description: "merge adds to existing lists; replace overwrites everything." },
-        preferences: { $ref: "#/$defs/preferences" }
-      },
-      required: ["profile_id", "profile_secret", "consent", "preferences"]
-    }
-  },
-  {
-    name: "dizko_get_profile",
-    title: "Get Preference Profile",
-    description: "Read a profile's saved preferences, learned taste (with scores) and feedback count. Use when the user asks what Dizko remembers about them.",
+    name: "get_artist_page",
+    title: "Get Artist Page",
+    description: "Use this when a user wants an artist's Dizko page or a specific published mix or set. Returns the page embeds with stable block ids for deep links.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    inputSchema: profileSchema()
+    inputSchema: { type: "object", properties: { handle: { type: "string" } }, required: ["handle"], additionalProperties: false }
   },
   {
-    name: "dizko_delete_profile",
-    title: "Delete Preference Profile",
-    description: "Delete a profile's saved preferences and feedback history. Only after the user confirms they want their Dizko connector data deleted; confirm_delete must be true. Scoped to Dizko only.",
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    name: "get_city_pulse",
+    title: "Get City Pulse",
+    description: "Aggregate read of a city's scene over the coming days: busiest nights (city-local dates), top venues (attendance-weighted), genre mix, headline events and free-event count, every stat with evidence counts. Use for 'what's hot', 'how busy is Berlin this week', or trend questions. Public inventory only.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
       properties: {
-        profile_id: { type: "string" },
-        profile_secret: { type: "string" },
-        confirm_delete: { type: "boolean", description: "Must be true only after the user confirms deletion." }
+        city: { type: "string", description: "City name or slug." },
+        days: { type: "integer", minimum: 1, maximum: 14, default: 7, description: "Window length in days from date_from (1-14)." },
+        date_from: { type: "string", description: "Inclusive start date, YYYY-MM-DD. Defaults to today in the city." },
+        event_types: { type: "array", items: { type: "string" }, description: "Optional event-type filter, for example party." }
       },
-      required: ["profile_id", "profile_secret", "confirm_delete"]
+      required: ["city"]
     }
   },
   {
-    name: "dizko_record_feedback",
-    title: "Record Event Feedback",
-    description: "Store post-event feedback (liked, 1-5 rating, notes) for a profile and update learned taste. A like promotes the event's genres, vibe and venue; a dislike marks the venue and promoter, and only penalizes genres when the notes blame the music. Call only after the user answers (prompt dizko_post_event_feedback has the questions).",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    name: "get_event",
+    title: "Get Event",
+    description: "Full detail for one Dizko event id: local times, venue and address, price, lineup, set times, artist socials, image, coordinates and links. Only call it for an id the user gave you or for extra detail on an event not in the current results; search results already contain what the template needs.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
       properties: {
-        profile_id: { type: "string" },
-        profile_secret: { type: "string" },
-        event_id: { type: "string", description: "Event id from any Dizko result." },
-        liked: { type: "boolean" },
-        rating: { type: "number", minimum: 1, maximum: 5 },
-        notes: { type: "string", description: "Free text; mentions of music, crowd, venue, price or timing become learned signals." },
-        attended_at: { type: "string", description: "ISO date/time or YYYY-MM-DD." }
+        id: { type: "string", description: "Event id (UUID) from any Dizko result." }
       },
-      required: ["profile_id", "profile_secret", "event_id"],
-      anyOf: [{ required: ["liked"] }, { required: ["rating"] }, { required: ["notes"] }]
+      required: ["id"]
     }
   },
   {
-    name: "dizko_ticket_offers",
-    title: "Ticket Offers",
+    name: "get_ticket_purchase_policy",
+    title: "Get Ticket Purchase Policy",
+    description: "Use this when a user asks how Dizko agents can buy tickets.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "get_ticket_offers",
+    title: "Get Ticket Offers",
     description: "Ticket options for one event: provider, checkout link, estimated price, whether entry is free, and whether autonomous purchase is supported (it is not on the hosted connector; third-party links are a checkout handoff). Includes the purchase policy. Call before quoting.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -364,15 +462,15 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_quote_tickets",
-    title: "Quote Tickets",
-    description: "Create a signed, time-limited quote for an event: quantity, ticket type, max total, currency, refund terms, delivery email and stop conditions. Returns a quote_token to pass unchanged to dizko_purchase_tickets and the exact confirmation text to ask the user for.",
+    name: "quote_ticket_order",
+    title: "Quote Ticket Order",
+    description: "Create a signed, time-limited quote for an event: quantity, ticket type, max total, currency, refund terms, delivery email and stop conditions. Returns a quote_token to pass unchanged to purchase_ticket_order and the exact confirmation text to ask the user for.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: "object",
       properties: {
         event_id: { type: "string" },
-        offer_id: { type: "string", description: "Optional offer_id from dizko_ticket_offers." },
+        offer_id: { type: "string", description: "Optional offer_id from get_ticket_offers." },
         quantity: { type: "integer", minimum: 1, maximum: 12, default: 1 },
         ticket_type: { type: "string", description: "For example GA, balcony, seated, VIP, or best available." },
         max_total: { type: "number", minimum: 0, description: "Maximum all-in total the user authorizes." },
@@ -385,14 +483,14 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_purchase_tickets",
-    title: "Purchase Tickets",
+    name: "purchase_ticket_order",
+    title: "Purchase Ticket Order",
     description: "Execute a quoted ticket order after the user's explicit written confirmation (must say buy/purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
       properties: {
-        quote_token: { type: "string", description: "The signed quote_token from dizko_quote_tickets, unchanged." },
+        quote_token: { type: "string", description: "The signed quote_token from quote_ticket_order, unchanged." },
         confirmation_text: { type: "string", description: "The user's own words confirming the purchase, including buy/purchase, the quantity and the max total." },
         user_payment_profile_id: { type: "string", description: "Provider-specific saved payment profile id, when an integrated provider supports autonomous purchase." },
         delivery_email: { type: "string" },
@@ -402,8 +500,40 @@ const rawTools = [
     }
   },
   {
-    name: "dizko_calendar_file",
-    title: "Calendar File",
+    name: "get_taste_profile",
+    title: "Get Taste Profile",
+    description: "Use this when personalizing for a connected user: read their learned Dizko taste plus saved and binned events.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:read"] }],
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "bin_event",
+    title: "Bin Event",
+    description: "Use this only when the user confirms an event is not for them. It hides the event and teaches their Dizko taste model.",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
+    name: "save_event",
+    title: "Save Event",
+    description: "Use this when a user confirms they want to save one Dizko event to the connected user's account only after explicit confirmation.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
+    name: "add_to_dizko_plan",
+    title: "Add to Dizko Plan",
+    description: "Use this when a user confirms they want to add one Dizko event to the connected user's persistent plan only after explicit confirmation.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    securitySchemes: [{ type: "oauth2", scopes: ["saved:write"] }],
+    inputSchema: { type: "object", properties: { event_id: { type: "string" }, confirmed: { type: "boolean" }, idempotency_key: { type: "string", minLength: 16, maxLength: 128 } }, required: ["event_id", "confirmed", "idempotency_key"] }
+  },
+  {
+    name: "create_event_calendar_file",
+    title: "Create Event Calendar File",
     description: "Build an importable .ics calendar entry for one event (local time, venue address, lineup, set times, links). Use when the user wants the event in Apple Calendar, Google Calendar or Outlook as a file; the per-event calendar_url is the one-click alternative.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
@@ -415,28 +545,41 @@ const rawTools = [
       required: ["event_id"]
     }
   }
+
 ];
+rawTools.find((tool) => tool.name === "recommend_events").inputSchema = recommendInputSchema();
 
 const TOOL_STATUS = {
-  dizko_search_events: ["Searching live events", "Live events found"],
-  dizko_plan_night: ["Planning the night", "Night plan ready"],
-  dizko_daily_roundup: ["Building today's roundup", "Roundup ready"],
-  dizko_city_pulse: ["Reading the city pulse", "City pulse ready"],
-  dizko_get_event: ["Loading event", "Event loaded"],
-  dizko_list_cities: ["Checking city coverage", "City coverage ready"],
-  dizko_find_artist: ["Looking up artist", "Artist found"],
-  dizko_find_venue: ["Looking up venue", "Venue found"],
-  dizko_find_promoter: ["Looking up promoter", "Promoter found"],
-  dizko_artist_events: ["Checking artist dates", "Artist dates ready"],
-  dizko_create_profile: ["Creating preference profile", "Preference profile created"],
-  dizko_update_profile: ["Saving preferences", "Preferences saved"],
-  dizko_get_profile: ["Loading preferences", "Preferences loaded"],
-  dizko_delete_profile: ["Deleting preferences", "Preferences deleted"],
-  dizko_record_feedback: ["Saving event feedback", "Event feedback saved"],
-  dizko_ticket_offers: ["Checking ticket options", "Ticket options ready"],
-  dizko_quote_tickets: ["Preparing ticket quote", "Ticket quote ready"],
-  dizko_purchase_tickets: ["Processing ticket order", "Ticket order processed"],
-  dizko_calendar_file: ["Creating calendar file", "Calendar file ready"]
+  get_preference_onboarding: ["Preparing onboarding questions", "Onboarding questions ready"],
+  create_event_preference_profile: ["Creating preference profile", "Preference profile created"],
+  save_event_preferences: ["Saving preferences", "Preferences saved"],
+  get_event_preferences: ["Loading preferences", "Preferences loaded"],
+  delete_event_preferences: ["Deleting preferences", "Preferences deleted"],
+  record_event_feedback: ["Saving event feedback", "Event feedback saved"],
+  get_event_feedback_prompt: ["Preparing feedback questions", "Feedback questions ready"],
+  get_event_search_followups: ["Preparing follow-up questions", "Follow-up questions ready"],
+  list_cities: ["Checking city coverage", "City coverage ready"],
+  find_scene_entities: ["Looking up the scene", "Scene lookup ready"],
+  get_artist: ["Looking up artist", "Artist ready"],
+  get_venue: ["Looking up venue", "Venue ready"],
+  search_events: ["Searching live events", "Live events found"],
+  recommend_events: ["Ranking live events", "Recommendations ready"],
+  recommend_events_for_user: ["Ranking events for you", "Recommendations ready"],
+  plan_night: ["Planning the night", "Night plan ready"],
+  get_daily_roundup: ["Building today's roundup", "Roundup ready"],
+  get_artist_events: ["Checking artist dates", "Artist dates ready"],
+  get_artist_page: ["Loading artist page", "Artist page ready"],
+  get_city_pulse: ["Reading the city pulse", "City pulse ready"],
+  get_event: ["Loading event", "Event loaded"],
+  get_ticket_purchase_policy: ["Loading ticket policy", "Ticket policy ready"],
+  get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
+  quote_ticket_order: ["Preparing ticket quote", "Ticket quote ready"],
+  purchase_ticket_order: ["Processing ticket order", "Ticket order processed"],
+  get_taste_profile: ["Reading your taste", "Taste ready"],
+  bin_event: ["Hiding event", "Event hidden"],
+  save_event: ["Saving event", "Event saved"],
+  add_to_dizko_plan: ["Adding to your plan", "Added to your plan"],
+  create_event_calendar_file: ["Creating calendar file", "Calendar file ready"]
 };
 
 // Every tool schema gets a string and array cap before it is published or
@@ -448,7 +591,7 @@ export const tools = rawTools.map(publicToolDefinition);
 const toolsByName = new Map(rawTools.map((tool) => [tool.name, tool]));
 
 function publicToolDefinition(tool) {
-  const securitySchemes = [{ type: "noauth" }];
+  const securitySchemes = tool.securitySchemes || [{ type: "noauth" }];
   const [invoking, invoked] = TOOL_STATUS[tool.name] || ["Working", "Ready"];
   return {
     ...tool,
@@ -463,32 +606,6 @@ function publicToolDefinition(tool) {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy tool names (pre-0.8) keep working so existing connectors and
-// scripts do not break. They are not listed in tools/list.
-// ---------------------------------------------------------------------------
-
-export const LEGACY_TOOL_ALIASES = {
-  search_events: { name: "dizko_search_events" },
-  recommend_events: { name: "dizko_search_events", adapt: (input) => ({ ...input, rank: "taste", limit: input.result_limit ?? input.limit ?? 10 }) },
-  recommend_events_for_user: { name: "dizko_search_events", adapt: (input) => ({ ...input, rank: "taste", limit: input.result_limit ?? 10 }) },
-  plan_night: { name: "dizko_plan_night" },
-  get_daily_roundup: { name: "dizko_daily_roundup" },
-  get_city_pulse: { name: "dizko_city_pulse" },
-  get_event: { name: "dizko_get_event" },
-  list_cities: { name: "dizko_list_cities" },
-  get_artist_events: { name: "dizko_artist_events" },
-  create_event_preference_profile: { name: "dizko_create_profile" },
-  save_event_preferences: { name: "dizko_update_profile" },
-  get_event_preferences: { name: "dizko_get_profile" },
-  delete_event_preferences: { name: "dizko_delete_profile" },
-  record_event_feedback: { name: "dizko_record_feedback" },
-  get_ticket_offers: { name: "dizko_ticket_offers" },
-  quote_ticket_order: { name: "dizko_quote_tickets" },
-  purchase_ticket_order: { name: "dizko_purchase_tickets" },
-  create_event_calendar_file: { name: "dizko_calendar_file" }
-};
-
-// ---------------------------------------------------------------------------
 // Prompts: conversational scaffolding that used to be tools.
 // ---------------------------------------------------------------------------
 
@@ -496,7 +613,7 @@ export const prompts = [
   {
     name: "dizko_onboarding",
     title: "Preference onboarding",
-    description: "Consent-first questions to ask before saving a user's event preferences with dizko_create_profile.",
+    description: "Consent-first questions to ask before saving a user's event preferences with create_event_preference_profile.",
     arguments: []
   },
   {
@@ -511,7 +628,7 @@ export const prompts = [
   {
     name: "dizko_post_event_feedback",
     title: "Post-event feedback questions",
-    description: "Short follow-up questions to ask after an event before calling dizko_record_feedback.",
+    description: "Short follow-up questions to ask after an event before calling record_event_feedback.",
     arguments: [{ name: "event_id", description: "The event the user picked or attended.", required: true }]
   },
   {
@@ -525,7 +642,7 @@ export const prompts = [
 export async function getPrompt(name, args = {}, options = {}) {
   switch (name) {
     case "dizko_onboarding":
-      return promptResult("Ask these questions conversationally, then ask whether Dizko may save the answers. Only if the user agrees, call dizko_create_profile with consent=true and remember the returned profile_id and profile_secret privately.", onboardingQuestions());
+      return promptResult("Ask these questions conversationally, then ask whether Dizko may save the answers. Only if the user agrees, call create_event_preference_profile with consent=true and remember the returned profile_id and profile_secret privately.", onboardingQuestions());
     case "dizko_search_followups": {
       const followups = buildSearchFollowups(args);
       return promptResult(followups.assistant_instruction, followups.questions);
@@ -533,7 +650,7 @@ export async function getPrompt(name, args = {}, options = {}) {
     case "dizko_post_event_feedback": {
       if (!args.event_id) throw new ToolInputError("event_id is required.", { field: "event_id" });
       const event = summarizeEvent(await getEvent(args.event_id, options));
-      return promptResult(`Ask these naturally about ${event.title}${event.when ? ` (${event.when})` : ""}. If the user has a Dizko profile and answers, call dizko_record_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available.`, feedbackQuestions(event));
+      return promptResult(`Ask these naturally about ${event.title}${event.when ? ` (${event.when})` : ""}. If the user has a Dizko profile and answers, call record_event_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available.`, feedbackQuestions(event));
     }
     case "dizko_ticket_policy":
       return promptResult("Explain the ticket flow honestly.", [
@@ -575,37 +692,68 @@ export async function callTool(name, input = {}, options = {}) {
   try {
     // Plain-object lookup would resolve "toString" or "constructor" to an
     // inherited function and hand the SDK something that is not a tool result.
-    if (Object.hasOwn(legacyHandlers, name)) {
-      // Pre-0.8 names have no inputSchema, and this branch runs before
-      // validateInput, so without a bound here they are the one door into the
-      // handlers and the upstream API that no cap covers.
-      assertBoundedInput(input || {}, (message, field) => {
-        throw new ToolInputError(message, { field: field || null, hint: `Shorten the argument and call ${name} again.` });
-      });
-      return await legacyHandlers[name](input || {}, context);
-    }
-    const alias = Object.hasOwn(LEGACY_TOOL_ALIASES, name) ? LEGACY_TOOL_ALIASES[name] : undefined;
-    const toolName = alias ? alias.name : name;
-    const tool = toolsByName.get(toolName);
-    if (!tool) {
+    const tool = toolsByName.get(name);
+    if (!tool || !Object.hasOwn(handlers, name)) {
       return toolJson({
         error: `Unknown tool: ${name}.`,
         code: "unknown_tool",
         allowed: rawTools.map((candidate) => candidate.name)
       }, true);
     }
-    const rawInput = alias?.adapt ? alias.adapt(input || {}) : (input || {});
-    const { value, errors } = validateInput(tool.inputSchema, rawInput);
-    if (errors.length) return toolJson(firstErrorPayload(errors, toolName), true);
-    const result = await handlers[toolName](value, context);
+    // Account tools default-deny: the scope check runs before validation, so
+    // a caller without a connected account learns that first instead of
+    // being walked through argument errors on a call that cannot succeed.
+    const scopeDenied = missingScope(tool, options.authContext);
+    if (scopeDenied) return toolJson(scopeDenied, true);
+    // Schema validation caps values but lets unknown keys through, so the raw
+    // input is bounded first: key length, key count, nesting and size, for
+    // every tool. Without this a 200,000-character field name travels into the
+    // handler and back out in whatever it says about the call.
+    assertBoundedInput(input || {}, (message, field) => {
+      throw new ToolInputError(message, { field: field || null, hint: `Shorten the argument and call ${name} again.` });
+    });
+    const { value, errors } = validateInput(tool.inputSchema, input || {});
+    if (errors.length) return toolJson(firstErrorPayload(errors, name), true);
+    const result = await handlers[name](value, context);
     return result?.structuredContent ? result : toolJson(result, false);
   } catch (error) {
     return toolJson(await errorPayload(error, name, input, context), true);
   }
 }
 
+function missingScope(tool, authContext) {
+  const required = (tool.securitySchemes || []).filter((scheme) => scheme.type === "oauth2").flatMap((scheme) => scheme.scopes || []);
+  for (const scope of required) {
+    const check = requireScope(authContext, scope);
+    if (!check.ok) return { error: check.code, code: check.code, required_scope: scope };
+  }
+  return null;
+}
+
+// A cursor is the offset encoded by search_events itself. A malformed one is
+// a caller error with a fix, not a server fault.
+function cursorOffset(input) {
+  if (!input.cursor) return input.offset ?? 0;
+  try {
+    return decodeEventCursor(input.cursor);
+  } catch {
+    throw new ToolInputError("This cursor is not one search_events issued.", {
+      code: "invalid_cursor",
+      field: "cursor",
+      hint: "Pass next_cursor from the previous search_events result unchanged, or omit cursor to start from the first page."
+    });
+  }
+}
+
+// next_cursor wraps next_offset, which on the single-day path is a position in
+// the day's own list (not offset + rows returned). Encoding main's arithmetic
+// instead would reintroduce the cursor that reached 18 of 500 events.
+function nextCursor(nextOffset) {
+  return nextOffset !== null && nextOffset !== undefined && nextOffset <= 10_000 ? encodeEventCursor(nextOffset) : null;
+}
+
 const handlers = {
-  async dizko_search_events(input, context) {
+  async search_events(input, context) {
     const { config, options } = context;
     const hasScope = [input.city, input.query, input.venue, input.featuring, input.promoter].some((value) => value !== undefined && value !== null && String(value).trim() !== "")
       || (input.neighborhoods || []).length;
@@ -617,7 +765,7 @@ const handlers = {
     if (!hasScope && !city) {
       throw new ToolInputError("Pass a city (or a query, venue, featuring or promoter) so the search has a scope.", {
         field: "city",
-        hint: "Example: { city: 'berlin', when: 'weekend' }. Use dizko_list_cities to see coverage."
+        hint: "Example: { city: 'berlin', when: 'weekend' }. Use list_cities to see coverage."
       });
     }
     const timezone = cityTimezone(city) || "UTC";
@@ -652,6 +800,8 @@ const handlers = {
         offset: input.offset ?? 0,
         has_more: false,
         next_offset: null,
+        contract_version: CONNECTOR_CONTRACT_VERSION,
+        page: { limit: input.limit ?? 12, returned: response.events.length, next_cursor: null },
         paging_note: (input.offset ?? 0) > 0
           ? "Taste ranking scores one candidate window, so offset does not apply and was not used. Raise limit instead, or pass rank: \"relevance\" to page the inventory in order."
           : "Taste ranking scores one candidate window; raise limit rather than paging.",
@@ -666,7 +816,7 @@ const handlers = {
     const day = resolveSameDay(input.when, options.now || new Date(), timezone);
     const sameDay = day.sameDay;
     const pageLimit = input.limit ?? 12;
-    const offset = input.offset ?? 0;
+    const offset = cursorOffset(input);
     // A single-day search fetches the whole day and pages over it locally,
     // because dropping events that already ended and sorting the day by start
     // time both need the full set: sorting inside a 12-row page would order
@@ -709,6 +859,7 @@ const handlers = {
     // Past the end of the day is not an empty city, so it must not be
     // explained as one.
     const pastEnd = sameDay && !events.length && offset > 0 && offset > (positioned[0]?.index ?? 0);
+    const nextOffset = hasMore ? (sameDay ? lastIndex + 1 : offset + consumed) : null;
     const empty = (events.length || pastEnd) ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
     return {
       ...(sameDay ? { filtered_out: ordered.length - positioned.length, filter_note: dayFilterNote(day) } : {}),
@@ -727,7 +878,9 @@ const handlers = {
       // and a fully filtered page would hand back the offset it was given, so
       // a client looping on next_offset would never terminate.
       has_more: hasMore,
-      next_offset: hasMore ? (sameDay ? lastIndex + 1 : offset + consumed) : null,
+      next_offset: nextOffset,
+      contract_version: CONNECTOR_CONTRACT_VERSION,
+      page: { limit: pageLimit, returned: events.length, next_cursor: nextCursor(nextOffset) },
       ...(truncatedDay && !pastEnd ? { paging_note: `This day filled the ${MAX_SEARCH_LIMIT}-listing fetch, so there may be more; narrow with genres, neighborhoods or a venue to be sure of seeing everything.` } : {}),
       search_fallback: response.search_fallback ?? null,
       events,
@@ -737,7 +890,7 @@ const handlers = {
     };
   },
 
-  async dizko_plan_night(input, context) {
+  async plan_night(input, context) {
     const { config, options } = context;
     const profileAccess = await optionalProfile(context, input);
     if (profileAccess.error) return profileAccess.error;
@@ -763,7 +916,7 @@ const handlers = {
     };
   },
 
-  async dizko_daily_roundup(input, context) {
+  async get_daily_roundup(input, context) {
     const { config, options } = context;
     const timezone = cityTimezone(input.city) || "UTC";
     const day = resolveRoundupDay(input, options.now, timezone);
@@ -782,7 +935,7 @@ const handlers = {
     };
   },
 
-  async dizko_city_pulse(input, context) {
+  async get_city_pulse(input, context) {
     const pulse = await cityPulse(input, { ...context.options, config: context.config });
     return {
       ...pulse,
@@ -791,7 +944,7 @@ const handlers = {
     };
   },
 
-  async dizko_get_event(input, context) {
+  async get_event(input, context) {
     const { config, options } = context;
     const event = await getEvent(input.id, { ...options, config });
     return {
@@ -801,41 +954,11 @@ const handlers = {
     };
   },
 
-  async dizko_list_cities(input, context) {
+  async list_cities(input, context) {
     return coveredCitiesPayload(context);
   },
 
-  async dizko_find_artist(input, context) {
-    const result = await findArtist(input, { ...context.options, config: context.config });
-    return {
-      ...result,
-      assistant_instruction: result.mode === "search"
-        ? "If best_match.confident is true, answer about that artist; call dizko_find_artist again with its id for the full profile when the user wants details, dates, mixes or the Dizko page. Otherwise show best_match.alternatives with the top candidate and ask which one they mean, naming what separates them (cities, genres). `prominence` scores how much of an answer each profile is, from listed dates, press and career depth; it is present only where it was needed to settle a tie, and it is never a fact to state to the user."
-        : "Treat entity facts as canonical Dizko data. Use upcoming_events (already deduplicated and date-ordered, local times in `when`), insights, mixes and press only when present. If page.published is true, link page.page_url and, for a specific mix, the matching embed's deep_link. If page.published is false, do not present a Dizko page link; offer SoundCloud or Resident Advisor from links instead."
-    };
-  },
-
-  async dizko_find_venue(input, context) {
-    const result = await findVenue(input, { ...context.options, config: context.config });
-    return {
-      ...result,
-      assistant_instruction: result.mode === "search"
-        ? "If best_match.confident is true, call dizko_find_venue with its id to get the venue's upcoming events; otherwise show best_match.alternatives and ask which one. `prominence` ranks how complete a venue record is; it is an internal ranking signal, never a fact to state to the user."
-        : "Treat entity facts as canonical Dizko data. upcoming_events are date-ordered with local times in `when`; render them with the standard event template. If none, say the venue has no upcoming Dizko listings rather than guessing."
-    };
-  },
-
-  async dizko_find_promoter(input, context) {
-    const result = await findPromoter(input, { ...context.options, config: context.config });
-    return {
-      ...result,
-      assistant_instruction: result.mode === "search"
-        ? "Show the matching promoters and collectives; call dizko_find_promoter with an id (and city for promoters) for upcoming events."
-        : "Treat entity facts as canonical Dizko data. Render upcoming_events with the standard event template when present."
-    };
-  },
-
-  async dizko_artist_events(input, context) {
+  async get_artist_events(input, context) {
     const { config, options } = context;
     let profile = null;
     let artists = input.artists;
@@ -848,7 +971,7 @@ const handlers = {
     if (!artists?.length) {
       throw new ToolInputError("No artists given and none saved on the profile.", {
         field: "artists",
-        hint: "Pass artist names, or save favorites first with dizko_update_profile preferences.featuring."
+        hint: "Pass artist names, or save favorites first with save_event_preferences preferences.featuring."
       });
     }
     const result = await getArtistEvents({ ...input, artists }, { ...options, config });
@@ -859,14 +982,14 @@ const handlers = {
     };
   },
 
-  async dizko_create_profile(input, context) {
+  async create_event_preference_profile(input, context) {
     if (input.consent !== true) {
       return toolJson({
         created: false,
         error: "Consent is required before creating a preference profile.",
         code: "consent_required",
         questions: onboardingQuestions(),
-        assistant_instruction: "Ask the onboarding questions, then ask whether Dizko may save the answers. Call dizko_create_profile with consent=true only if the user agrees."
+        assistant_instruction: "Ask the onboarding questions, then ask whether Dizko may save the answers. Call create_event_preference_profile with consent=true only if the user agrees."
       }, true);
     }
     const { profile, profile_secret: profileSecret } = await context.store.createProfile(input.preferences || {}, { consent: input.consent });
@@ -880,7 +1003,7 @@ const handlers = {
     };
   },
 
-  async dizko_update_profile(input, context) {
+  async save_event_preferences(input, context) {
     if (input.consent !== true) {
       return toolJson({
         saved: false,
@@ -900,7 +1023,7 @@ const handlers = {
     };
   },
 
-  async dizko_get_profile(input, context) {
+  async get_event_preferences(input, context) {
     const access = await requireProfileAccess(context.store, input);
     if (access.error) return access.error;
     return {
@@ -909,13 +1032,13 @@ const handlers = {
     };
   },
 
-  async dizko_delete_profile(input, context) {
+  async delete_event_preferences(input, context) {
     if (input.confirm_delete !== true) {
       return toolJson({
         deleted: false,
         error: "Confirmation is required before deleting saved Dizko preferences and feedback.",
         code: "confirmation_required",
-        assistant_instruction: "Ask the user to confirm they want to delete only their Dizko connector preferences and feedback history, then call dizko_delete_profile with confirm_delete set to true."
+        assistant_instruction: "Ask the user to confirm they want to delete only their Dizko connector preferences and feedback history, then call delete_event_preferences with confirm_delete set to true."
       }, true);
     }
     const access = await requireProfileAccess(context.store, input);
@@ -923,7 +1046,7 @@ const handlers = {
     return context.store.deleteProfile(input.profile_id);
   },
 
-  async dizko_record_feedback(input, context) {
+  async record_event_feedback(input, context) {
     const access = await requireProfileAccess(context.store, input);
     if (access.error) return access.error;
     if (!hasFeedbackSignal(input)) {
@@ -931,7 +1054,7 @@ const handlers = {
         saved: false,
         error: "At least one feedback signal is required: liked, rating, or notes.",
         code: "feedback_signal_required",
-        assistant_instruction: "Ask whether the user liked the event, an optional 1-5 rating, or what to remember before calling dizko_record_feedback."
+        assistant_instruction: "Ask whether the user liked the event, an optional 1-5 rating, or what to remember before calling record_event_feedback."
       }, true);
     }
     const event = await getEvent(input.event_id, { ...context.options, config: context.config });
@@ -950,37 +1073,77 @@ const handlers = {
     };
   },
 
-  async dizko_ticket_offers(input, context) {
+  async get_ticket_offers(input, context) {
     const event = await getEvent(input.event_id, eventOptions(context));
     return buildTicketOffers(event, eventOptions(context));
   },
 
-  async dizko_quote_tickets(input, context) {
+  async quote_ticket_order(input, context) {
     const event = await getEvent(input.event_id, eventOptions(context));
     return quoteTicketOrder(event, input, eventOptions(context));
   },
 
-  async dizko_purchase_tickets(input, context) {
+  async purchase_ticket_order(input, context) {
     return purchaseTicketOrder(input, { ...context.options, config: context.config });
   },
 
-  async dizko_calendar_file(input, context) {
+  async create_event_calendar_file(input, context) {
     const event = await getEvent(input.event_id, eventOptions(context));
     return {
       calendar_event: buildCalendarEvent(event, { ...eventOptions(context), status: input.status || "CONFIRMED" }),
       assistant_instruction: "Return the .ics content or attach it as a calendar file when the client supports files. The user can import it into Apple Calendar, Google Calendar, Outlook, or another calendar app."
     };
-  }
-};
+  },
 
-// Legacy tools that have no direct successor keep their old response shape.
-const legacyHandlers = {
+  // recommend_events and recommend_events_for_user are the taste path of
+  // search_events: one candidate window ranked by the request (and profile),
+  // every event carrying recommendation_reasons.
+  async recommend_events(input, context) {
+    const { result_limit: resultLimit, ...search } = input;
+    return handlers.search_events({ ...search, rank: "taste", limit: resultLimit ?? input.limit ?? 10 }, context);
+  },
+
+  async recommend_events_for_user(input, context) {
+    const { result_limit: resultLimit, ...search } = input;
+    return handlers.search_events({ ...search, rank: "taste", limit: resultLimit ?? 10 }, context);
+  },
+
+  async get_artist(input, context) {
+    return resolveContractEntity("artist", input, context);
+  },
+
+  async get_venue(input, context) {
+    return resolveContractEntity("venue", input, context);
+  },
+
+  async get_taste_profile(input, context) {
+    return {
+      ...await connectorRead("/connector/v1/taste-profile", context.options),
+      assistant_instruction: "Use these learned signals as preference evidence, not as hard constraints. Saved means positive interest; binned means explicit negative interest. Combine this profile with the user's current request and life context."
+    };
+  },
+
+  async bin_event(input, context) {
+    if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required", code: "explicit_confirmation_required" }, true);
+    return connectorWrite("/connector/v1/binned-events", { event_id: input.event_id, confirmed: true }, { ...context.options, idempotencyKey: input.idempotency_key });
+  },
+
+  async save_event(input, context) {
+    if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required", code: "explicit_confirmation_required" }, true);
+    return connectorWrite("/connector/v1/saved-events", { event_id: input.event_id, confirmed: true }, { ...context.options, idempotencyKey: input.idempotency_key });
+  },
+
+  async add_to_dizko_plan(input, context) {
+    if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required", code: "explicit_confirmation_required" }, true);
+    return connectorWrite("/connector/v1/plan/events", { event_id: input.event_id, confirmed: true }, { ...context.options, idempotencyKey: input.idempotency_key });
+  },
+
   async get_preference_onboarding(input) {
     return toolJson({
       profile_id: input.profile_id || null,
       consent_required: true,
       questions: onboardingQuestions(),
-      assistant_instruction: "Ask these questions conversationally. If the user agrees and has no profile id yet, call dizko_create_profile and remember the returned profile_id and profile_secret. If the user already has both, call dizko_update_profile."
+      assistant_instruction: "Ask these questions conversationally. If the user agrees and has no profile id yet, call create_event_preference_profile and remember the returned profile_id and profile_secret. If the user already has both, call save_event_preferences."
     });
   },
   async get_event_search_followups(input) {
@@ -993,7 +1156,7 @@ const legacyHandlers = {
       event,
       attended_at: input.attended_at || null,
       questions: feedbackQuestions(event),
-      assistant_instruction: "Ask these questions naturally. If the user has a Dizko profile and answers, call dizko_record_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available."
+      assistant_instruction: "Ask these questions naturally. If the user has a Dizko profile and answers, call record_event_feedback with profile_id, profile_secret, event_id, liked, rating, notes, and attended_at when available."
     });
   },
   async get_ticket_purchase_policy() {
@@ -1008,7 +1171,7 @@ const legacyHandlers = {
     if (!result.published) {
       return toolJson({
         ...result,
-        assistant_instruction: "The artist has no published Dizko page (or the handle is invalid). Answer from dizko_find_artist instead and fall back to SoundCloud or Resident Advisor links. Do not present a Dizko page link."
+        assistant_instruction: "The artist has no published Dizko page (or the handle is invalid). Answer from get_artist instead and fall back to SoundCloud or Resident Advisor links. Do not present a Dizko page link."
       });
     }
     return toolJson({
@@ -1021,10 +1184,40 @@ const legacyHandlers = {
     const result = await findSceneEntities(input, { ...context.options, config: context.config });
     return toolJson({
       ...result,
-      ...(!result.error ? { assistant_instruction: "Treat entity facts as canonical Dizko data. Prefer dizko_find_artist, dizko_find_venue and dizko_find_promoter for new calls." } : {})
+      ...(!result.error ? {
+        assistant_instruction: result.mode === "search"
+          ? "If best_match.confident is true, answer about that entity, and call find_scene_entities again with its id (plus city for a promoter) when the user wants the full profile or dates. Otherwise show best_match.alternatives and ask which one they mean, naming what separates them. `prominence` is an internal ranking signal, never a fact to state."
+          : "Treat entity facts as canonical Dizko data. Render upcoming_events (date-ordered, local times in `when`) with the standard event template when present, and use insights, mixes and press only when present. If none are upcoming, say so rather than guessing."
+      } : {})
     }, Boolean(result.error));
   }
 };
+
+// get_artist and get_venue are the Muse V1 contract: one canonical profile
+// when the name resolves, choices when it does not. Resolution reuses the
+// tiered, prominence-settled matching, so "Klock" lands on Ben Klock rather
+// than BJ Klock and "Sven Väth" matches the catalog's "Sven Vath" - cases an
+// exact-string comparison gets wrong in both directions. A profile is only
+// returned on the user's behalf when best_match is confident.
+async function resolveContractEntity(kind, input, context) {
+  const find = kind === "artist" ? findArtist : findVenue;
+  const options = { ...context.options, config: context.config };
+  let result = await find(input, options);
+  let resolvedFrom = null;
+  if (!input.id && result.mode === "search" && result.best_match?.confident && result.best_match.id) {
+    resolvedFrom = { query: input.query, id: result.best_match.id, name: result.best_match.name };
+    const { query: _query, ...byId } = input;
+    result = await find({ ...byId, id: result.best_match.id }, options);
+  }
+  return toolJson({
+    contract_version: CONNECTOR_CONTRACT_VERSION,
+    ...result,
+    ...(resolvedFrom ? { resolved_from: resolvedFrom } : {}),
+    assistant_instruction: result.mode === "search"
+      ? "The name did not resolve to one entity. Present best_match and its alternatives and ask the user to choose; do not guess. `prominence` is an internal ranking signal, never a fact to state."
+      : "Use only returned graph facts and upcoming events (date-ordered, local times in `when`). Preserve source links and say when a field is missing."
+  }, Boolean(result.error));
+}
 
 // summarizeEvent reads webBaseUrl/linkBaseUrl off its options and does not
 // consult config, so every caller that builds links has to pass them or a
@@ -1262,7 +1455,7 @@ async function unsupportedCityPayload(requestedCity, context) {
     // counts come from Dizko's own coverage table and are safe to state.
     assistant_instruction: nearestPayload
       ? `Tell the user the city named in requested_city is not covered by Dizko yet. The nearest covered city is ${nearestPayload.name}, ${nearestPayload.distance_km} km away, with ${nearestPayload.event_count} live events; offer to search there.`
-      : "Tell the user the city named in requested_city is not covered by Dizko yet, and use dizko_list_cities to show current coverage."
+      : "Tell the user the city named in requested_city is not covered by Dizko yet, and use list_cities to show current coverage."
   };
 }
 
@@ -1284,7 +1477,7 @@ async function requireProfileAccess(store, input) {
       error: toolJson({
         error: "Preference profile not found.",
         code: "profile_not_found",
-        hint: "Ask the user whether to create one with dizko_create_profile, or check the profile_id."
+        hint: "Ask the user whether to create one with create_event_preference_profile, or check the profile_id."
       }, true)
     };
   }
@@ -1331,7 +1524,7 @@ function profileAccessInstructions(profile, profileSecret = null) {
     reuse_instruction: profileSecret
       ? "If the client cannot remember connector state across sessions, the user should keep both profile_id and profile_secret somewhere private."
       : "Future calls still require the private profile_secret returned when this profile was created; the service stores only a hash and cannot reveal it later.",
-    deletion_instruction: "To delete saved Dizko preferences and feedback, call dizko_delete_profile with both profile_id and profile_secret and confirm_delete=true."
+    deletion_instruction: "To delete saved Dizko preferences and feedback, call delete_event_preferences with both profile_id and profile_secret and confirm_delete=true."
   };
 }
 
@@ -1358,7 +1551,7 @@ function profileSchema() {
   return {
     type: "object",
     properties: {
-      profile_id: { type: "string", description: "Profile id returned by dizko_create_profile." },
+      profile_id: { type: "string", description: "Profile id returned by create_event_preference_profile." },
       profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." }
     },
     required: ["profile_id", "profile_secret"]
@@ -1394,7 +1587,7 @@ function basePreferenceProperties() {
     neighborhoods: { type: "array", items: { type: "string" } },
     venues: { type: "array", items: { type: "string" } },
     promoters: { type: "array", items: { type: "string" } },
-    featuring: { type: "array", items: { type: "string" }, description: "Artists to track; dizko_artist_events uses this list when no artists are passed." },
+    featuring: { type: "array", items: { type: "string" }, description: "Artists to track; get_artist_events uses this list when no artists are passed." },
     avoid: { type: "array", items: { type: "string" } },
     max_price: { type: "number", description: "Soft budget for ranking." },
     free: { type: "boolean" },
@@ -1455,8 +1648,8 @@ export function buildSearchFollowups(input = {}) {
     questions: questions.slice(0, 4),
     search_args_hint: normalizeSearchContext(input),
     assistant_instruction: questions.length
-      ? "Ask at most one or two of these conversationally, only when the request is genuinely ambiguous, then call dizko_search_events (with the profile when one exists)."
-      : "The request has enough context. Call dizko_search_events with these arguments (and the profile when one exists)."
+      ? "Ask at most one or two of these conversationally, only when the request is genuinely ambiguous, then call search_events (with the profile when one exists)."
+      : "The request has enough context. Call search_events with these arguments (and the profile when one exists)."
   };
 }
 
@@ -1465,6 +1658,7 @@ export function buildSearchFollowups(input = {}) {
 // ---------------------------------------------------------------------------
 
 export function toolJson(value, isError = false) {
+  const media = isError ? [] : eventImageResources(value);
   return {
     structuredContent: toStructuredContent(value),
     content: [
@@ -1473,10 +1667,30 @@ export function toolJson(value, isError = false) {
         // Minified on purpose: this text duplicates structuredContent for
         // clients that only read content.
         text: JSON.stringify(value)
-      }
+      },
+      ...media
     ],
     isError
   };
+}
+
+// Flyers travel as resource links the client may render; at most six, https
+// only, and never on an error result.
+function eventImageResources(value) {
+  const candidates = value?.events || value?.recommendations || (value?.event ? [value.event] : []);
+  const seen = new Set();
+  return candidates.flatMap((event) => {
+    const uri = event?.image_url;
+    if (!uri || seen.has(uri) || !/^https:\/\//i.test(uri) || seen.size >= 6) return [];
+    seen.add(uri);
+    return [{
+      type: "resource_link",
+      uri,
+      name: `Flyer: ${String(event.title || "Dizko event").slice(0, 120)}`,
+      title: event.title || "Dizko event flyer",
+      description: "Event flyer from the source listing. Open only if the client renders linked media."
+    }];
+  });
 }
 
 function toStructuredContent(value) {

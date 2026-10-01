@@ -86,11 +86,11 @@ export function applySchemaLimits(schema, fieldName = "") {
   return schema;
 }
 
-// Bounds for input that reaches a handler without a schema to check it
-// against. The pre-0.8 tool names have no inputSchema of their own and are
-// dispatched before validation, so without this they are an uncapped door
-// into the same handlers and the same upstream API.
-export const LEGACY_INPUT_LIMITS = {
+// Bounds on the raw arguments of every tools/call, checked after the scope
+// check and before schema validation walks the input. The validator copies
+// and coerces whatever it is given, so an argument object with a flood of
+// keys or a deep nest would cost that work before any field was rejected.
+export const RAW_INPUT_LIMITS = {
   maxStringLength: 8192,
   maxArrayItems: 100,
   maxKeys: 200,
@@ -105,18 +105,18 @@ export function assertBoundedInput(input, onViolation) {
   // nodes expand into an exponential walk.
   const seen = new Set();
   const walk = (value, depth, path) => {
-    if (depth > LEGACY_INPUT_LIMITS.maxDepth) onViolation(`${path || "input"} is nested too deeply.`, path);
+    if (depth > RAW_INPUT_LIMITS.maxDepth) onViolation(`${path || "input"} is nested too deeply.`, path);
     if (typeof value === "string") {
-      if (value.length > LEGACY_INPUT_LIMITS.maxStringLength) {
-        onViolation(`${path || "input"} must be at most ${LEGACY_INPUT_LIMITS.maxStringLength} characters.`, path);
+      if (value.length > RAW_INPUT_LIMITS.maxStringLength) {
+        onViolation(`${path || "input"} must be at most ${RAW_INPUT_LIMITS.maxStringLength} characters.`, path);
       }
       return;
     }
     if (Array.isArray(value)) {
-      if (value.length > LEGACY_INPUT_LIMITS.maxArrayItems) {
-        onViolation(`${path || "input"} accepts at most ${LEGACY_INPUT_LIMITS.maxArrayItems} items.`, path);
+      if (value.length > RAW_INPUT_LIMITS.maxArrayItems) {
+        onViolation(`${path || "input"} accepts at most ${RAW_INPUT_LIMITS.maxArrayItems} items.`, path);
       }
-      value.slice(0, LEGACY_INPUT_LIMITS.maxArrayItems).forEach((item, index) => walk(item, depth + 1, `${path}[${index}]`));
+      value.slice(0, RAW_INPUT_LIMITS.maxArrayItems).forEach((item, index) => walk(item, depth + 1, `${path}[${index}]`));
       return;
     }
     if (value && typeof value === "object") {
@@ -124,11 +124,11 @@ export function assertBoundedInput(input, onViolation) {
       seen.add(value);
       for (const [key, child] of Object.entries(value)) {
         keys += 1;
-        if (keys > LEGACY_INPUT_LIMITS.maxKeys) onViolation("The request carries too many fields.", path || null);
+        if (keys > RAW_INPUT_LIMITS.maxKeys) onViolation("The request carries too many fields.", path || null);
         // Keys are caller text too. Bounding only values left a 200,000
         // character key to travel through the handler and into any error.
-        if (key.length > LEGACY_INPUT_LIMITS.maxKeyLength) {
-          onViolation(`A field name is longer than ${LEGACY_INPUT_LIMITS.maxKeyLength} characters.`, path || null);
+        if (key.length > RAW_INPUT_LIMITS.maxKeyLength) {
+          onViolation(`A field name is longer than ${RAW_INPUT_LIMITS.maxKeyLength} characters.`, path || null);
         }
         walk(child, depth + 1, path ? `${path}.${key}` : key);
       }

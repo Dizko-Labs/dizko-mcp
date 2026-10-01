@@ -19,16 +19,16 @@ async function main() {
   const listed = await rpcCall(endpoint, "tools/list", undefined, { timeoutMs, check: currentCheck });
   const toolNames = listed.tools.map((tool) => tool.name);
   assertIncludes(toolNames, tools.map((tool) => tool.name), "tool");
-  const legacy = toolNames.filter((name) => !name.startsWith("dizko_"));
-  if (legacy.length) throw new Error(`tools/list still lists pre-0.8 names: ${legacy.join(", ")}`);
+  const unshipped = toolNames.filter((name) => name.startsWith("dizko_"));
+  if (unshipped.length) throw new Error(`tools/list lists dizko_ names that never shipped: ${unshipped.join(", ")}`);
 
   currentCheck = "prompts/list";
   const listedPrompts = await rpcCall(endpoint, "prompts/list", undefined, { timeoutMs, check: currentCheck });
   const promptNames = (listedPrompts.prompts || []).map((prompt) => prompt.name);
   assertIncludes(promptNames, prompts.map((prompt) => prompt.name), "prompt");
 
-  currentCheck = "dizko_search_events";
-  const search = await callTool("dizko_search_events", { city: smokeCity, when: "week", limit: 1 });
+  currentCheck = "search_events";
+  const search = await callTool("search_events", { city: smokeCity, when: "week", limit: 1 });
   if (!search.events?.length) {
     throw new LiveCheckError(`Expected at least one live ${smokeCity} event (application-level no-results)`, {
       check: currentCheck,
@@ -53,8 +53,8 @@ async function main() {
     throw new Error("Expected feedback prompt to include a like/dislike question");
   }
 
-  currentCheck = "dizko_create_profile";
-  const created = await callTool("dizko_create_profile", {
+  currentCheck = "create_event_preference_profile";
+  const created = await callTool("create_event_preference_profile", {
     consent: true,
     preferences: {
       genres: ["techno"],
@@ -71,17 +71,17 @@ async function main() {
     throw new Error("Expected generated profile secret");
   }
 
-  currentCheck = "dizko_get_profile";
-  const fetched = await callTool("dizko_get_profile", { profile_id: profileId, profile_secret: profileSecret });
+  currentCheck = "get_event_preferences";
+  const fetched = await callTool("get_event_preferences", { profile_id: profileId, profile_secret: profileSecret });
   if (!fetched.profile?.preferences?.genres?.includes("techno")) {
     throw new Error("Saved profile preferences were not readable");
   }
 
-  currentCheck = "dizko_get_profile (invalid secret)";
-  await assertToolError("dizko_get_profile", { profile_id: profileId, profile_secret: "wrong-secret" });
+  currentCheck = "get_event_preferences (invalid secret)";
+  await assertToolError("get_event_preferences", { profile_id: profileId, profile_secret: "wrong-secret" });
 
-  currentCheck = "dizko_delete_profile";
-  const deleted = await callTool("dizko_delete_profile", { profile_id: profileId, profile_secret: profileSecret, confirm_delete: true });
+  currentCheck = "delete_event_preferences";
+  const deleted = await callTool("delete_event_preferences", { profile_id: profileId, profile_secret: profileSecret, confirm_delete: true });
   if (deleted.deleted !== true) throw new Error("Smoke profile was not deleted");
 
   console.log(JSON.stringify({

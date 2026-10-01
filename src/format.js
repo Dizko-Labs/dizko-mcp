@@ -27,10 +27,12 @@ const SET_TIMES_CAP = 10;
 const SHORT_DESCRIPTION = 160;
 const DETAIL_DESCRIPTION = 600;
 
-// Event summary sent to the model. Compact by default: local times, venue,
-// address, price, tags, a capped lineup, set times, and links. Everything
-// the render template never uses (images, coordinates, source, promoter
-// objects) is opt-in through `fields` or `detail: true`.
+// Event summary sent to the model: local times, venue, address, price, tags,
+// a capped lineup, set times, links, and the Muse connector contract fields
+// (2026-09-19): source and provenance, freshness timestamps, availability and
+// price confidence, and the card aliases dizko_url, venue_name,
+// lineup_artists and going_count. Coordinates, socials, promoter objects and
+// long descriptions stay opt-in through `fields` or `detail: true`.
 export function summarizeEvent(event, options = {}) {
   const webBaseUrl = options.webBaseUrl || DEFAULT_WEB_BASE_URL;
   const detail = Boolean(options.detail);
@@ -39,6 +41,11 @@ export function summarizeEvent(event, options = {}) {
   const local = localTimes(event, timezone);
   const lineup = Array.isArray(event.lineup) ? event.lineup.filter(Boolean) : [];
   const description = pickDescription(event, { detail, wantDescription: fields.has("description") });
+  const retrievedAt = options.retrievedAt || (options.now ? new Date(options.now) : new Date()).toISOString();
+  const sourceName = event.source_display || event.source || null;
+  const sourceUrl = event.source_url || event.ticket_url || null;
+  const lastUpdatedAt = event.updated_at || event.modified_at || event.last_seen_at || null;
+  const shownLineup = detail ? lineup : lineup.slice(0, LINEUP_CAP);
 
   const summary = {
     id: event.id,
@@ -50,34 +57,56 @@ export function summarizeEvent(event, options = {}) {
     ends_at_local: local.ends_at_local,
     timezone: local.timezone,
     venue: event.venue_name || null,
+    venue_name: event.venue_name || null,
     address: event.venue_address || null,
     city: cityDisplayName(event.venue_city) || null,
     city_slug: event.venue_city || null,
     price: formatPrice(event),
-    currency: fields.has("source") || detail ? event.currency || null : null,
+    currency: event.currency || null,
     genres: event.genres || [],
     vibe: event.vibe || [],
     event_types: event.event_types || [],
-    lineup: detail ? lineup : lineup.slice(0, LINEUP_CAP),
+    lineup: shownLineup,
+    lineup_artists: shownLineup,
     lineup_count: lineup.length && (lineup.length > LINEUP_CAP || detail) ? lineup.length : null,
     set_times: setTimesFromBilling(event.billing),
-    featured: Boolean(event.ra_pick || event.featured_at) || null,
+    pick: Boolean(event.ra_pick || event.featured_at),
     price_trend: event.price_trend || null,
     sound_tags: detail ? event.sound_tags || [] : [],
     promoters: fields.has("promoters") ? event.promoters || [] : promoterNames(event.promoters),
-    image_url: fields.has("images") ? event.image_url || null : null,
+    image_url: event.image_url || null,
     lat: fields.has("coordinates") ? event.lat ?? null : null,
     lng: fields.has("coordinates") ? event.lng ?? null : null,
     artist_socials: fields.has("socials") ? compactSocials(event.artist_socials) : [],
     attendance_count: event.attendance_count || null,
-    source: fields.has("source") ? event.source_display || event.source || null : null,
+    going_count: event.attendance_count || null,
+    source: sourceName,
+    source_url: sourceUrl,
+    source_provenance: sourceName ? { provider: sourceName, url: sourceUrl, last_updated_at: lastUpdatedAt, retrieved_at: retrievedAt } : null,
+    last_updated_at: lastUpdatedAt,
+    retrieved_at: retrievedAt,
+    availability: {
+      status: event.availability_status || (event.ticket_url ? "link_available_unverified" : "unknown"),
+      confidence: event.availability_confidence || (event.ticket_url ? "low" : "unknown"),
+      checked_at: event.availability_checked_at || null,
+      note: event.ticket_url
+        ? "A ticket link is present, but live inventory and price are not guaranteed until checkout."
+        : "Dizko has no live ticket availability signal for this event."
+    },
+    price_min: event.price_min ?? null,
+    price_max: event.price_max ?? null,
+    price_freshness: event.price_checked_at
+      ? { checked_at: event.price_checked_at, status: "checked" }
+      : { checked_at: null, status: "unverified", note: "Price may have changed; verify on the ticket page before acting." },
     description,
     ticket_url: event.ticket_url || null,
+    dizko_url: eventUrl(event, webBaseUrl),
     event_url: eventUrl(event, webBaseUrl)
   };
   const targets = eventLinkTargets(event, options);
   const idPath = `${shortLinkBase(options)}/e/${encodeURIComponent(event.id)}`;
-  summary.calendar_url = targets.cal ? `${idPath}/cal` : null;
+  // A downloadable .ics (#34); /e/<id>/cal still redirects to Google Calendar.
+  summary.calendar_url = targets.cal ? `${idPath}/ics` : null;
   summary.directions_url = targets.map ? `${idPath}/map` : null;
   return compactSummary(summary);
 }
@@ -198,6 +227,7 @@ export function eventLinkTargets(event, options = {}) {
     starts_at: event.start_time || null,
     ends_at: event.end_time || null,
     venue: event.venue_name || null,
+    venue_name: event.venue_name || null,
     address: event.venue_address || null,
     city: cityDisplayName(event.venue_city) || null,
     event_url: eventUrl(event, webBaseUrl),
@@ -211,7 +241,7 @@ export function eventLinkTargets(event, options = {}) {
 
 // Drops null, empty-array and empty-string fields. id/title/event_url
 // always survive.
-const ALWAYS_KEEP = new Set(["id", "title", "event_url"]);
+const ALWAYS_KEEP = new Set(["id", "title", "dizko_url", "event_url"]);
 
 function compactSummary(summary) {
   const compact = {};

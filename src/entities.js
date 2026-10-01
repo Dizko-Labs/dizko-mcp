@@ -39,7 +39,15 @@ export async function findSceneEntities(input = {}, options = {}) {
     return entityError("Looking up an id needs a kind: artist, venue, collective, or promoter.", "missing_entity_kind");
   }
   if (kind === "venue") return findVenue(input, options);
-  if (kind === "promoter" || kind === "collective") return findPromoter({ ...input, kind }, options);
+  // A promoter and a collective are usually the same crew in two catalogs,
+  // and find_scene_entities makes the caller pick one kind. Restricting to it
+  // would miss a crew filed under the other kind and drop the collective
+  // profile a promoter record is merged with, so both are always looked up;
+  // a search result is labeled with the kind that was asked for.
+  if (kind === "promoter" || kind === "collective") {
+    const result = await findPromoter({ ...input, kind: undefined }, options);
+    return result.mode === "search" ? { ...result, kind } : result;
+  }
   if (kind === "artist") return findArtist(input, options);
   return findAnyEntity(input, options);
 }

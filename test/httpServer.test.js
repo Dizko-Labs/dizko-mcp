@@ -31,7 +31,14 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(health.status, 200);
     assert.match(health.headers.get("content-security-policy"), /connect-src 'self' https:\/\/api\.dizko\.app https:\/\/www\.dizko\.app/);
     assert.equal(health.headers.get("x-content-type-options"), "nosniff");
-    assert.deepEqual(await health.json(), { ok: true, name: "dizko", version: TOOL_VERSION });
+    assert.deepEqual(await health.json(), {
+      ok: true,
+      name: "dizko",
+      version: TOOL_VERSION,
+      contract_version: "2026-09-19",
+      transport: "streamable-http",
+      authentication: "none"
+    });
 
     const metadata = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(metadata.status, 200);
@@ -95,7 +102,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(initializedBody.result.serverInfo.name, "dizko");
     assert.equal(typeof initializedBody.result.capabilities.tools, "object");
     assert.equal(typeof initializedBody.result.capabilities.prompts, "object");
-    assert.match(initializedBody.result.instructions, /dizko_search_events/);
+    assert.match(initializedBody.result.instructions, /search_events/);
 
     const initializedNotification = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -119,9 +126,8 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
-    assert.ok(body.result.tools.some((tool) => tool.name === "dizko_search_events"));
-    assert.equal(body.result.tools.some((tool) => tool.name === "search_events"), false, "legacy names are not listed");
-    assert.equal(body.result.tools.length, 19);
+    assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
+    assert.equal(body.result.tools.length, 30, "the Muse contract surface: all 30 tools are listed");
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -210,10 +216,10 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(listBody.result.resultType, "complete");
     assert.equal(listBody.result.ttlMs, 300_000);
     assert.equal(listBody.result.cacheScope, "public");
-    assert.ok(listBody.result.tools.some((tool) => tool.name === "dizko_search_events"));
-    assert.equal(listBody.result.tools.some((tool) => tool.name === "get_ticket_purchase_policy"), false);
+    assert.ok(listBody.result.tools.some((tool) => tool.name === "search_events"));
+    assert.equal(listBody.result.tools.some((tool) => tool.name === "get_ticket_purchase_policy"), true, "the conversational tools are listed again");
 
-    // Legacy (pre-0.8) tool names are unlisted but still callable.
+    // A listed tool is callable through the routed Mcp-Name header.
     const call = await modern(3, "tools/call", {
       name: "get_ticket_purchase_policy",
       arguments: {}
@@ -240,7 +246,7 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     const promptBody = await readRpc(prompt);
     assert.equal(prompt.status, 200);
     assert.equal(promptBody.result.messages[0].role, "user");
-    assert.match(promptBody.result.messages[0].content.text, /dizko_create_profile with consent=true/);
+    assert.match(promptBody.result.messages[0].content.text, /create_event_preference_profile with consent=true/);
 
     // No session is ever minted - the header is gone from the transport.
     assert.equal(call.headers.get("mcp-session-id"), null);
@@ -499,5 +505,50 @@ test("short links share the rate limiter so id scans cannot hammer the backend",
     assert.equal(upstreamCalls, 2, "rate-limited request must not reach the backend");
   } finally {
     server.close();
+  }
+});
+
+test("security headers, CORS and rate-limit identity fail closed", async () => {
+  const server = createHttpMcpServer({
+    allowedOrigins: ["https://chatgpt.com"],
+    rateLimitMax: 1,
+    rateLimitWindowMs: 60_000
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const request = (forwarded, origin = "https://evil.example") => fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      Origin: origin,
+      "X-Forwarded-For": forwarded
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })
+  });
+  try {
+    // A disallowed browser origin is refused at the server, not merely left
+    // unreadable by CORS: DNS rebinding makes such a request same-origin to
+    // the browser, so only an Origin check stops it (MCP transport spec).
+    const blocked = await request("198.51.100.1, 10.0.0.8");
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.headers.get("access-control-allow-origin"), null);
+    assert.match(blocked.headers.get("strict-transport-security"), /max-age=31536000/);
+    assert.match(blocked.headers.get("permissions-policy"), /camera=\(\)/);
+
+    // The refusal costs nothing from the rate-limit budget.
+    const first = await request("198.51.100.1, 10.0.0.8", "https://chatgpt.com");
+    assert.equal(first.status, 200);
+    assert.match(first.headers.get("strict-transport-security"), /max-age=31536000/);
+
+    // Changing the attacker-controlled leftmost value must not mint a new
+    // bucket when the edge-appended rightmost hop is unchanged.
+    const second = await request("203.0.113.99, 10.0.0.8", "https://chatgpt.com");
+    assert.equal(second.status, 429);
+
+    const allowed = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: "https://chatgpt.com" } });
+    assert.equal(allowed.headers.get("access-control-allow-origin"), "https://chatgpt.com");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
   }
 });

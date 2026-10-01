@@ -10,6 +10,7 @@ import { findPromoter, findVenue, findSceneEntities, venueMatches } from "../src
 import { clientIp, isExempt, readJson } from "../src/httpServer.js";
 import { FilePreferenceStore, publicProfile } from "../src/preferences.js";
 import { validatePurchaseConfirmation } from "../src/tickets.js";
+import { decodeEventCursor } from "../src/connectorV1.js";
 import { callTool } from "../src/tools.js";
 
 const CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
@@ -43,7 +44,7 @@ test("paging advances by rows consumed upstream, not rows that survived filterin
   }));
 
   const page = async (offset) => {
-    const response = await callTool("dizko_search_events", { city: "berlin", when: "today", limit: 6, offset }, {
+    const response = await callTool("search_events", { city: "berlin", when: "today", limit: 6, offset }, {
       config: CONFIG,
       now: NOW,
       fetch: async (url) => {
@@ -91,7 +92,7 @@ test("a page whose events were all filtered out never points back at itself", as
     end_time: "2026-09-08T05:00:00+00:00"
   }));
 
-  const response = await callTool("dizko_search_events", { city: "berlin", when: "tonight", limit: 6, offset: 0 }, {
+  const response = await callTool("search_events", { city: "berlin", when: "tonight", limit: 6, offset: 0 }, {
     config: CONFIG,
     now: NOW,
     fetch: async (url) => Response.json(String(url).includes("date_from")
@@ -107,7 +108,7 @@ test("a page whose events were all filtered out never points back at itself", as
 });
 
 test("taste ranking closes the paging keys instead of omitting them", async () => {
-  const response = await callTool("dizko_search_events", { city: "berlin", when: "weekend", rank: "taste", genres: ["techno"] }, {
+  const response = await callTool("search_events", { city: "berlin", when: "weekend", rank: "taste", genres: ["techno"] }, {
     config: CONFIG,
     now: NOW,
     fetch: async () => Response.json({ count: 2, events: [eventRow("a", { genres: ["techno"] }), eventRow("b")] })
@@ -132,11 +133,11 @@ test("taste ranking and night plans drop the same duplicate the plain search doe
     fetch: async () => Response.json({ count: duplicated.length, events: duplicated })
   };
 
-  const taste = await callTool("dizko_search_events", { city: "berlin", when: "weekend", rank: "taste", genres: ["techno"] }, options);
+  const taste = await callTool("search_events", { city: "berlin", when: "weekend", rank: "taste", genres: ["techno"] }, options);
   const tasteIds = taste.structuredContent.events.map((event) => event.id);
   assert.equal(tasteIds.length, 2, `taste mode kept a duplicate: ${tasteIds.join(", ")}`);
 
-  const plan = await callTool("dizko_plan_night", { city: "berlin", when: "weekend" }, options);
+  const plan = await callTool("plan_night", { city: "berlin", when: "weekend" }, options);
   const planIds = plan.structuredContent.events.map((event) => event.id);
   assert.equal(new Set(planIds).size, planIds.length);
   assert.equal(planIds.length, 2, "a plan must not offer the same party as its own alternate");
@@ -286,17 +287,17 @@ test("calendar files and ticket quotes honor a self-hosted base URL", async () =
   const event = eventRow("e1", { ticket_url: "https://tickets.example.test/e1", price_min: 10, price_max: 10, currency: "EUR" });
   const options = { config, now: NOW, fetch: async () => Response.json(event) };
 
-  const calendar = await callTool("dizko_calendar_file", { event_id: "e1" }, options);
+  const calendar = await callTool("create_event_calendar_file", { event_id: "e1" }, options);
   const ics = calendar.structuredContent.calendar_event;
   assert.match(ics.event_url, /events\.selfhost\.test/);
   assert.match(ics.ics_content, /events\.selfhost\.test/);
   assert.doesNotMatch(ics.ics_content, /www\.dizko\.app/, "a self-hosted deployment must not emit production links");
 
-  const offers = await callTool("dizko_ticket_offers", { event_id: "e1" }, options);
+  const offers = await callTool("get_ticket_offers", { event_id: "e1" }, options);
   assert.match(offers.structuredContent.event.event_url, /events\.selfhost\.test/);
   assert.match(offers.structuredContent.event.calendar_url, /mcp\.selfhost\.test/);
 
-  const quote = await callTool("dizko_quote_tickets", { event_id: "e1", quantity: 1 }, options);
+  const quote = await callTool("quote_ticket_order", { event_id: "e1", quantity: 1 }, options);
   assert.match(quote.structuredContent.quote.event.event_url, /events\.selfhost\.test/);
 });
 
@@ -335,7 +336,7 @@ test("the single-day cursor does not shift when an event ends mid-walk", async (
     end_time: new Date(Date.UTC(2026, 8, 8, 12, index + 1)).toISOString()
   }));
   const page = async (offset, now) => {
-    const response = await callTool("dizko_search_events", { city: "berlin", when: "today", limit: 6, offset }, {
+    const response = await callTool("search_events", { city: "berlin", when: "today", limit: 6, offset }, {
       config: CONFIG,
       now,
       fetch: async () => Response.json({ count: rows.length, events: rows })
@@ -352,6 +353,54 @@ test("the single-day cursor does not shift when an event ends mid-walk", async (
     "the second page must continue where the first stopped, not jump the number of events that ended");
 });
 
+test("next_cursor walks a single day by its own index, so an event ending mid-walk skips nothing", async () => {
+  // The Muse contract pages by an opaque cursor. It must wrap next_offset - a
+  // position in the day as fetched - rather than offset + rows returned, the
+  // arithmetic that once left 482 of 500 events unreachable.
+  const rows = Array.from({ length: 24 }, (_, index) => eventRow(`c${index}`, {
+    start_time: "2026-09-08T11:00:00+00:00",
+    end_time: new Date(Date.UTC(2026, 8, 8, 12, index + 1)).toISOString()
+  }));
+  const page = async (cursor, now) => {
+    const response = await callTool("search_events", { city: "berlin", when: "today", limit: 6, ...(cursor ? { cursor } : {}) }, {
+      config: CONFIG,
+      now,
+      fetch: async () => Response.json({ count: rows.length, events: rows })
+    });
+    return response.structuredContent;
+  };
+
+  const first = await page(null, new Date("2026-09-08T12:00:00Z"));
+  assert.equal(first.contract_version, "2026-09-19");
+  assert.ok(first.page.next_cursor, "a day with more events hands back a cursor");
+  assert.equal(decodeEventCursor(first.page.next_cursor), first.next_offset, "the cursor is next_offset, encoded");
+  const second = await page(first.page.next_cursor, new Date("2026-09-08T12:06:00Z"));
+  assert.deepEqual(second.events.map((event) => event.id), ["c6", "c7", "c8", "c9", "c10", "c11"]);
+});
+
+test("a cursor search_events did not issue is refused before any upstream call", async () => {
+  let fetched = false;
+  const response = await callTool("search_events", { city: "berlin", cursor: "not-a-cursor" }, {
+    config: CONFIG,
+    fetch: async () => { fetched = true; return Response.json({ count: 0, events: [] }); }
+  });
+  assert.equal(response.isError, true);
+  assert.equal(response.structuredContent.code, "invalid_cursor");
+  assert.equal(response.structuredContent.field, "cursor");
+  assert.equal(fetched, false);
+});
+
+test("account tools deny a caller without the scope before validating arguments", async () => {
+  // Default-deny: an unauthenticated call learns it needs a connected account,
+  // not that its idempotency_key is too short for a call that cannot succeed.
+  for (const [name, scope] of [["save_event", "saved:write"], ["add_to_dizko_plan", "saved:write"], ["bin_event", "saved:write"], ["get_taste_profile", "saved:read"]]) {
+    const response = await callTool(name, {}, { config: CONFIG, fetch: async () => { throw new Error("must not fetch"); } });
+    assert.equal(response.isError, true, name);
+    assert.equal(response.structuredContent.required_scope, scope, name);
+    assert.notEqual(response.structuredContent.code, "invalid_argument", `${name} reports the missing scope first`);
+  }
+});
+
 test("count means what the caller can page through, and running off the end says so", async () => {
   // `count` was the upstream day total while `offset` indexed a shorter local
   // list, so a model paging by `count` ran past the end and was handed a
@@ -361,7 +410,7 @@ test("count means what the caller can page through, and running off the end says
     end_time: "2026-09-09T04:00:00+00:00"
   }));
   const call = async (offset) => {
-    const response = await callTool("dizko_search_events", { city: "berlin", when: "today", limit: 12, offset }, {
+    const response = await callTool("search_events", { city: "berlin", when: "today", limit: 12, offset }, {
       config: CONFIG,
       now: NOW,
       fetch: async (url) => {
@@ -405,7 +454,7 @@ test("an exact date for today behaves exactly like the word today", async () => 
     eventRow("night", { start_time: "2026-09-08T21:00:00+00:00", end_time: "2026-09-09T04:00:00+00:00" })
   ];
   const call = async (when) => {
-    const response = await callTool("dizko_search_events", { city: "berlin", when, limit: 10 }, {
+    const response = await callTool("search_events", { city: "berlin", when, limit: 10 }, {
       config: CONFIG,
       now: NOW,
       fetch: async () => Response.json({ count: rows.length, events: rows })
@@ -427,7 +476,7 @@ test("an evening search for tomorrow drops the matinee and does not talk about t
     eventRow("matinee", { start_time: "2026-09-09T10:00:00+00:00", end_time: "2026-09-09T14:00:00+00:00" }),
     eventRow("clubnight", { start_time: "2026-09-09T22:00:00+00:00", end_time: "2026-09-10T05:00:00+00:00" })
   ];
-  const response = await callTool("dizko_search_events", { city: "berlin", when: "tomorrow night", limit: 10 }, {
+  const response = await callTool("search_events", { city: "berlin", when: "tomorrow night", limit: 10 }, {
     config: CONFIG,
     now: NOW,
     fetch: async () => Response.json({ count: rows.length, events: rows })

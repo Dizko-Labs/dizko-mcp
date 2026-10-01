@@ -85,7 +85,7 @@ test("an empty timeframe is reported as no inventory, not as bad filters", () =>
   assert.equal(result.reason, "empty_timeframe");
   assert.equal(result.suggested_relaxations.at(-1).relax, "when");
   assert.match(result.assistant_instruction, /nothing listed in Berlin/);
-  assert.match(result.assistant_instruction, /dizko_list_cities/);
+  assert.match(result.assistant_instruction, /list_cities/);
   assert.doesNotMatch(result.assistant_instruction, /other events are listed/);
 });
 
@@ -111,9 +111,9 @@ test("profile credentials never leak into the retry arguments", () => {
   assert.doesNotMatch(serialized, /dzk_secret-id/);
 });
 
-test("dizko_search_events attaches no_results with a live baseline count", async () => {
+test("search_events attaches no_results with a live baseline count", async () => {
   const urls = [];
-  const response = await callTool("dizko_search_events", {
+  const response = await callTool("search_events", {
     city: "berlin",
     when: "tomorrow",
     genres: ["polka"],
@@ -147,7 +147,7 @@ test("dizko_search_events attaches no_results with a live baseline count", async
 });
 
 test("a successful search carries no no_results block and keeps the render template", async () => {
-  const response = await callTool("dizko_search_events", { city: "berlin", when: "tomorrow" }, {
+  const response = await callTool("search_events", { city: "berlin", when: "tomorrow" }, {
     config: CONFIG,
     now: new Date("2026-09-08T12:00:00Z"),
     fetch: async () => Response.json({
@@ -158,11 +158,11 @@ test("a successful search carries no no_results block and keeps the render templ
 
   const body = response.structuredContent;
   assert.equal(body.no_results, undefined);
-  assert.match(body.assistant_instruction, /markdown list/);
+  assert.match(body.assistant_instruction, /three compact, scannable lines/);
 });
 
-test("dizko_plan_night explains an empty plan instead of returning bare events", async () => {
-  const response = await callTool("dizko_plan_night", {
+test("plan_night explains an empty plan instead of returning bare events", async () => {
+  const response = await callTool("plan_night", {
     city: "berlin",
     when: "tomorrow",
     genres: ["polka"]
@@ -182,7 +182,7 @@ test("dizko_plan_night explains an empty plan instead of returning bare events",
 });
 
 test("the baseline probe failing still yields suggestions", async () => {
-  const response = await callTool("dizko_search_events", {
+  const response = await callTool("search_events", {
     city: "berlin",
     when: "tomorrow",
     venue: "Nowhere"

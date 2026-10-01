@@ -3,7 +3,6 @@ import test, { beforeEach } from "node:test";
 import { PassThrough } from "node:stream";
 import { handleMcpRequest, runMcpServer } from "../src/mcpServer.js";
 import { clearEventCache, SORT_OPTIONS } from "../src/api.js";
-import { LEGACY_TOOL_ALIASES } from "../src/tools.js";
 import { WHEN_PRESETS } from "../src/dateRange.js";
 
 // 2026-07-28 carries the protocol revision and client capabilities per
@@ -14,37 +13,39 @@ const MODERN_META = {
   "io.modelcontextprotocol/clientInfo": { name: "test", version: "0" }
 };
 
-// The 19 public tools, in the exact order tools/list serves them.
+// The 30 public tools in the exact order tools/list serves them. This is the
+// Muse connector contract surface: names and order match main.
 const PUBLIC_TOOL_NAMES = [
-  "dizko_search_events",
-  "dizko_plan_night",
-  "dizko_daily_roundup",
-  "dizko_city_pulse",
-  "dizko_get_event",
-  "dizko_list_cities",
-  "dizko_find_artist",
-  "dizko_find_venue",
-  "dizko_find_promoter",
-  "dizko_artist_events",
-  "dizko_create_profile",
-  "dizko_update_profile",
-  "dizko_get_profile",
-  "dizko_delete_profile",
-  "dizko_record_feedback",
-  "dizko_ticket_offers",
-  "dizko_quote_tickets",
-  "dizko_purchase_tickets",
-  "dizko_calendar_file"
-];
-
-// Pre-0.8 names that keep working through tools/call but are never listed.
-const LEGACY_ONLY_HANDLERS = [
   "get_preference_onboarding",
-  "get_event_search_followups",
+  "create_event_preference_profile",
+  "save_event_preferences",
+  "get_event_preferences",
+  "delete_event_preferences",
+  "record_event_feedback",
   "get_event_feedback_prompt",
-  "get_ticket_purchase_policy",
+  "get_event_search_followups",
+  "list_cities",
+  "find_scene_entities",
+  "get_artist",
+  "get_venue",
+  "search_events",
+  "recommend_events",
+  "recommend_events_for_user",
+  "plan_night",
+  "get_daily_roundup",
+  "get_artist_events",
   "get_artist_page",
-  "find_scene_entities"
+  "get_city_pulse",
+  "get_event",
+  "get_ticket_purchase_policy",
+  "get_ticket_offers",
+  "quote_ticket_order",
+  "purchase_ticket_order",
+  "get_taste_profile",
+  "bin_event",
+  "save_event",
+  "add_to_dizko_plan",
+  "create_event_calendar_file"
 ];
 
 const TEST_CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
@@ -64,18 +65,21 @@ test("MCP initialize exposes server instructions for cross-tool workflows", asyn
   assert.equal(response.serverInfo.name, "dizko");
   assert.deepEqual(response.capabilities, { tools: {}, prompts: {} });
   assert.match(response.instructions, /live event inventory/);
-  assert.match(response.instructions, /dizko_search_events/);
+  assert.match(response.instructions, /search_events/);
   assert.match(response.instructions, /`when`/);
   assert.match(response.instructions, /consent/);
   assert.match(response.instructions, /profile_id and profile_secret/);
-  assert.match(response.instructions, /dizko_create_profile/);
-  assert.match(response.instructions, /dizko_record_feedback/);
-  assert.match(response.instructions, /dizko_ticket_offers/);
-  assert.match(response.instructions, /dizko_purchase_tickets/);
-  // Retired tool names and the old framework shout-out are gone.
-  assert.doesNotMatch(response.instructions, /get_preference_onboarding/);
-  assert.doesNotMatch(response.instructions, /get_event_search_followups/);
+  assert.match(response.instructions, /create_event_preference_profile/);
+  assert.match(response.instructions, /record_event_feedback/);
+  assert.match(response.instructions, /get_ticket_offers/);
+  assert.match(response.instructions, /purchase_ticket_order/);
+  assert.match(response.instructions, /get_preference_onboarding/);
+  assert.match(response.instructions, /get_artist and get_venue/);
+  assert.match(response.instructions, /next_cursor/);
+  assert.match(response.instructions, /idempotency_key/);
+  // The old framework shout-out stays gone, and no dizko_ tool name survives.
   assert.doesNotMatch(response.instructions, /Hermes, OpenClaw/);
+  assert.doesNotMatch(response.instructions, /\bdizko_(?!url\b)[a-z_]+/);
 });
 
 test("MCP server/discover advertises tools and prompts capabilities", async () => {
@@ -84,22 +88,16 @@ test("MCP server/discover advertises tools and prompts capabilities", async () =
   assert.deepEqual(response.supportedVersions, ["2026-07-28"]);
   assert.deepEqual(response.capabilities, { tools: {}, prompts: {} });
   assert.equal(response.resultType, "complete");
-  assert.match(response.instructions, /dizko_search_events/);
+  assert.match(response.instructions, /search_events/);
 });
 
-test("MCP lists the 19 dizko_ tools in order and hides legacy names", async () => {
+test("MCP lists event tools", async () => {
   const response = await handleMcpRequest({ method: "tools/list" });
-  const names = response.tools.map((tool) => tool.name);
-
-  assert.deepEqual(names, PUBLIC_TOOL_NAMES);
-  for (const legacy of [...Object.keys(LEGACY_TOOL_ALIASES), ...LEGACY_ONLY_HANDLERS]) {
-    assert.equal(names.includes(legacy), false, `${legacy} must not be listed`);
-  }
+  assert.deepEqual(response.tools.map((tool) => tool.name), PUBLIC_TOOL_NAMES);
+  assert.equal(response.tools.some((tool) => tool.name.startsWith("dizko_")), false, "the dizko_ rename never shipped");
 });
 
-test("MCP legacy tool names still dispatch through tools/call", async () => {
-  assert.equal(LEGACY_TOOL_ALIASES.search_events.name, "dizko_search_events");
-  assert.equal(LEGACY_TOOL_ALIASES.get_event.name, "dizko_get_event");
+test("MCP contract tools dispatch with the 2026-09-19 envelope", async () => {
 
   const options = {
     config: { ...TEST_CONFIG, apiCacheTtlMs: 0 },
@@ -115,6 +113,8 @@ test("MCP legacy tool names still dispatch through tools/call", async () => {
   assert.equal(search.isError, false);
   assert.equal(search.structuredContent.rank, "relevance");
   assert.equal(search.structuredContent.events[0].title, "Legacy Search");
+  assert.equal(search.structuredContent.contract_version, "2026-09-19");
+  assert.deepEqual(search.structuredContent.page, { limit: 12, returned: 1, next_cursor: null });
 
   const event = await handleMcpRequest({
     method: "tools/call",
@@ -124,7 +124,7 @@ test("MCP legacy tool names still dispatch through tools/call", async () => {
   assert.equal(event.structuredContent.title, "Legacy Lookup");
   assert.equal(event.structuredContent.when, "Sat 12 Sep, 22:00");
 
-  // recommend_events maps onto taste ranking of the same search tool.
+  // recommend_events is the taste path of search: every event carries reasons.
   const recommend = await handleMcpRequest({
     method: "tools/call",
     params: { name: "recommend_events", arguments: { city: "berlin", result_limit: 1 } }
@@ -132,6 +132,7 @@ test("MCP legacy tool names still dispatch through tools/call", async () => {
   assert.equal(recommend.isError, false);
   assert.equal(recommend.structuredContent.rank, "taste");
   assert.equal(recommend.structuredContent.events.length, 1);
+  assert.ok(Array.isArray(recommend.structuredContent.events[0].recommendation_reasons), "every recommendation carries reasons");
 });
 
 test("MCP rejects unknown tools with the allowed list", async () => {
@@ -158,23 +159,23 @@ test("MCP tool annotations describe read, write, and destructive behavior", asyn
     }
   }
 
-  assert.equal(tools.dizko_search_events.annotations.readOnlyHint, true);
-  assert.equal(tools.dizko_search_events.annotations.idempotentHint, true);
-  assert.equal(tools.dizko_search_events.annotations.openWorldHint, false);
-  assert.equal(tools.dizko_create_profile.annotations.readOnlyHint, false);
-  assert.equal(tools.dizko_create_profile.annotations.destructiveHint, false);
-  assert.equal(tools.dizko_create_profile.annotations.openWorldHint, false);
-  assert.equal(tools.dizko_record_feedback.annotations.readOnlyHint, false);
-  assert.equal(tools.dizko_record_feedback.annotations.openWorldHint, false);
-  assert.equal(tools.dizko_delete_profile.annotations.destructiveHint, true);
-  assert.equal(tools.dizko_delete_profile.annotations.readOnlyHint, false);
-  assert.equal(tools.dizko_delete_profile.annotations.openWorldHint, false);
-  assert.equal(tools.dizko_ticket_offers.annotations.readOnlyHint, true);
-  assert.equal(tools.dizko_quote_tickets.annotations.readOnlyHint, true);
-  assert.equal(tools.dizko_quote_tickets.annotations.idempotentHint, false);
-  assert.equal(tools.dizko_purchase_tickets.annotations.readOnlyHint, false);
-  assert.equal(tools.dizko_purchase_tickets.annotations.destructiveHint, true);
-  assert.equal(tools.dizko_purchase_tickets.annotations.openWorldHint, true);
+  assert.equal(tools.search_events.annotations.readOnlyHint, true);
+  assert.equal(tools.search_events.annotations.idempotentHint, true);
+  assert.equal(tools.search_events.annotations.openWorldHint, false);
+  assert.equal(tools.create_event_preference_profile.annotations.readOnlyHint, false);
+  assert.equal(tools.create_event_preference_profile.annotations.destructiveHint, false);
+  assert.equal(tools.create_event_preference_profile.annotations.openWorldHint, false);
+  assert.equal(tools.record_event_feedback.annotations.readOnlyHint, false);
+  assert.equal(tools.record_event_feedback.annotations.openWorldHint, false);
+  assert.equal(tools.delete_event_preferences.annotations.destructiveHint, true);
+  assert.equal(tools.delete_event_preferences.annotations.readOnlyHint, false);
+  assert.equal(tools.delete_event_preferences.annotations.openWorldHint, false);
+  assert.equal(tools.get_ticket_offers.annotations.readOnlyHint, true);
+  assert.equal(tools.quote_ticket_order.annotations.readOnlyHint, true);
+  assert.equal(tools.quote_ticket_order.annotations.idempotentHint, false);
+  assert.equal(tools.purchase_ticket_order.annotations.readOnlyHint, false);
+  assert.equal(tools.purchase_ticket_order.annotations.destructiveHint, true);
+  assert.equal(tools.purchase_ticket_order.annotations.openWorldHint, true);
 });
 
 test("MCP tool metadata is review-friendly", async () => {
@@ -183,11 +184,16 @@ test("MCP tool metadata is review-friendly", async () => {
   for (const tool of response.tools) {
     assert.equal(typeof tool.title, "string", `${tool.name} is missing a title`);
     assert.ok(tool.title.length > 0, `${tool.name} has an empty title`);
-    assert.ok(tool.description.length >= 60, `${tool.name} description should explain routing, inputs and output`);
+    assert.ok(tool.description.length >= 40, `${tool.name} description should say when to use it`);
     assert.equal(typeof tool.inputSchema, "object", `${tool.name} is missing inputSchema`);
     assert.equal(tool.outputSchema, undefined, `${tool.name} should omit redundant outputSchema`);
-    assert.deepEqual(tool.securitySchemes, [{ type: "noauth" }], `${tool.name} should advertise noauth securitySchemes`);
-    assert.deepEqual(tool._meta?.securitySchemes, [{ type: "noauth" }], `${tool.name} should mirror noauth securitySchemes in _meta`);
+    const expectedSecurity = tool.name === "get_taste_profile"
+      ? [{ type: "oauth2", scopes: ["saved:read"] }]
+      : ["bin_event", "save_event", "add_to_dizko_plan"].includes(tool.name)
+        ? [{ type: "oauth2", scopes: ["saved:write"] }]
+        : [{ type: "noauth" }];
+    assert.deepEqual(tool.securitySchemes, expectedSecurity, `${tool.name} should advertise its security scheme`);
+    assert.deepEqual(tool._meta?.securitySchemes, expectedSecurity, `${tool.name} should mirror securitySchemes in _meta`);
     const invoking = tool._meta?.["openai/toolInvocation/invoking"];
     const invoked = tool._meta?.["openai/toolInvocation/invoked"];
     assert.equal(typeof invoking, "string", `${tool.name} should define invoking status text`);
@@ -198,23 +204,27 @@ test("MCP tool metadata is review-friendly", async () => {
     assert.notEqual(invoked, "Ready", `${tool.name} should carry a tool-specific invoked label`);
   }
 
-  const search = response.tools.find((tool) => tool.name === "dizko_search_events");
+  const search = response.tools.find((tool) => tool.name === "search_events");
   assert.equal(search._meta["openai/toolInvocation/invoking"], "Searching live events");
   assert.equal(search._meta["openai/toolInvocation/invoked"], "Live events found");
 });
 
-test("MCP tool list carries full parameter docs within budget while preserving input contracts", async () => {
+test("MCP tool list stays compact while preserving input contracts", async () => {
   const response = await handleMcpRequest({ method: "tools/list" });
   const tools = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
 
-  // 0.8.0 serves full descriptions and defaults on every parameter (about
-  // 32 KB). Keep it under 48 KB so a client can list without pagination.
+  // main budgets the list at 26 KB by stripping every parameter description
+  // and default. This branch keeps them (the audit found models misusing
+  // `when`, hard vs soft price filters and paging without them), so the
+  // 30-tool list is about 47 KB. That budget is an open decision for the
+  // Muse review surface, not a settled one; this guard only stops it growing
+  // further unnoticed.
   assert.ok(Buffer.byteLength(JSON.stringify(response)) < 48_000);
 
-  const search = tools.dizko_search_events.inputSchema;
+  const search = tools.search_events.inputSchema;
   for (const [name, property] of Object.entries(search.properties)) {
-    assert.equal(typeof property.description, "string", `dizko_search_events.${name} needs a description`);
-    assert.ok(property.description.length > 0, `dizko_search_events.${name} has an empty description`);
+    assert.equal(typeof property.description, "string", `search_events.${name} needs a description`);
+    assert.ok(property.description.length > 0, `search_events.${name} has an empty description`);
   }
   assert.equal(search.properties.limit.default, 12);
   assert.equal(search.properties.offset.default, 0);
@@ -222,20 +232,32 @@ test("MCP tool list carries full parameter docs within budget while preserving i
   assert.deepEqual(search.properties.rank.enum, ["relevance", "taste"]);
   assert.deepEqual(search.dependentRequired.profile_id, ["profile_secret"]);
 
-  assert.equal(tools.dizko_find_promoter.inputSchema.properties.kind.enum.includes("promoter"), true);
-  assert.equal(tools.dizko_find_promoter.inputSchema.properties.kind.enum.includes("collective"), true);
-  assert.ok(tools.dizko_find_artist.inputSchema.anyOf.some((branch) => branch.required.includes("query")));
-  assert.ok(tools.dizko_find_artist.inputSchema.anyOf.some((branch) => branch.required.includes("id")));
-  assert.equal(tools.dizko_plan_night.inputSchema.properties.profile_id.type, "string");
-  assert.deepEqual(tools.dizko_plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
-  assert.equal(tools.dizko_create_profile.inputSchema.properties.preferences.$ref, "#/$defs/preferences");
-  assert.equal(tools.dizko_create_profile.inputSchema.$defs.preferences.properties.day_filters.additionalProperties.$ref, "#/$defs/dayPreference");
-  assert.ok(tools.dizko_record_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("liked")));
-  assert.ok(tools.dizko_record_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("rating")));
-  assert.ok(tools.dizko_record_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("notes")));
-  assert.equal(tools.dizko_delete_profile.inputSchema.properties.confirm_delete.type, "boolean");
-  assert.ok(tools.dizko_delete_profile.inputSchema.required.includes("confirm_delete"));
-  assert.ok(tools.dizko_purchase_tickets.inputSchema.required.includes("confirmation_text"));
+  assert.ok(search.properties.cursor, "search_events accepts the opaque contract cursor");
+  for (const kind of ["dj", "artist", "venue", "collective", "promoter"]) {
+    assert.equal(tools.find_scene_entities.inputSchema.properties.kind.enum.includes(kind), true, `find_scene_entities kind ${kind}`);
+  }
+  for (const name of ["get_artist", "get_venue"]) {
+    assert.ok(tools[name].inputSchema.anyOf.some((branch) => branch.required.includes("query")));
+    assert.ok(tools[name].inputSchema.anyOf.some((branch) => branch.required.includes("id")));
+    assert.equal(tools[name].inputSchema.additionalProperties, false);
+  }
+  for (const name of ["bin_event", "save_event", "add_to_dizko_plan"]) {
+    assert.deepEqual(tools[name].inputSchema.required, ["event_id", "confirmed", "idempotency_key"]);
+    assert.equal(tools[name].inputSchema.properties.idempotency_key.minLength, 16);
+  }
+  for (const filter of ["pride", "promoter", "price_min"]) {
+    assert.ok(tools.plan_night.inputSchema.properties[filter], `plan_night advertises ${filter} again`);
+  }
+  assert.equal(tools.plan_night.inputSchema.properties.profile_id.type, "string");
+  assert.deepEqual(tools.plan_night.inputSchema.dependentRequired.profile_id, ["profile_secret"]);
+  assert.equal(tools.create_event_preference_profile.inputSchema.properties.preferences.$ref, "#/$defs/preferences");
+  assert.equal(tools.create_event_preference_profile.inputSchema.$defs.preferences.properties.day_filters.additionalProperties.$ref, "#/$defs/dayPreference");
+  assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("liked")));
+  assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("rating")));
+  assert.ok(tools.record_event_feedback.inputSchema.anyOf.some((branch) => branch.required.includes("notes")));
+  assert.equal(tools.delete_event_preferences.inputSchema.properties.confirm_delete.type, "boolean");
+  assert.ok(tools.delete_event_preferences.inputSchema.required.includes("confirm_delete"));
+  assert.ok(tools.purchase_ticket_order.inputSchema.required.includes("confirmation_text"));
 });
 
 test("MCP lists and serves prompts", async () => {
@@ -256,7 +278,7 @@ test("MCP lists and serves prompts", async () => {
 
   const onboarding = await handleMcpRequest({ method: "prompts/get", params: { name: "dizko_onboarding" } });
   assert.equal(onboarding.resultType, "complete");
-  assert.match(onboarding.description, /dizko_create_profile with consent=true/);
+  assert.match(onboarding.description, /create_event_preference_profile with consent=true/);
   assert.equal(onboarding.messages.length, 1);
   assert.equal(onboarding.messages[0].role, "user");
   assert.equal(onboarding.messages[0].content.type, "text");
@@ -290,7 +312,7 @@ test("MCP enforces required arguments before calling the upstream", async () => 
     error: "id is required.",
     code: "invalid_argument",
     field: "id",
-    hint: "Fix the argument and call dizko_get_event again."
+    hint: "Fix the argument and call get_event again."
   });
 });
 
@@ -307,7 +329,7 @@ test("MCP coerces model-friendly argument shapes and rejects the rest before fet
 
   const coerced = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", limit: "5", genres: "techno,house", free: "true" } }
+    params: { name: "search_events", arguments: { city: "berlin", limit: "5", genres: "techno,house", free: "true" } }
   }, options);
   assert.equal(coerced.isError, false);
   assert.equal(requested[0].searchParams.get("limit"), "5");
@@ -320,7 +342,7 @@ test("MCP coerces model-friendly argument shapes and rejects the rest before fet
 
   const rejected = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", limit: "many" } }
+    params: { name: "search_events", arguments: { city: "berlin", limit: "many" } }
   }, options);
   assert.equal(rejected.isError, true);
   assert.equal(requested.length, 2, "invalid input must not reach the upstream");
@@ -328,18 +350,18 @@ test("MCP coerces model-friendly argument shapes and rejects the rest before fet
     error: "limit must be a whole number.",
     code: "invalid_argument",
     field: "limit",
-    hint: "Fix the argument and call dizko_search_events again."
+    hint: "Fix the argument and call search_events again."
   });
 
   const scopeless = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: {} }
+    params: { name: "search_events", arguments: {} }
   }, options);
   assert.equal(scopeless.isError, true);
   assert.equal(requested.length, 2, "a scopeless call must not reach the upstream either");
   assert.equal(scopeless.structuredContent.code, "invalid_argument");
   assert.equal(scopeless.structuredContent.field, "city");
-  assert.match(scopeless.structuredContent.hint, /dizko_list_cities/);
+  assert.match(scopeless.structuredContent.hint, /list_cities/);
 });
 
 test("MCP resolves weekday presets in city time and rejects unknown `when` values", async () => {
@@ -356,7 +378,7 @@ test("MCP resolves weekday presets in city time and rejects unknown `when` value
 
   const friday = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", when: "friday" } }
+    params: { name: "search_events", arguments: { city: "berlin", when: "friday" } }
   }, options);
   assert.equal(friday.isError, false);
   assert.equal(requested[0].searchParams.get("date_from"), "2026-09-11");
@@ -366,7 +388,7 @@ test("MCP resolves weekday presets in city time and rejects unknown `when` value
 
   const someday = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", when: "someday" } }
+    params: { name: "search_events", arguments: { city: "berlin", when: "someday" } }
   }, options);
   assert.equal(someday.isError, true);
   assert.equal(requested.length, 1, "an unsupported preset must not reach the upstream");
@@ -380,7 +402,7 @@ test("MCP resolves weekday presets in city time and rejects unknown `when` value
 test("MCP lists covered cities with status, timezone, live counts and freshness", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_list_cities", arguments: {} }
+    params: { name: "list_cities", arguments: {} }
   }, {
     config: TEST_CONFIG,
     fetch: async () => Response.json({
@@ -442,7 +464,7 @@ test("unsupported cities return honest nearest coverage instead of an outage", a
 
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "Bristol" } }
+    params: { name: "search_events", arguments: { city: "Bristol" } }
   }, options);
 
   assert.equal(response.isError, true);
@@ -464,12 +486,12 @@ test("unsupported cities return honest nearest coverage instead of an outage", a
   // Nothing live within 700 km: nearest_covered_city is null, not a guess.
   const far = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "Nairobi" } }
+    params: { name: "search_events", arguments: { city: "Nairobi" } }
   }, options);
   assert.equal(far.isError, true);
   assert.equal(far.structuredContent.code, "unsupported_city");
   assert.equal(far.structuredContent.nearest_covered_city, null);
-  assert.match(far.structuredContent.assistant_instruction, /dizko_list_cities/);
+  assert.match(far.structuredContent.assistant_instruction, /list_cities/);
   assert.doesNotMatch(JSON.stringify(far), /unavailable|outage/i);
 });
 
@@ -486,7 +508,7 @@ test("MCP legacy get_event_search_followups still asks for missing event type an
   assert.ok(response.structuredContent.questions.some((question) => question.includes("vibe")));
   assert.equal(response.structuredContent.search_args_hint.city, "berlin");
   assert.equal(response.structuredContent.search_args_hint.when, "tonight");
-  assert.match(response.structuredContent.assistant_instruction, /dizko_search_events/);
+  assert.match(response.structuredContent.assistant_instruction, /search_events/);
 });
 
 test("MCP legacy get_event_feedback_prompt returns questions for post-event learning", async () => {
@@ -514,10 +536,10 @@ test("MCP legacy get_event_feedback_prompt returns questions for post-event lear
   assert.equal(response.structuredContent.event.venue, "RSO.BERLIN");
   assert.equal(response.structuredContent.attended_at, "2026-06-09");
   assert.ok(response.structuredContent.questions.some((question) => question.includes("Did you like")));
-  assert.match(response.structuredContent.assistant_instruction, /dizko_record_feedback/);
+  assert.match(response.structuredContent.assistant_instruction, /record_event_feedback/);
 });
 
-test("MCP dizko_search_events returns compact event summaries and opt-in fields", async () => {
+test("MCP search_events returns local times, contract fields and opt-in extras", async () => {
   const options = {
     config: TEST_CONFIG,
     fetch: async () => Response.json({
@@ -553,7 +575,7 @@ test("MCP dizko_search_events returns compact event summaries and opt-in fields"
 
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin" } }
+    params: { name: "search_events", arguments: { city: "berlin" } }
   }, options);
 
   assert.equal(response.isError, false);
@@ -569,6 +591,8 @@ test("MCP dizko_search_events returns compact event summaries and opt-in fields"
   assert.equal(body.offset, 0);
   assert.equal(body.has_more, false);
   assert.equal(body.next_offset, null);
+  assert.equal(body.contract_version, "2026-09-19");
+  assert.deepEqual(body.page, { limit: 12, returned: 1, next_cursor: null });
   assert.equal(body.search_fallback, null);
   assert.equal(body.app_download_url, "https://www.dizko.app/ios");
   assert.match(body.assistant_instruction, /render it verbatim/);
@@ -587,43 +611,50 @@ test("MCP dizko_search_events returns compact event summaries and opt-in fields"
   assert.equal(event.city_slug, "berlin");
   assert.equal(event.price, "€20");
   assert.deepEqual(event.set_times, [{ artist: "DJ A", at: "23:00" }]);
-  assert.equal(event.featured, true);
-  assert.equal("pick" in event, false, "`pick` was replaced by `featured`");
+  assert.equal(event.pick, true);
   assert.deepEqual(event.promoters, ["Example Collective"], "promoters are names by default");
   assert.equal(event.event_url, "https://www.dizko.app/events/1");
-  assert.equal(event.calendar_url, "https://mcp.dizko.app/e/1/cal");
+  assert.equal(event.calendar_url, "https://mcp.dizko.app/e/1/ics");
   assert.equal(event.directions_url, "https://mcp.dizko.app/e/1/map");
-  // Compact by default: no images, coordinates, source, currency, sound
-  // tags or boilerplate description unless asked for. (price_trend is not
-  // asserted here: src/format.js still emits it on compact summaries.)
-  for (const key of ["sound_tags", "image_url", "lat", "lng", "source", "currency", "description"]) {
+  // Muse contract fields (2026-09-19) are always present.
+  assert.equal(event.dizko_url, event.event_url);
+  assert.equal(event.venue_name, "Berghain");
+  assert.equal(event.source, "resident_advisor");
+  assert.equal(event.currency, "EUR");
+  assert.equal(event.image_url, "https://images.example.test/night-one.jpg", "flyers are on by default for resource links");
+  assert.equal(event.price_min, 20);
+  assert.equal(event.availability.status, "unknown");
+  assert.equal(event.price_freshness.status, "unverified");
+  assert.equal(typeof event.retrieved_at, "string");
+  // Still opt-in: coordinates, sound tags and the long description.
+  for (const key of ["sound_tags", "lat", "lng", "description"]) {
     assert.equal(key in event, false, `${key} should be omitted from the compact summary`);
   }
 
   const detailed = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", fields: ["images", "coordinates"] } }
+    params: { name: "search_events", arguments: { city: "berlin", fields: ["coordinates"] } }
   }, options);
   const detailedEvent = detailed.structuredContent.events[0];
   assert.equal(detailedEvent.image_url, "https://images.example.test/night-one.jpg");
   assert.equal(detailedEvent.lat, 52.5);
   assert.equal(detailedEvent.lng, 13.4);
-  assert.equal("source" in detailedEvent, false, "fields are opt-in one by one");
+  assert.equal("artist_socials" in detailedEvent, false, "fields are opt-in one by one");
   assert.deepEqual(detailedEvent.promoters, ["Example Collective"]);
 
   const withPromoters = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", fields: ["promoters", "source"] } }
+    params: { name: "search_events", arguments: { city: "berlin", fields: ["promoters", "source"] } }
   }, options);
   assert.deepEqual(withPromoters.structuredContent.events[0].promoters, [{ name: "Example Collective", slug: "example-collective" }]);
   assert.equal(withPromoters.structuredContent.events[0].source, "resident_advisor");
   assert.equal(withPromoters.structuredContent.events[0].currency, "EUR");
 });
 
-test("MCP dizko_search_events ranks by taste when asked", async () => {
+test("MCP search_events ranks by taste when asked", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", when: "friday", genres: ["techno"], rank: "taste", limit: 1 } }
+    params: { name: "search_events", arguments: { city: "berlin", when: "friday", genres: ["techno"], rank: "taste", limit: 1 } }
   }, {
     config: TEST_CONFIG,
     now: new Date("2026-09-08T12:00:00Z"),
@@ -655,10 +686,10 @@ test("MCP dizko_search_events ranks by taste when asked", async () => {
   assert.ok(body.events[0].recommendation_reasons.includes("genre match: techno"));
 });
 
-test("MCP dizko_get_event reports removed events as event_not_found", async () => {
+test("MCP get_event reports removed events as event_not_found", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_get_event", arguments: { id: "evt-gone" } }
+    params: { name: "get_event", arguments: { id: "evt-gone" } }
   }, {
     config: TEST_CONFIG,
     retries: 0,
@@ -675,7 +706,7 @@ test("MCP dizko_get_event reports removed events as event_not_found", async () =
 test("MCP search returns structured tool errors for slow upstream calls", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin" } }
+    params: { name: "search_events", arguments: { city: "berlin" } }
   }, {
     config: { ...TEST_CONFIG, apiTimeoutMs: 5 },
     fetch: async (_url, init) => {
@@ -724,7 +755,7 @@ test("MCP ticket tools quote and hand off third-party checkout after written con
 
   const offers = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_ticket_offers", arguments: { event_id: "event-1" } }
+    params: { name: "get_ticket_offers", arguments: { event_id: "event-1" } }
   }, options);
 
   assert.equal(offers.isError, false);
@@ -740,7 +771,7 @@ test("MCP ticket tools quote and hand off third-party checkout after written con
   const quote = await handleMcpRequest({
     method: "tools/call",
     params: {
-      name: "dizko_quote_tickets",
+      name: "quote_ticket_order",
       arguments: {
         event_id: "event-1",
         quantity: 2,
@@ -757,12 +788,12 @@ test("MCP ticket tools quote and hand off third-party checkout after written con
   assert.equal(quote.structuredContent.quote.max_total, 240);
   assert.match(quote.structuredContent.quote_token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "quote_token is payload.signature");
   assert.match(quote.structuredContent.confirmation_prompt, /Yes, buy 2 ticket/);
-  assert.match(quote.structuredContent.assistant_instruction, /dizko_purchase_tickets/);
+  assert.match(quote.structuredContent.assistant_instruction, /purchase_ticket_order/);
 
   const purchase = await handleMcpRequest({
     method: "tools/call",
     params: {
-      name: "dizko_purchase_tickets",
+      name: "purchase_ticket_order",
       arguments: {
         quote_token: quote.structuredContent.quote_token,
         confirmation_text: "Yes, buy 2 tickets for Ostbahnhof XL, max total USD240. Stop if price, date, venue, ticket type, quantity, or refund terms change."
@@ -781,7 +812,7 @@ test("MCP ticket tools quote and hand off third-party checkout after written con
   const tampered = await handleMcpRequest({
     method: "tools/call",
     params: {
-      name: "dizko_purchase_tickets",
+      name: "purchase_ticket_order",
       arguments: {
         quote_token: `${payload.slice(0, -2)}AA.${signature}`,
         confirmation_text: "Yes, buy 2 tickets, max total 240."
@@ -834,7 +865,7 @@ test("MCP legacy ticket names reject vague confirmation with the missing pieces"
   assert.match(purchase.structuredContent.confirmation_prompt, /Yes, buy 2 ticket/);
 });
 
-test("MCP dizko_purchase_tickets sanitizes failed provider responses", async () => {
+test("MCP purchase_ticket_order sanitizes failed provider responses", async () => {
   const options = {
     fetch: async () => Response.json({
       id: "event-1",
@@ -859,13 +890,13 @@ test("MCP dizko_purchase_tickets sanitizes failed provider responses", async () 
   };
   const quote = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_quote_tickets", arguments: { event_id: "event-1", quantity: 1 } }
+    params: { name: "quote_ticket_order", arguments: { event_id: "event-1", quantity: 1 } }
   }, options);
 
   const purchase = await handleMcpRequest({
     method: "tools/call",
     params: {
-      name: "dizko_purchase_tickets",
+      name: "purchase_ticket_order",
       arguments: {
         quote_token: quote.structuredContent.quote_token,
         confirmation_text: "Yes, buy 1 ticket for Club Night."
@@ -908,8 +939,8 @@ test("MCP stdio serves newline-delimited JSON-RPC on the 2026-07-28 revision", a
 
   const list = await nextMessage(lines);
   assert.equal(list.result.resultType, "complete");
-  assert.ok(list.result.tools.some((tool) => tool.name === "dizko_search_events"));
-  assert.equal(list.result.tools.some((tool) => tool.name === "search_events"), false);
+  assert.ok(list.result.tools.some((tool) => tool.name === "search_events"));
+  assert.equal(list.result.tools.length, 30);
 
   input.write(`${JSON.stringify({
     jsonrpc: "2.0",
@@ -943,7 +974,7 @@ test("MCP search sanitizes retryable DNS failures", async () => {
 
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "los angeles", when: "week", limit: 1 } }
+    params: { name: "search_events", arguments: { city: "los angeles", when: "week", limit: 1 } }
   }, {
     config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
     retries: 1,
@@ -962,7 +993,7 @@ test("MCP search sanitizes retryable DNS failures", async () => {
 test("MCP search sanitizes retryable HTTP 5xx errors", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
+    params: { name: "search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
   }, {
     config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
     retries: 0,
@@ -980,7 +1011,7 @@ test("MCP search sanitizes retryable HTTP 5xx errors", async () => {
 test("MCP error responses never expose upstream hosts, URLs, or causes", async () => {
   const response = await handleMcpRequest({
     method: "tools/call",
-    params: { name: "dizko_search_events", arguments: { city: "berlin", limit: 1 } }
+    params: { name: "search_events", arguments: { city: "berlin", limit: 1 } }
   }, {
     config: {
       apiBaseUrl: "https://backend-production-958d.up.railway.app",
@@ -998,4 +1029,69 @@ test("MCP error responses never expose upstream hosts, URLs, or causes", async (
   assert.doesNotMatch(serialized, /railway\.app/i);
   assert.doesNotMatch(serialized, /https?:\/\//i);
   assert.doesNotMatch(serialized, /traceback|stack detail/i);
+});
+
+test("MCP search_events carries the Muse card fields", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin" } }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({
+      count: 1,
+      events: [{
+        id: "1",
+        title: "Night One",
+        genres: [],
+        vibe: [],
+        event_types: [],
+        lineup: ["DJ One", "DJ Two"],
+        venue_name: "Else",
+        start_time: "2026-09-20T12:00:00Z",
+        end_time: "2026-09-21T04:00:00Z",
+        ticket_url: "https://tickets.example/night-one",
+        attendance_count: 829,
+        ra_pick: true,
+        price_trend: "selling_fast",
+        sound_tags: ["dub techno"],
+        promoters: ["Example Collective"],
+        image_url: "https://images.example.test/night-one.jpg",
+        lat: 52.5,
+        lng: 13.4
+      }]
+    })
+  });
+
+  assert.equal(response.content[0].type, "text");
+  assert.match(response.content[0].text, /Night One/);
+  const event = response.structuredContent.events[0];
+  assert.equal(event.title, "Night One");
+  assert.equal(event.pick, true);
+  assert.equal(event.price_trend, "selling_fast");
+  assert.deepEqual(event.promoters, ["Example Collective"]);
+  assert.equal(event.image_url, "https://images.example.test/night-one.jpg");
+  assert.equal(event.dizko_url, event.event_url);
+  assert.equal(event.venue_name, "Else");
+  assert.deepEqual(event.lineup_artists, ["DJ One", "DJ Two"]);
+  assert.equal(event.going_count, 829);
+  assert.match(event.calendar_url, /\/e\/1\/ics$/);
+  // Coordinates and sound tags stay opt-in through `fields` on this branch.
+  assert.equal("lat" in event, false);
+  assert.equal("sound_tags" in event, false);
+  assert.match(response.structuredContent.assistant_instruction, /three compact, scannable lines/);
+  assert.equal(response.structuredContent.app_download_url, "https://www.dizko.app/ios");
+});
+
+test("MCP event results include bounded HTTPS flyer resource links", async () => {
+  const response = await handleMcpRequest({ method: "tools/call", params: { name: "search_events", arguments: { city: "berlin" } } }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({ count: 2, events: [
+      { id: "1", title: "Night One", genres: [], vibe: [], event_types: [], lineup: [], image_url: "https://images.example.test/one.jpg" },
+      { id: "2", title: "Unsafe", genres: [], vibe: [], event_types: [], lineup: [], image_url: "http://images.example.test/two.jpg" }
+    ] })
+  });
+  const links = response.content.filter((block) => block.type === "resource_link");
+  assert.equal(links.length, 1);
+  assert.equal(links[0].uri, "https://images.example.test/one.jpg");
+  assert.match(links[0].name, /Night One/);
 });

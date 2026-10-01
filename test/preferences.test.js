@@ -35,7 +35,7 @@ function body(result) {
 }
 
 async function createProfile(preferencesPath, preferences) {
-  const created = body(await callTool("dizko_create_profile", { consent: true, preferences }, { preferencesPath }));
+  const created = body(await callTool("create_event_preference_profile", { consent: true, preferences }, { preferencesPath }));
   assert.equal(created.created, true);
   return { profile_id: created.profile_id, profile_secret: created.profile_secret, created };
 }
@@ -56,7 +56,7 @@ test("preference tools validate input first, then gate on consent, secret and co
   await withStore(async (preferencesPath) => {
     // Validation runs before the consent gate: a missing required field is
     // an invalid_argument, not a consent problem.
-    const missingSecret = await callTool("dizko_update_profile", {
+    const missingSecret = await callTool("save_event_preferences", {
       profile_id: "dzk_missing",
       consent: false,
       preferences: { genres: ["techno"] }
@@ -66,10 +66,10 @@ test("preference tools validate input first, then gate on consent, secret and co
       error: "profile_secret is required.",
       code: "invalid_argument",
       field: "profile_secret",
-      hint: "Fix the argument and call dizko_update_profile again."
+      hint: "Fix the argument and call save_event_preferences again."
     });
 
-    const refusedCreate = await callTool("dizko_create_profile", {
+    const refusedCreate = await callTool("create_event_preference_profile", {
       consent: false,
       preferences: { genres: ["techno"] }
     }, { preferencesPath });
@@ -83,7 +83,7 @@ test("preference tools validate input first, then gate on consent, secret and co
 
     // Every required field present, valid credentials, consent false: the
     // consent gate itself answers.
-    const refusedUpdate = await callTool("dizko_update_profile", {
+    const refusedUpdate = await callTool("save_event_preferences", {
       profile_id,
       profile_secret,
       consent: false,
@@ -96,7 +96,7 @@ test("preference tools validate input first, then gate on consent, secret and co
     assert.equal(refusedUpdateBody.code, "consent_required");
     assert.ok(refusedUpdateBody.questions.length > 0);
 
-    const updated = body(await callTool("dizko_update_profile", {
+    const updated = body(await callTool("save_event_preferences", {
       profile_id,
       profile_secret,
       consent: true,
@@ -108,44 +108,44 @@ test("preference tools validate input first, then gate on consent, secret and co
     assert.deepEqual(updated.profile.preferences.vibe, ["underground"]);
     assert.equal(updated.profile.preferences.max_price, 30);
 
-    const fetched = body(await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath }));
+    const fetched = body(await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath }));
     assert.equal(fetched.profile.feedback_count, 0);
     assert.deepEqual(fetched.profile.preferences.vibe, ["underground"]);
     assert.equal(fetched.profile.preferences.genres.includes("house"), false, "a refused update must not write anything");
 
-    const wrongSecret = await callTool("dizko_get_profile", { profile_id, profile_secret: "dzs_wrong" }, { preferencesPath });
+    const wrongSecret = await callTool("get_event_preferences", { profile_id, profile_secret: "dzs_wrong" }, { preferencesPath });
     assert.equal(wrongSecret.isError, true);
     assert.equal(body(wrongSecret).code, "profile_secret_invalid");
 
-    const unknownProfile = await callTool("dizko_get_profile", {
+    const unknownProfile = await callTool("get_event_preferences", {
       profile_id: "dzk_00000000-0000-0000-0000-000000000000",
       profile_secret
     }, { preferencesPath });
     assert.equal(unknownProfile.isError, true);
     assert.equal(body(unknownProfile).code, "profile_not_found");
 
-    const missingConfirm = await callTool("dizko_delete_profile", { profile_id, profile_secret }, { preferencesPath });
+    const missingConfirm = await callTool("delete_event_preferences", { profile_id, profile_secret }, { preferencesPath });
     assert.equal(missingConfirm.isError, true);
     assert.equal(body(missingConfirm).code, "invalid_argument");
     assert.equal(body(missingConfirm).field, "confirm_delete");
 
-    const unconfirmed = await callTool("dizko_delete_profile", { profile_id, profile_secret, confirm_delete: false }, { preferencesPath });
+    const unconfirmed = await callTool("delete_event_preferences", { profile_id, profile_secret, confirm_delete: false }, { preferencesPath });
     assert.equal(unconfirmed.isError, true);
     assert.equal(body(unconfirmed).deleted, false);
     assert.equal(body(unconfirmed).code, "confirmation_required");
 
-    const deleted = body(await callTool("dizko_delete_profile", { profile_id, profile_secret, confirm_delete: true }, { preferencesPath }));
+    const deleted = body(await callTool("delete_event_preferences", { profile_id, profile_secret, confirm_delete: true }, { preferencesPath }));
     assert.equal(deleted.deleted, true);
 
-    const gone = await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath });
+    const gone = await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath });
     assert.equal(gone.isError, true);
     assert.equal(body(gone).code, "profile_not_found");
   });
 });
 
-test("dizko_create_profile returns dzk_/dzs_ credentials and the normalized profile shape", async () => {
+test("create_event_preference_profile returns dzk_/dzs_ credentials and the normalized profile shape", async () => {
   await withStore(async (preferencesPath) => {
-    const result = await callTool("dizko_create_profile", {
+    const result = await callTool("create_event_preference_profile", {
       consent: true,
       preferences: { genres: ["jazz"], vibe: ["intimate"], max_price: 20 }
     }, { preferencesPath });
@@ -188,10 +188,10 @@ test("dizko_create_profile returns dzk_/dzs_ credentials and the normalized prof
     assert.equal(created.access_instructions.profile_secret_returned_now, true);
     assert.equal(created.access_instructions.keep_private, true);
     assert.match(created.access_instructions.reuse_instruction, /keep both profile_id and profile_secret/);
-    assert.match(created.access_instructions.deletion_instruction, /dizko_delete_profile/);
+    assert.match(created.access_instructions.deletion_instruction, /delete_event_preferences/);
     assert.match(created.assistant_instruction, /profile_id and profile_secret/);
 
-    const fetched = body(await callTool("dizko_get_profile", {
+    const fetched = body(await callTool("get_event_preferences", {
       profile_id: created.profile_id,
       profile_secret: created.profile_secret
     }, { preferencesPath }));
@@ -202,7 +202,7 @@ test("dizko_create_profile returns dzk_/dzs_ credentials and the normalized prof
     assert.match(fetched.access_instructions.reuse_instruction, /cannot reveal it later/);
 
     // mode=replace overwrites and returns the compacted shape: no empty lists.
-    const replaced = body(await callTool("dizko_update_profile", {
+    const replaced = body(await callTool("save_event_preferences", {
       profile_id: created.profile_id,
       profile_secret: created.profile_secret,
       consent: true,
@@ -223,7 +223,7 @@ test("a like promotes the event's genres, vibe, types, venue and promoters into 
   await withStore(async (preferencesPath) => {
     const { profile_id, profile_secret } = await createProfile(preferencesPath, { genres: ["house"] });
 
-    const feedback = body(await callTool("dizko_record_feedback", {
+    const feedback = body(await callTool("record_event_feedback", {
       profile_id,
       profile_secret,
       event_id: "event-1",
@@ -262,12 +262,12 @@ test("a like promotes the event's genres, vibe, types, venue and promoters into 
     });
     assert.equal(feedback.profile.feedback_count, 1);
 
-    const fetched = body(await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath }));
+    const fetched = body(await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath }));
     assert.deepEqual(fetched.profile.learned_preferences, feedback.learned_now);
     assert.equal(fetched.profile.feedback_count, 1);
 
     let requestedUrl = null;
-    const search = await callTool("dizko_search_events", {
+    const search = await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -347,7 +347,7 @@ test("feedback requires a real learning signal: empty feedback is rejected befor
     // liked, rating or notes, so the request never reaches the store or
     // the event lookup.
     for (const input of [{}, { notes: "   " }]) {
-      const rejected = await callTool("dizko_record_feedback", {
+      const rejected = await callTool("record_event_feedback", {
         profile_id,
         profile_secret,
         event_id: "event-1",
@@ -357,12 +357,12 @@ test("feedback requires a real learning signal: empty feedback is rejected befor
       assert.equal(rejected.isError, true);
       assert.equal(rejectedBody.code, "invalid_argument");
       assert.match(rejectedBody.error, /at least one of: liked, rating, notes/);
-      assert.match(rejectedBody.hint, /dizko_record_feedback/);
+      assert.match(rejectedBody.hint, /record_event_feedback/);
       assert.equal(rejectedBody.saved, undefined);
     }
     assert.equal(fetchCalled, false, "no upstream call before the signal check");
 
-    const fetched = body(await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath }));
+    const fetched = body(await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath }));
     assert.equal(fetched.profile.feedback_count, 0);
   });
 });
@@ -460,7 +460,7 @@ test("feedback notes create learned preference and avoid signals", async () => {
   await withStore(async (preferencesPath) => {
     const { profile_id, profile_secret } = await createProfile(preferencesPath, { event_types: ["club night"] });
 
-    const feedback = body(await callTool("dizko_record_feedback", {
+    const feedback = body(await callTool("record_event_feedback", {
       profile_id,
       profile_secret,
       event_id: "event-1",
@@ -483,10 +483,10 @@ test("feedback notes create learned preference and avoid signals", async () => {
     });
     assert.equal(feedback.profile.learned_scores.venues, undefined, "notes alone do not blame the venue");
 
-    const fetched = body(await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath }));
+    const fetched = body(await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath }));
     assert.deepEqual(fetched.profile.learned_preferences, feedback.learned_now);
 
-    const recommended = body(await callTool("dizko_search_events", {
+    const recommended = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -516,7 +516,7 @@ test("a dislike without an explanation blames the venue and promoter, never the 
   await withStore(async (preferencesPath) => {
     const { profile_id, profile_secret } = await createProfile(preferencesPath, { genres: ["house"] });
 
-    const feedback = body(await callTool("dizko_record_feedback", {
+    const feedback = body(await callTool("record_event_feedback", {
       profile_id,
       profile_secret,
       event_id: "event-1",
@@ -540,7 +540,7 @@ test("a dislike without an explanation blames the venue and promoter, never the 
     assert.equal(feedback.profile.learned_scores.genres, undefined, "techno is untouched");
     assert.match(feedback.assistant_instruction, /avoid entry/);
 
-    const recommended = body(await callTool("dizko_search_events", {
+    const recommended = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -582,7 +582,7 @@ test("repeated dislikes that blame the music learn to avoid the genre", async ()
   await withStore(async (preferencesPath) => {
     const { profile_id, profile_secret } = await createProfile(preferencesPath, { genres: ["house"] });
 
-    const dislike = (eventId, venue) => callTool("dizko_record_feedback", {
+    const dislike = (eventId, venue) => callTool("record_event_feedback", {
       profile_id,
       profile_secret,
       event_id: eventId,
@@ -612,7 +612,7 @@ test("repeated dislikes that blame the music learn to avoid the genre", async ()
     assert.ok(second.learned_now.avoid.includes("void"));
     assert.equal(second.learned_now.genres, undefined, "no positive genre signal exists");
 
-    const recommended = body(await callTool("dizko_search_events", {
+    const recommended = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -654,7 +654,7 @@ test("saved taste is floored at zero: a saved genre never becomes an avoid rule"
     const { profile_id, profile_secret } = await createProfile(preferencesPath, { genres: ["techno"], venues: ["Basement"] });
 
     for (const eventId of ["event-1", "event-2"]) {
-      const feedback = await callTool("dizko_record_feedback", {
+      const feedback = await callTool("record_event_feedback", {
         profile_id,
         profile_secret,
         event_id: eventId,
@@ -676,7 +676,7 @@ test("saved taste is floored at zero: a saved genre never becomes an avoid rule"
       assert.equal(feedback.isError, false);
     }
 
-    const fetched = body(await callTool("dizko_get_profile", { profile_id, profile_secret }, { preferencesPath }));
+    const fetched = body(await callTool("get_event_preferences", { profile_id, profile_secret }, { preferencesPath }));
     const learned = fetched.profile.learned_preferences;
     assert.equal(fetched.profile.feedback_count, 2);
     assert.equal(learned.avoid.includes("techno"), false, "saved genre is floored at 0");
@@ -826,7 +826,7 @@ test("saved taste ranks results but never becomes an upstream filter; only typed
       return Response.json({ count: candidates.length, events: candidates });
     };
 
-    const result = await callTool("dizko_search_events", {
+    const result = await callTool("search_events", {
       profile_id,
       profile_secret,
       when: "weekend"
@@ -904,7 +904,7 @@ test("saved taste ranks results but never becomes an upstream filter; only typed
     });
 
     // Fields typed in the request are real filters and reach upstream.
-    const typed = body(await callTool("dizko_search_events", {
+    const typed = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       when: "weekend",
@@ -928,7 +928,7 @@ test("personalized night plans rank by saved taste as hints and pick the best-sc
     });
     let requestedUrl = null;
 
-    const planned = await callTool("dizko_plan_night", {
+    const planned = await callTool("plan_night", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -1038,7 +1038,7 @@ test("personalized night plans rank by saved taste as hints and pick the best-sc
 
 test("day_filters merge per weekday and steer single-day ranking without touching the upstream query", async () => {
   await withStore(async (preferencesPath) => {
-    const created = body(await callTool("dizko_create_profile", {
+    const created = body(await callTool("create_event_preference_profile", {
       consent: true,
       preferences: {
         genres: ["house"],
@@ -1048,7 +1048,7 @@ test("day_filters merge per weekday and steer single-day ranking without touchin
     assert.deepEqual(created.profile.preferences.day_filters, { friday: { genres: ["techno"] } });
     const { profile_id, profile_secret } = created;
 
-    const saved = body(await callTool("dizko_update_profile", {
+    const saved = body(await callTool("save_event_preferences", {
       profile_id,
       profile_secret,
       consent: true,
@@ -1061,7 +1061,7 @@ test("day_filters merge per weekday and steer single-day ranking without touchin
     assert.deepEqual(saved.profile.preferences.genres, ["house"]);
 
     let requestedUrl = null;
-    const friday = body(await callTool("dizko_search_events", {
+    const friday = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -1095,7 +1095,7 @@ test("day_filters merge per weekday and steer single-day ranking without touchin
     assert.equal(friday.events[0].id, "techno-1");
     assert.ok(friday.events[0].recommendation_reasons.includes("genre match: techno"));
 
-    const sunday = body(await callTool("dizko_search_events", {
+    const sunday = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -1135,7 +1135,7 @@ test("day_filters merge per weekday and steer single-day ranking without touchin
     assert.ok(sunday.events[0].recommendation_reasons.includes("within budget"));
     assert.ok(sunday.events[1].recommendation_reasons.includes("over budget"), "over budget is a penalty, the event still shows");
 
-    const saturday = body(await callTool("dizko_search_events", {
+    const saturday = body(await callTool("search_events", {
       profile_id,
       profile_secret,
       city: "berlin",
@@ -1151,7 +1151,7 @@ test("day_filters merge per weekday and steer single-day ranking without touchin
 
 test("concurrent preference writes preserve profiles in the file store", async () => {
   await withStore(async (preferencesPath) => {
-    const created = await Promise.all(Array.from({ length: 12 }, (_, index) => callTool("dizko_create_profile", {
+    const created = await Promise.all(Array.from({ length: 12 }, (_, index) => callTool("create_event_preference_profile", {
       consent: true,
       preferences: {
         genres: [`genre-${index}`],

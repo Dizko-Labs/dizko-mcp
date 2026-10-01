@@ -100,28 +100,28 @@ test("a type mismatch describes the expected type", () => {
 });
 
 test("dependentRequired: profile_id without profile_secret reports profile_secret", () => {
-  const { errors } = validateInput(schemaFor("dizko_search_events"), { city: "berlin", profile_id: "dzk_1" });
+  const { errors } = validateInput(schemaFor("search_events"), { city: "berlin", profile_id: "dzk_1" });
   assert.deepEqual(errors, [
     { field: "profile_secret", message: "profile_secret is required when profile_id is given." }
   ]);
-  const reverse = validateInput(schemaFor("dizko_search_events"), { city: "berlin", profile_secret: "dzs_1" });
+  const reverse = validateInput(schemaFor("search_events"), { city: "berlin", profile_secret: "dzs_1" });
   assert.deepEqual(reverse.errors, [
     { field: "profile_id", message: "profile_id is required when profile_secret is given." }
   ]);
 });
 
 test("a missing required field reads '<field> is required.'", () => {
-  assert.deepEqual(validateInput(schemaFor("dizko_ticket_offers"), {}).errors, [
+  assert.deepEqual(validateInput(schemaFor("get_ticket_offers"), {}).errors, [
     { field: "event_id", message: "event_id is required." }
   ]);
   // Blank strings count as missing.
-  assert.deepEqual(validateInput(schemaFor("dizko_ticket_offers"), { event_id: "   " }).errors, [
+  assert.deepEqual(validateInput(schemaFor("get_ticket_offers"), { event_id: "   " }).errors, [
     { field: "event_id", message: "event_id is required." }
   ]);
 });
 
 test("anyOf branches: feedback needs liked, rating or notes", () => {
-  const schema = schemaFor("dizko_record_feedback");
+  const schema = schemaFor("record_event_feedback");
   const base = { profile_id: "dzk_1", profile_secret: "dzs_1", event_id: "evt-1" };
 
   assert.deepEqual(validateInput(schema, base).errors, [
@@ -133,7 +133,7 @@ test("anyOf branches: feedback needs liked, rating or notes", () => {
 });
 
 test("$ref into $defs resolves for nested preferences.day_filters", () => {
-  const schema = schemaFor("dizko_create_profile");
+  const schema = schemaFor("create_event_preference_profile");
   const { value, errors } = validateInput(schema, {
     consent: "true",
     preferences: {
@@ -164,12 +164,12 @@ test("$ref into $defs resolves for nested preferences.day_filters", () => {
 // ---------------------------------------------------------------------------
 
 test("firstErrorPayload shapes a single error without optional keys", () => {
-  const payload = firstErrorPayload([{ field: "limit", message: "limit must be at most 200." }], "dizko_search_events");
+  const payload = firstErrorPayload([{ field: "limit", message: "limit must be at most 200." }], "search_events");
   assert.deepEqual(payload, {
     error: "limit must be at most 200.",
     code: "invalid_argument",
     field: "limit",
-    hint: "Fix the argument and call dizko_search_events again."
+    hint: "Fix the argument and call search_events again."
   });
   assert.ok(!("allowed" in payload));
   assert.ok(!("other_errors" in payload));
@@ -185,21 +185,21 @@ test("firstErrorPayload carries allowed values and the remaining errors", () => 
   };
   const { errors } = validateInput(schema, { sort_by: "fastest", limit: 500 });
   assert.equal(errors.length, 2);
-  const payload = firstErrorPayload(errors, "dizko_search_events");
+  const payload = firstErrorPayload(errors, "search_events");
   assert.deepEqual(payload, {
     error: `sort_by must be one of: ${SORT_OPTIONS.join(", ")}.`,
     code: "invalid_argument",
     field: "sort_by",
     allowed: SORT_OPTIONS,
     other_errors: ["limit must be at most 200."],
-    hint: "Fix the argument and call dizko_search_events again."
+    hint: "Fix the argument and call search_events again."
   });
-  assert.match(payload.hint, /dizko_search_events/);
+  assert.match(payload.hint, /search_events/);
 });
 
 test("firstErrorPayload normalizes a missing field to null", () => {
-  const payload = firstErrorPayload([{ field: undefined, message: "Provide at least one of: liked, rating, notes." }], "dizko_record_feedback");
+  const payload = firstErrorPayload([{ field: undefined, message: "Provide at least one of: liked, rating, notes." }], "record_event_feedback");
   assert.equal(payload.field, null);
   assert.equal(payload.error, "Provide at least one of: liked, rating, notes.");
-  assert.equal(payload.hint, "Fix the argument and call dizko_record_feedback again.");
+  assert.equal(payload.hint, "Fix the argument and call record_event_feedback again.");
 });

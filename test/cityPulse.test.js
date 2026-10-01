@@ -100,7 +100,7 @@ test("cityPulse rejects a malformed date_from before fetching", async () => {
   assert.equal(called, false);
 });
 
-test("dizko_city_pulse tool wraps the aggregates with a grounding instruction", async () => {
+test("get_city_pulse tool wraps the aggregates with a grounding instruction", async () => {
   const options = {
     now: NOW,
     fetch: async () => Response.json({
@@ -109,7 +109,7 @@ test("dizko_city_pulse tool wraps the aggregates with a grounding instruction", 
     })
   };
 
-  const result = await callTool("dizko_city_pulse", { city: "berlin" }, options);
+  const result = await callTool("get_city_pulse", { city: "berlin" }, options);
   const body = JSON.parse(result.content[0].text);
   assert.equal(result.isError, false);
   assert.equal(body.city, "Berlin", "the tool reports the display name");
@@ -119,9 +119,4 @@ test("dizko_city_pulse tool wraps the aggregates with a grounding instruction", 
   assert.deepEqual(body.busiest_nights, [{ date: "2026-09-10", weekday: "thursday", events: 1 }]);
   assert.match(body.sample_note, /full inventory/);
   assert.match(body.assistant_instruction, /evidence counts/);
-
-  // The pre-0.8 name still routes to the same handler.
-  const legacy = await callTool("get_city_pulse", { city: "berlin" }, options);
-  assert.equal(legacy.isError, false);
-  assert.equal(JSON.parse(legacy.content[0].text).sample_size, 1);
 });

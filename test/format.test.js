@@ -38,8 +38,11 @@ const BOILERPLATE = "Warehouse Party takes place at Knockdown Center in New York
 test("summarizeEvent emits short calendar and directions links plus the event card", () => {
   const summary = summarizeEvent(EVENT, { env: {} });
   assert.match(summary.event_url, /\/events\/evt-1$/);
-  assert.equal(summary.calendar_url, `${SHORT_BASE}/e/evt-1/cal`);
+  assert.equal(summary.calendar_url, `${SHORT_BASE}/e/evt-1/ics`);
   assert.equal(summary.directions_url, `${SHORT_BASE}/e/evt-1/map`);
+  assert.equal(summary.dizko_url, summary.event_url);
+  assert.equal(summary.venue_name, "Knockdown Center");
+  assert.equal(summary.lineup_artists, undefined);
 });
 
 test("short links are omitted when the underlying data is missing", () => {
@@ -68,6 +71,12 @@ test("summarizeEvent renders city-local times with the IANA timezone", () => {
   assert.equal(berlin.starts_at_local, "2026-09-12T23:59:00+02:00");
   assert.equal(berlin.ends_at_local, "2026-09-13T06:00:00+02:00");
   assert.equal(berlin.timezone, "Europe/Berlin");
+});
+
+test("summarizeEvent strips null and empty fields but keeps id/title/event_url/pick", () => {
+  const summary = summarizeEvent({ id: "evt-2", title: "Mystery" }, { env: {} });
+  assert.deepEqual(Object.keys(summary).sort(), ["availability", "dizko_url", "event_url", "id", "pick", "price_freshness", "retrieved_at", "title"]);
+  assert.equal(summary.pick, false);
 });
 
 test("summarizeEvent spells out both ends of a multi-day event", () => {
@@ -132,33 +141,35 @@ test("formatPrice renders currency symbols, ranges and free entry", () => {
   assert.equal(formatPrice({ currency: "EUR" }), null, "no price -> null");
 });
 
-test("event summaries carry a price string; currency only appears in detail mode", () => {
+test("event summaries carry a price string and, per the Muse contract, the raw currency", () => {
   const paid = summarizeEvent({ ...EVENT, price_min: 30, currency: "BRL" }, { env: {} });
   assert.equal(paid.price, "R$30");
-  assert.equal(paid.currency, undefined, "raw currency is not part of the compact summary");
+  assert.equal(paid.currency, "BRL", "the contract promises explicit price and currency fields");
+  assert.equal(paid.price_min, 30);
   const euro = summarizeEvent({ ...EVENT, price_min: 20, currency: "EUR" }, { env: {} });
   assert.equal(euro.price, "€20");
   const free = summarizeEvent({ ...EVENT, price_min: 0, currency: "USD" }, { env: {} });
   assert.equal(free.price, "free");
-  assert.equal(free.currency, undefined);
+  assert.equal(free.price_min, 0, "a zero price is a price, not a missing one");
   const detail = summarizeEvent({ ...EVENT, price_min: 10, price_max: 20, currency: "USD" }, { env: {}, detail: true });
   assert.equal(detail.price, "$10-$20");
   assert.equal(detail.currency, "USD");
 });
 
-test("summarizeEvent strips null and empty fields but always keeps id/title/event_url", () => {
-  const summary = summarizeEvent({ id: "evt-2", title: "Mystery" }, { env: {} });
-  assert.deepEqual(Object.keys(summary).sort(), ["event_url", "id", "title"]);
-  assert.equal(summary.pick, undefined, "the old pick flag is gone");
-  assert.equal(summary.featured, undefined, "featured is absent rather than false");
+test("summarizeEvent still drops empty lists and null facts around the contract fields", () => {
+  const summary = summarizeEvent({ id: "evt-2", title: "Mystery", genres: [], lineup: [], venue_name: null }, { env: {} });
+  for (const key of ["genres", "lineup", "lineup_artists", "venue", "venue_name", "when", "city", "source", "source_url", "source_provenance"]) {
+    assert.equal(key in summary, false, `${key} has no data and should be dropped`);
+  }
+  assert.equal(summary.pick, false, "pick is a boolean, so false is kept");
 });
 
-test("featured is true only for RA picks or featured events", () => {
-  assert.equal(summarizeEvent({ ...EVENT, ra_pick: true }, { env: {} }).featured, true);
-  assert.equal(summarizeEvent({ ...EVENT, featured_at: "2026-06-01T00:00:00Z" }, { env: {} }).featured, true);
+test("pick is true only for RA picks or featured events", () => {
+  assert.equal(summarizeEvent({ ...EVENT, ra_pick: true }, { env: {} }).pick, true);
+  assert.equal(summarizeEvent({ ...EVENT, featured_at: "2026-06-01T00:00:00Z" }, { env: {} }).pick, true);
   const plain = summarizeEvent({ ...EVENT, ra_pick: false, featured_at: null }, { env: {} });
-  assert.equal(plain.featured, undefined);
-  assert.equal("pick" in plain, false);
+  assert.equal(plain.pick, false);
+  assert.equal("featured" in plain, false, "the featured rename was dropped with the dizko_ surface");
 });
 
 test("lineup is capped at 8 with a count, and full in detail mode", () => {
@@ -211,7 +222,7 @@ test("promoters are names by default and full objects only when requested", () =
   assert.deepEqual(summarizeEvent({ ...EVENT, promoters }, { env: {}, detail: true }).promoters, promoters);
 });
 
-test("heavy fields are opt-in through fields or detail", () => {
+test("coordinates, socials and sound tags are opt-in; flyer, source and currency are not", () => {
   const rich = {
     ...EVENT,
     image_url: "https://img.example/1.jpg",
@@ -225,31 +236,30 @@ test("heavy fields are opt-in through fields or detail", () => {
     price_trend: "rising"
   };
   const summary = summarizeEvent(rich, { env: {} });
-  for (const key of ["image_url", "lat", "lng", "source", "currency", "sound_tags", "artist_socials"]) {
+  // Contract fields and the flyer (surfaced as a resource link) are always on.
+  assert.equal(summary.image_url, "https://img.example/1.jpg");
+  assert.equal(summary.source, "Resident Advisor");
+  assert.equal(summary.source_provenance.provider, "Resident Advisor");
+  assert.equal(summary.currency, "USD");
+  assert.equal(summary.going_count, 240);
+  for (const key of ["lat", "lng", "sound_tags", "artist_socials"]) {
     assert.equal(key in summary, false, `${key} should be absent by default`);
   }
   assert.equal(summary.attendance_count, 240);
   assert.equal(summary.price_trend, "rising", "price_trend is kept when present");
 
-  const withFields = summarizeEvent(rich, { env: {}, fields: ["images", "coordinates", "socials", "source"] });
-  assert.equal(withFields.image_url, "https://img.example/1.jpg");
+  const withFields = summarizeEvent(rich, { env: {}, fields: ["coordinates", "socials"] });
   assert.equal(withFields.lat, 40.7141);
   assert.equal(withFields.lng, -73.9082);
-  assert.equal(withFields.source, "Resident Advisor");
-  assert.equal(withFields.currency, "USD", "source also exposes the raw currency");
   assert.deepEqual(withFields.artist_socials, [{ name: "Headliner", soundcloud: "https://soundcloud.com/h" }], "socials are compacted and unnamed rows dropped");
   assert.equal(withFields.sound_tags, undefined, "sound_tags are detail-only");
 
   const commaFields = summarizeEvent(rich, { env: {}, fields: "images, COORDINATES" });
-  assert.equal(commaFields.image_url, "https://img.example/1.jpg");
   assert.equal(commaFields.lat, 40.7141);
-  assert.equal(commaFields.source, undefined);
+  assert.equal("artist_socials" in commaFields, false);
 
   const detail = summarizeEvent(rich, { env: {}, detail: true });
-  assert.equal(detail.image_url, "https://img.example/1.jpg");
   assert.equal(detail.lat, 40.7141);
-  assert.equal(detail.source, "Resident Advisor");
-  assert.equal(detail.currency, "USD");
   assert.deepEqual(detail.sound_tags, ["big room"]);
   assert.equal(detail.artist_socials.length, 1);
 });
@@ -321,7 +331,7 @@ test("formatEventList prints local when, where, set times and lineup overflow", 
   assert.match(text, /^ {3}Set times: 19:00 Opener, 23:30 Headliner$/m);
   assert.match(text, /^ {3}Tags: techno, underground$/m);
   assert.match(text, /Directions: .*\/e\/evt-1\/map/);
-  assert.match(text, /Add to calendar: .*\/e\/evt-1\/cal/);
+  assert.match(text, /Add to calendar: .*\/e\/evt-1\/ics/);
   assert.match(text, /Event: .*\/events\/evt-1/);
 
   const noAddress = formatEventList([{ ...EVENT, venue_address: null }], { env: {} });

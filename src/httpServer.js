@@ -7,12 +7,17 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { getEvent } from "./api.js";
 import { buildCalendarEvent } from "./calendar.js";
 import { eventLinkTargets } from "./format.js";
-import { createSdkMcpServer } from "./sdkServer.js";
-import { TOOL_VERSION } from "./config.js";
+import { createSdkMcpServer, SERVER_INFO } from "./sdkServer.js";
+import { CONNECTOR_CONTRACT_VERSION } from "./connectorV1.js";
+import { authenticateConnectorRequest, runWithAuthContext } from "./authContext.js";
+import { verifyConnectorBearer } from "./connectorAuth.js";
+import { getConfig } from "./config.js";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export function createHttpMcpServer(options = {}) {
+  const oauthConfig = getConfig(options.env);
+  const verifyBearerToken = options.verifyBearerToken || ((token) => verifyConnectorBearer(token, options));
   const settings = {
     maxBodyBytes: Number(options.maxBodyBytes || process.env.EVENTCHAT_MCP_MAX_BODY_BYTES || 1024 * 1024),
     bearerToken: options.bearerToken ?? process.env.EVENTCHAT_MCP_BEARER_TOKEN,
@@ -60,7 +65,8 @@ export function createHttpMcpServer(options = {}) {
       // or directions link from another site to protect data that is already
       // public.
       if (isToolSurface(url.pathname) && !originAllowed(request, settings)) {
-        sendJson(response, 403, { error: "Origin not allowed." }, corsHeaders(request, settings));
+        // The refusal carries the same security headers as any other response (#33).
+        sendJson(response, 403, { error: "Origin not allowed." }, { ...securityHeaders(), ...corsHeaders(request, settings) });
         return;
       }
 
@@ -69,8 +75,13 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+        sendJson(response, 200, { resource: oauthConfig.oauthResource, authorization_servers: [oauthConfig.oauthIssuer], scopes_supported: ["events:read", "saved:read", "saved:write"], bearer_methods_supported: ["header"] }, corsHeaders(request, settings));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/health") {
-        sendJson(response, 200, { ok: true, name: "dizko", version: TOOL_VERSION }, corsHeaders(request, settings));
+        sendJson(response, 200, { ok: true, name: "dizko", version: SERVER_INFO.version, contract_version: CONNECTOR_CONTRACT_VERSION, transport: "streamable-http", authentication: settings.bearerToken ? "bearer" : "none" }, corsHeaders(request, settings));
         return;
       }
 
@@ -157,10 +168,11 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      if (!isAuthorized(request, settings)) {
+      const authContext = await authenticateConnectorRequest(request, { ...options, verifyBearerToken }, settings.bearerToken);
+      if (!authContext || (settings.bearerToken && !authContext.authenticated)) {
         sendJson(response, 401, { error: "Unauthorized" }, {
           ...corsHeaders(request, settings),
-          "WWW-Authenticate": "Bearer"
+          "WWW-Authenticate": `Bearer resource_metadata="${oauthConfig.oauthResource.replace(/\/mcp$/, "/.well-known/oauth-protected-resource")}"`
         });
         return;
       }
@@ -216,7 +228,7 @@ export function createHttpMcpServer(options = {}) {
           return;
         }
       }
-      await mcpHandler(request, response, payload);
+      await runWithAuthContext(authContext, () => mcpHandler(request, response, payload));
     } catch (error) {
       const safeError = safeJsonRpcError(error);
       sendJson(response, safeError.status, {
@@ -411,6 +423,8 @@ function securityHeaders() {
       "style-src 'unsafe-inline'"
     ].join("; "),
     "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
     "X-Content-Type-Options": "nosniff"
   };
 }
@@ -427,12 +441,6 @@ function validateJsonRpc(request) {
   if (!request || typeof request !== "object") throw new Error("Invalid JSON-RPC request");
   if (request.jsonrpc && request.jsonrpc !== "2.0") throw new Error("Unsupported JSON-RPC version");
   if (!request.method || typeof request.method !== "string") throw new Error("Missing JSON-RPC method");
-}
-
-function isAuthorized(request, settings) {
-  if (!settings.bearerToken) return true;
-  const expected = `Bearer ${settings.bearerToken}`;
-  return request.headers.authorization === expected;
 }
 
 function createRateLimiter(settings) {
@@ -499,6 +507,12 @@ function rateLimitHeadersFor(rateLimit) {
 // gives the first address the client could not forge; taking `[0]` instead
 // lets any caller pick its own rate-limit bucket.
 export function clientIp(request, trustedProxies = 1) {
+  // Operators may opt in to X-Real-IP only after proving their edge
+  // overwrites it (#33); otherwise it is as caller-controlled as XFF[0].
+  if (parseBoolean(process.env.DIZKO_TRUST_X_REAL_IP || process.env.EVENTCHAT_MCP_TRUST_X_REAL_IP, false)) {
+    const real = request.headers["x-real-ip"];
+    if (typeof real === "string" && real.trim()) return real.trim();
+  }
   const header = request.headers["x-forwarded-for"];
   const raw = Array.isArray(header) ? header.join(",") : header;
   const socketAddress = request.socket?.remoteAddress || "unknown";
@@ -537,9 +551,9 @@ function corsHeaders(request, settings) {
     ? "*"
     : settings.allowedOrigins.includes(origin)
       ? origin
-      // No header at all is clearer than an empty one, which reads as a
-      // configured value of "".
-      : settings.allowedOrigins[0] || null;
+      // A disallowed origin gets no header at all; echoing the first
+      // allowlisted origin instead disclosed the allowlist (#33).
+      : "";
 
   return {
     ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),

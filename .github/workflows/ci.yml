@@ -74,7 +74,7 @@ jobs:
           cd /tmp/mcpb
           request='{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
           echo "$request" | timeout 30 node bin/dizko-mcp.js > out.json
-          grep -q '"dizko_search_events"' out.json
+          grep -q '"search_events"' out.json
           echo "Bundle answered tools/list with the expected tool surface."
 
   package:
@@ -97,4 +97,4 @@ jobs:
           cd /tmp/packtest/package
           npm install --omit=dev --no-audit --no-fund --silent
           node ./bin/dizko.js help | grep -q "dizko-events"
-          node -e "import('./src/index.js').then((m) => { if (m.tools.length !== 19) { throw new Error('expected 19 tools, got ' + m.tools.length); } console.log('Packed library exposes', m.tools.length, 'tools and', m.prompts.length, 'prompts.'); })"
+          node -e "import('./src/index.js').then((m) => { if (m.tools.length !== 30) { throw new Error('expected 30 tools, got ' + m.tools.length); } console.log('Packed library exposes', m.tools.length, 'tools and', m.prompts.length, 'prompts.'); })"

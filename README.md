@@ -57,8 +57,8 @@ Four paths, simplest first:
      -H 'content-type: application/json' \
      -H 'accept: application/json, text/event-stream' \
      -H 'mcp-method: tools/call' \
-     -H 'mcp-name: dizko_search_events' \
-     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"dizko_search_events","arguments":{"city":"los angeles","when":"week"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
+     -H 'mcp-name: search_events' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_events","arguments":{"city":"los angeles","when":"week"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
    ```
 
    The `_meta` block is what makes this a `2026-07-28` request: the revision
@@ -74,7 +74,7 @@ Four paths, simplest first:
    ```js
    import { tools, prompts, callTool, getPrompt, searchEvents } from "dizko-events";
    // Hand `tools` (JSON Schemas) to your model as function definitions, then:
-   const result = await callTool("dizko_search_events", { city: "berlin", when: "weekend" });
+   const result = await callTool("search_events", { city: "berlin", when: "weekend" });
    ```
 
 ### Autonomous ticket purchase (the Hermes / OpenClaw integration point)
@@ -98,10 +98,10 @@ const hermesAdapter = {
 createHttpMcpServer({ ticketPurchaseProvider: hermesAdapter }).listen(8787);
 
 // ...or call tools in-process with it:
-await callTool("dizko_purchase_tickets", input, { ticketPurchaseProvider: hermesAdapter });
+await callTool("purchase_ticket_order", input, { ticketPurchaseProvider: hermesAdapter });
 ```
 
-`dizko_purchase_tickets` still requires a signed quote from `dizko_quote_tickets`
+`purchase_ticket_order` still requires a signed quote from `quote_ticket_order`
 and explicit written confirmation before the adapter is invoked. The
 `dizko_ticket_policy` prompt explains the rules. Set `DIZKO_QUOTE_SIGNING_SECRET`
 so quote tokens survive restarts.
@@ -119,7 +119,7 @@ This package exposes Dizko's live event inventory to agents and humans:
 
 General chat can describe likely events, but it does not reliably know current inventory. This tool gives an agent:
 
-- Live structured results from Dizko's `/events` API across 47 cities, with every time already in the city's local timezone.
+- Live structured results from Dizko's `/events` API across 48 cities, with every time already in the city's local timezone.
 - Deterministic filters for city, date, genre, vibe, event type, venue, neighborhood, promoter, price, and artist.
 - Artist, venue and promoter lookups with upcoming dates, and city-level trend reads with evidence counts.
 - Explainable ranking so recommendations include reasons instead of opaque taste guesses.
@@ -208,68 +208,82 @@ Example MCP client config using npm:
 
 ## Tools
 
-The server lists 19 tools (the count comes from `tools.length` in `src/tools.js`; scripts and monitors read it from there rather than hard-coding it). Every parameter carries a description and defaults are served in the schema.
+The server lists 30 tools (the count comes from `tools.length` in `src/tools.js`; scripts and monitors read it from there rather than hard-coding it). Every parameter carries a description and defaults are served in the schema. The names are the published connector surface, so they do not change between releases.
 
 Discovery:
 
-- `dizko_search_events`: search live events in one city and timeframe. Use for any "what's on" request that names a city, a venue, an artist, or a timeframe. Filters you pass (`genres`, `vibe`, `event_types`, `neighborhoods`, `venue`, `featuring`, `promoter`, `free`, `pride`, `price_min`, `price_max`) are hard filters; `avoid` and `max_price` are ranking hints. `count` is the total matching; page with `limit`/`offset`.
-- `dizko_plan_night`: a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Same filters as search; `city` may be omitted when a profile with a saved home city is given.
-- `dizko_daily_roundup`: one-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. `compact=true` gives a short push-style digest. Built for "what's happening today" and scheduled briefings.
-- `dizko_city_pulse`: aggregate read of a city's scene over 1-14 days: busiest nights, top venues, genre mix, headline events and free-event count, every stat with evidence counts. Public inventory only.
-- `dizko_get_event`: full detail for one event id (local times, venue and address, price, lineup, set times, artist socials, image, coordinates, links). Search results already contain what the render template needs, so only call it for an id the user gave you.
-- `dizko_list_cities`: live coverage: every city with status (`live`, `unlocking`, `early`), event count, timezone and freshness.
+- `search_events`: search live events in one city and timeframe. Use for any "what's on" request that names a city, a venue, an artist, or a timeframe. Filters you pass (`genres`, `vibe`, `event_types`, `neighborhoods`, `venue`, `featuring`, `promoter`, `free`, `pride`, `price_min`, `price_max`) are hard filters; `avoid` and `max_price` are ranking hints. `count` is the total matching; page by passing `page.next_cursor` back as `cursor` (`offset`/`next_offset` still work for older clients).
+- `recommend_events`: the same search ranked by taste (`rank: "taste"`). Every result carries `recommendation_reasons`. `result_limit` is accepted as an alias for `limit`.
+- `recommend_events_for_user`: taste-ranked search driven by a saved profile (`profile_id` + `profile_secret` required). Saved and learned taste rank the results; they never hide them.
+- `plan_night`: a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Same filters as search; `city` may be omitted when a profile with a saved home city is given.
+- `get_daily_roundup`: one-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. `compact=true` gives a short push-style digest. Built for "what's happening today" and scheduled briefings.
+- `get_city_pulse`: aggregate read of a city's scene over 1-14 days: busiest nights, top venues, genre mix, headline events and free-event count, every stat with evidence counts. Public inventory only.
+- `get_event`: full detail for one event id (local times, venue and address, price, lineup, set times, artist socials, image, coordinates, links). Search results already contain what the render template needs, so only call it for an id the user gave you.
+- `list_cities`: live coverage: every city with status (`live`, `unlocking`, `early`), event count, timezone and freshness.
 
 Entities:
 
-All three searches rank candidates by how well the name answers the query, not by upstream relevance: an exact name first, then a name that starts with the query, then a whole-word hit, then a hit buried inside a longer word. The catalog name has to contain what was typed, never the reverse, so a profile called "Honey" is not an answer for "Honey Dijon". Two rows for the same name are one answer rather than an ambiguity, since catalogs carry the same venue twice under different casing.
+All three name searches rank candidates by how well the name answers the query, not by upstream relevance: an exact name first, then a name that starts with the query, then a whole-word hit, then a hit buried inside a longer word. The catalog name has to contain what was typed, never the reverse, so a profile called "Honey" is not an answer for "Honey Dijon". Two rows for the same name are one answer rather than an ambiguity, since catalogs carry the same venue twice under different casing.
 
 When several candidates answer the name equally well, the name has said all it can, so how much of an answer each one actually is decides. `prominence` scores that: for an artist, listed Dizko dates, upcoming dates, co-billed artists, press clips, mixes, career appearances and editorial standing; for a venue, whether the record carries a capacity, genres and a real bio rather than a one-line stub; for a promoter, its upcoming count. `best_match.confident` is true only when the leader wins outright on name, or is decisively ahead on prominence. So "Klock" resolves confidently to Ben Klock (nine listed dates, twelve press clips) over BJ Klock (one appearance), while two comparable artists sharing a name stay ambiguous and `best_match.alternatives` carries the candidates to ask about.
 
 An exact name match holds unless the fuller record is decisively ahead. Catalogs carry the same real place twice, once as a one-line encyclopedia stub that happens to win the name and once as the record with the capacity, the genres and the bio, so "Berghain" serves "Berghain / Panorama Bar" rather than the stub named exactly Berghain. Displacement is one name tier and never reaches below a whole-word match, so a big venue called "Medlock Hall" cannot win a search for "Lock". Artist prominence costs two extra upstream calls per competing candidate and is fetched only when something is actually competing, so a query one profile answers outright still costs a single request; venue and promoter scores come from rows the search already returned. Upstream relevance cannot do this job: its score ranked Nina Kraviz last of nineteen "Nina" profiles and its `authority` field is 0.59 for every artist in the catalog.
 
-- `dizko_find_artist`: search by `query` for candidates with a `best_match`, or pass an `id` for the full profile: bio, cities, genres, links, upcoming events, insights, mixes, press, and the artist's published Dizko page (`page.published`, `page.page_url`) when one exists.
-- `dizko_find_venue`: search by name, or pass an `id` for neighborhood, capacity, genres, bio, links, and upcoming events at that venue. Listings are matched room by room, so Berghain Kantine does not inherit Berghain's Klubnacht and Berghain does not claim Kantine's programme. A venue with no listing under its full name falls back to its colloquial short form, which is how "Salon zur Wilden Renate" finds events listed at "Renate".
-- `dizko_find_promoter`: promoters, collectives and party crews. Pass `city` to include promoters with upcoming listings (promoter ids are per city; collectives are searched worldwide); pass an `id` for the profile and upcoming events.
-- `dizko_artist_events`: upcoming shows grouped by artist for up to 8 named DJs, performers or comedians, deduplicated and date-ordered, optionally scoped to a city. With a profile and no artists named, it tracks the profile's saved `featuring` list.
+- `get_artist`: pass an `id` for the full profile (bio, cities, genres, links, upcoming events, insights, mixes, press, and the published Dizko page when one exists), or a name `query`. A query whose `best_match` is confident is resolved to that profile in the same call and carries `resolved_from`; an ambiguous one returns the candidates and the assistant is told to ask rather than guess.
+- `get_venue`: the same contract for venues: neighborhood, capacity, genres, bio, links, and upcoming events. Listings are matched room by room, so Berghain Kantine does not inherit Berghain's Klubnacht and Berghain does not claim Kantine's programme. A venue with no listing under its full name falls back to its colloquial short form, which is how "Salon zur Wilden Renate" finds events listed at "Renate".
+- `find_scene_entities`: the general catalog search across `kind` = `dj`, `venue`, `collective` or `promoter`, or a full profile by `id`. Promoters and collectives are one crew to a user, so either kind searches both: pass `city` to include promoters with upcoming listings (promoter ids are per city; collectives are searched worldwide).
+- `get_artist_events`: upcoming shows grouped by artist for up to 8 named DJs, performers or comedians, deduplicated and date-ordered, optionally scoped to a city. With a profile and no artists named, it tracks the profile's saved `featuring` list.
+- `get_artist_page`: an artist's published Dizko page by `handle`, with stable block ids for deep links to a specific mix or set.
 
 Preferences (opt-in, protected by `profile_id` + `profile_secret`):
 
-- `dizko_create_profile`: create a private preference profile after explicit consent (`consent: true`). Returns `profile_id` (`dzk_...`) and a one-time `profile_secret` (`dzs_...`); the service stores only a hash of the secret.
-- `dizko_update_profile`: add to (`mode: merge`, default) or replace saved preferences: cities, event types, genres, vibe, neighborhoods, venues, promoters, artists to track (`featuring`), avoid, budget, and per-weekday `day_filters`.
-- `dizko_get_profile`: saved preferences, learned taste (with scores) and feedback count.
-- `dizko_delete_profile`: delete saved preferences and feedback history; requires `confirm_delete: true` after the user confirms. Destructive.
-- `dizko_record_feedback`: store post-event feedback (`liked`, 1-5 `rating`, `notes`) and update learned taste. At least one signal is required.
+- `get_preference_onboarding`: the consent-first questions to ask before saving anything.
+- `create_event_preference_profile`: create a private preference profile after explicit consent (`consent: true`). Returns `profile_id` (`dzk_...`) and a one-time `profile_secret` (`dzs_...`); the service stores only a hash of the secret.
+- `save_event_preferences`: add to (`mode: merge`, default) or replace saved preferences: cities, event types, genres, vibe, neighborhoods, venues, promoters, artists to track (`featuring`), avoid, budget, and per-weekday `day_filters`.
+- `get_event_preferences`: saved preferences, learned taste (with scores) and feedback count.
+- `delete_event_preferences`: delete saved preferences and feedback history; requires `confirm_delete: true` after the user confirms. Destructive.
+- `get_event_feedback_prompt`: short post-event questions for one event, asked before feedback is saved.
+- `record_event_feedback`: store post-event feedback (`liked`, 1-5 `rating`, `notes`) and update learned taste. At least one signal is required.
+- `get_event_search_followups`: the missing-context questions worth asking before a broad "what's on" search, and only when the request is genuinely ambiguous.
+
+Signed-in Dizko account (OAuth, Muse connector contract):
+
+- `get_taste_profile` (`saved:read`): the connected user's learned taste plus saved and binned events.
+- `save_event`, `add_to_dizko_plan`, `bin_event` (`saved:write`): save an event, add it to the user's plan, or hide it and teach their taste model. Each needs `confirmed: true` after the user agrees and an `idempotency_key` of at least 16 characters, so a retried call does not act twice.
+
+These four declare an `oauth2` security scheme. Without a signed-in caller holding the scope they return `authentication_required` or `insufficient_scope` before any argument is read.
 
 Tickets and calendar:
 
-- `dizko_ticket_offers`: ticket options for one event: provider, checkout link, estimated price, free entry, whether autonomous purchase is supported, and the purchase policy. Call before quoting.
-- `dizko_quote_tickets`: a signed, time-limited (10 minute) quote: quantity, ticket type, max total, currency, refund terms, delivery email and stop conditions. Returns `quote_token` and the exact confirmation text to ask the user for.
-- `dizko_purchase_tickets`: execute a quoted order after the user's explicit written confirmation. With a third-party link it returns `status: requires_external_checkout` and the `checkout_url`; never claim a purchase unless `status` is `purchased`. Destructive and open-world.
-- `dizko_calendar_file`: an importable `.ics` entry for one event; the per-event `calendar_url` is the one-click alternative.
+- `get_ticket_purchase_policy`: current purchase modes, the hard safety rules, and what a provider needs to support autonomous purchase.
+- `get_ticket_offers`: ticket options for one event: provider, checkout link, estimated price, free entry, whether autonomous purchase is supported, and the purchase policy. Call before quoting.
+- `quote_ticket_order`: a signed, time-limited (10 minute) quote: quantity, ticket type, max total, currency, refund terms, delivery email and stop conditions. Returns `quote_token` and the exact confirmation text to ask the user for.
+- `purchase_ticket_order`: execute a quoted order after the user's explicit written confirmation. With a third-party link it returns `status: requires_external_checkout` and the `checkout_url`; never claim a purchase unless `status` is `purchased`. The idempotency key is derived from the signed quote, so a retried purchase cannot buy twice. Destructive and open-world.
+- `create_event_calendar_file`: an importable `.ics` entry for one event; the per-event `calendar_url` is the one-click alternative.
 
-Annotations: the discovery, entity, `dizko_get_profile`, `dizko_ticket_offers`, `dizko_quote_tickets` and `dizko_calendar_file` tools are `readOnlyHint: true`. `dizko_create_profile`, `dizko_update_profile` and `dizko_record_feedback` write private connector memory (`readOnlyHint: false`, `destructiveHint: false`). `dizko_delete_profile` is `destructiveHint: true`; `dizko_purchase_tickets` is `destructiveHint: true` and `openWorldHint: true` because it is the bounded action point for ticket purchase or checkout handoff. No tool serves an `outputSchema`; results come back as `structuredContent` plus a JSON text block.
+Annotations: discovery, entity, onboarding, follow-up, `get_event_preferences`, `get_taste_profile`, the ticket policy, offer and quote tools, and `create_event_calendar_file` are `readOnlyHint: true`. `create_event_preference_profile`, `save_event_preferences`, `record_event_feedback`, `save_event` and `add_to_dizko_plan` write private user state (`readOnlyHint: false`, `destructiveHint: false`). `delete_event_preferences` and `bin_event` are `destructiveHint: true`; `purchase_ticket_order` is `destructiveHint: true` and `openWorldHint: true` because it is the bounded action point for ticket purchase or checkout handoff. No tool serves an `outputSchema`; results come back as `structuredContent` plus a JSON text block.
 
-Auth note: the public hosted connector submits as `noauth` for event discovery. Preference tools still require the user's opaque `profile_id` plus private `profile_secret`. Tool descriptors include `securitySchemes: [{ "type": "noauth" }]` and mirror it in `_meta.securitySchemes` for ChatGPT compatibility, plus `_meta["openai/toolInvocation/invoking"]` / `invoked` status text.
+Auth note: the public hosted connector submits as `noauth` for event discovery. Preference tools still require the user's opaque `profile_id` plus private `profile_secret`. Tool descriptors include `securitySchemes` (`noauth`, or `oauth2` with the scope for the four account tools) and mirror it in `_meta.securitySchemes` for ChatGPT compatibility, plus `_meta["openai/toolInvocation/invoking"]` / `invoked` status text.
 
 Retention note: saved preference profiles are pruned after the configured inactivity window (`DIZKO_PREFERENCE_RETENTION_DAYS`, default 730 days), matching the published 24-month retention policy.
 
 ### Prompts
 
-The server also advertises the `prompts` capability with four prompts (`prompts/list`, `prompts/get`):
+The server also advertises the `prompts` capability with four prompts (`prompts/list`, `prompts/get`). They carry the same guidance as the onboarding, follow-up, feedback and policy tools, for clients that surface prompts rather than call tools:
 
-- `dizko_onboarding`: consent-first questions to ask before `dizko_create_profile`.
-- `dizko_search_followups` (`city`, `when` optional): the clarifying questions worth asking before a broad "what's on" search. Optional: the server instructions tell the assistant to ask these conversationally and only when the request is genuinely ambiguous.
-- `dizko_post_event_feedback` (`event_id` required): short questions to ask before `dizko_record_feedback`.
+- `dizko_onboarding`: consent-first questions to ask before `create_event_preference_profile`.
+- `dizko_search_followups` (`city`, `when` optional): the clarifying questions worth asking before a broad "what's on" search.
+- `dizko_post_event_feedback` (`event_id` required): short questions to ask before `record_event_feedback`.
 - `dizko_ticket_policy`: how quoting, confirmation, checkout handoff and autonomous purchase work, plus the hard safety rules.
 
 ### Request conventions
 
-- **Timeframes.** `when` accepts `today`, `tonight`, `tomorrow`, `weekend`, `next weekend`, `week`, `next week`, `month`, a weekday name, `any`, or an exact `YYYY-MM-DD`; all are resolved in the city's timezone. `date_from`/`date_to` (inclusive, city-local) override `when` for custom ranges. `dizko_daily_roundup` accepts single-day presets only.
-- **Event payloads** carry `when` (already local, e.g. `Fri 11 Sep, 22:00`), `starts_at`/`ends_at` (UTC), `starts_at_local`, `timezone`, `venue`, `address`, `city`, `price`, `genres`, `vibe`, `event_types`, `lineup` (capped, with `lineup_count` when truncated), `set_times`, `featured`, `promoters` (names), `ticket_url`, `event_url`, `calendar_url`, `directions_url`. Ask for `description`, `images`, `coordinates`, `socials`, `source`, or full `promoters` objects via `fields`.
+- **Timeframes.** `when` accepts `today`, `tonight`, `tomorrow`, `weekend`, `next weekend`, `week`, `next week`, `month`, a weekday name, `any`, or an exact `YYYY-MM-DD`; all are resolved in the city's timezone. `date_from`/`date_to` (inclusive, city-local) override `when` for custom ranges. `get_daily_roundup` accepts single-day presets only.
+- **Event payloads** carry (a field with no value is omitted rather than sent as null) `when` (already local, e.g. `Fri 11 Sep, 22:00`), `starts_at`/`ends_at` (UTC), `starts_at_local`, `timezone`, `venue`, `address`, `city`, `price`, `genres`, `vibe`, `event_types`, `lineup` (capped, with `lineup_count` when truncated), `set_times`, `pick`, `promoters` (names), `image_url`, `ticket_url`, `event_url`/`dizko_url`, `calendar_url` (a downloadable `.ics`), `directions_url`, and the connector contract fields: `source`, `source_url`, `source_provenance`, `last_updated_at`, `retrieved_at`, `availability`, `price_min`/`price_max` and `price_freshness`. Their `unverified` and `unknown` values are intentional, not missing data. Ask for `description`, `coordinates`, `socials`, or full `promoters` objects via `fields`.
 - **Ordering.** `sort_by`: `soonest` (default for single-day requests), `popular` (default for ranges), `cost`, `event_type`, or `distance` with `origin_lat`/`origin_lng` (only pass coordinates the user gave you). `rank`: `relevance` (default) keeps the API order; `taste` re-ranks the page by genres, vibe, avoid and budget from the request and the profile. `rank` defaults to `taste` when a profile is given.
-- **Profiles.** `profile_id` + `profile_secret` are accepted by `dizko_search_events`, `dizko_plan_night`, `dizko_daily_roundup` and `dizko_artist_events`. Saved taste is a ranking hint only; it is never turned into a filter.
+- **Profiles.** `profile_id` + `profile_secret` are accepted by `search_events`, `recommend_events`, `recommend_events_for_user`, `plan_night`, `get_daily_roundup` and `get_artist_events`. Saved taste is a ranking hint only; it is never turned into a filter.
 - **Empty results.** A search or plan that matches nothing is not an error. It returns `no_results` with `reason` (`filters_too_narrow`, `empty_timeframe` or `no_inventory`), `baseline_count` (how many events exist in the same city and timeframe with every filter removed), `active_filters`, and `suggested_relaxations`: an ordered list of `{ relax, why, retry_with }` where `retry_with` is a directly callable argument set. Price caps are suggested first because they also exclude every event with no published price. The `assistant_instruction` on an empty result tells the model to report what is on instead of rendering an empty list.
-- **Errors** are returned as `isError: true` with `{ error, code, field?, allowed?, hint? }`. Codes: `invalid_argument`, `unknown_tool`, `unsupported_city` (with `nearest_covered_city` computed by distance from the live list), `event_not_found`, `entity_not_found`, `profile_not_found`, `profile_secret_invalid`, `consent_required`, `confirmation_required`, `feedback_signal_required`, `invalid_quote_token`, `confirmation_mismatch`, `quote_expired`, `upstream_unavailable`, `upstream_timeout`.
+- **Errors** are returned as `isError: true` with `{ error, code, field?, allowed?, hint? }`. Codes: `invalid_argument`, `invalid_cursor`, `unknown_tool`, `unsupported_city` (with `nearest_covered_city` computed by distance from the live list), `event_not_found`, `entity_not_found`, `profile_not_found`, `profile_secret_invalid`, `consent_required`, `confirmation_required`, `explicit_confirmation_required`, `feedback_signal_required`, `authentication_required`, `insufficient_scope`, `invalid_quote_token`, `confirmation_mismatch`, `quote_expired`, `upstream_unavailable`, `upstream_timeout`.
 
 ### Learning rules
 
@@ -279,38 +293,7 @@ The server also advertises the `prompts` capability with four prompts (`prompts/
 - A term the user saved as a preference is never learned negative.
 - Genres, vibe and event types need two negative signals before they become an avoid rule; venues and promoters need one.
 
-### Migrating from 0.7
-
-0.7 tool names keep working as hidden aliases (they answer `tools/call` but are not in `tools/list`), so existing connectors and scripts do not break. New integrations should use the 0.8 names:
-
-| 0.7 | 0.8 |
-| --- | --- |
-| `search_events` | `dizko_search_events` |
-| `recommend_events` | `dizko_search_events` with `rank: "taste"` (`result_limit` → `limit`) |
-| `recommend_events_for_user` | `dizko_search_events` with `profile_id`/`profile_secret` (`rank` defaults to `taste`) |
-| `plan_night` | `dizko_plan_night` |
-| `get_daily_roundup` | `dizko_daily_roundup` |
-| `get_city_pulse` | `dizko_city_pulse` |
-| `get_event` | `dizko_get_event` |
-| `list_cities` | `dizko_list_cities` |
-| `find_scene_entities` | `dizko_find_artist`, `dizko_find_venue`, `dizko_find_promoter` |
-| `get_artist_page` | `dizko_find_artist` with `id` (the `page` object) |
-| `get_artist_events` | `dizko_artist_events` |
-| `create_event_preference_profile` | `dizko_create_profile` |
-| `save_event_preferences` | `dizko_update_profile` |
-| `get_event_preferences` | `dizko_get_profile` |
-| `delete_event_preferences` | `dizko_delete_profile` |
-| `record_event_feedback` | `dizko_record_feedback` |
-| `get_ticket_offers` | `dizko_ticket_offers` |
-| `quote_ticket_order` | `dizko_quote_tickets` |
-| `purchase_ticket_order` | `dizko_purchase_tickets` |
-| `create_event_calendar_file` | `dizko_calendar_file` |
-| `get_preference_onboarding` | prompt `dizko_onboarding` |
-| `get_event_search_followups` | prompt `dizko_search_followups` |
-| `get_event_feedback_prompt` | prompt `dizko_post_event_feedback` |
-| `get_ticket_purchase_policy` | prompt `dizko_ticket_policy` |
-
-Profile ids changed prefix from `upg_` to `dzk_` and secrets from `ups_` to `dzs_`; profiles created before 0.8 keep working with their existing values.
+Profile ids changed prefix from `upg_` to `dzk_` and secrets from `ups_` to `dzs_`; profiles created before that change keep working with their existing values.
 
 ## Hosted MCP For ChatGPT And Claude
 
@@ -391,7 +374,7 @@ Support deletion utility:
 npm run preferences:delete -- --profile-id dzk_... --profile-secret dzs_... --preferences-path /data/preferences.json
 ```
 
-This is for support deletion requests when the user cannot call `dizko_delete_profile` through their MCP client.
+This is for support deletion requests when the user cannot call `delete_event_preferences` through their MCP client.
 
 ## Configuration
 
@@ -448,21 +431,21 @@ Personalization:
 1. User asks for personalized event help.
 2. Assistant asks the onboarding questions (prompt `dizko_onboarding`): event types, genres, vibe, budget, locations, avoidances.
 3. Assistant asks whether Dizko may save those preferences.
-4. If yes and there is no existing profile, assistant calls `dizko_create_profile` with `consent: true` and privately remembers the returned `profile_id` and `profile_secret`. The response also includes `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions.
-5. If a profile already exists, assistant calls `dizko_update_profile` with both `profile_id` and `profile_secret`.
-6. A request that names a city and a timeframe is one `dizko_search_events` call with the profile attached. Clarifying questions (type, vibe, budget, area) are asked conversationally and only when the request is genuinely ambiguous.
+4. If yes and there is no existing profile, assistant calls `create_event_preference_profile` with `consent: true` and privately remembers the returned `profile_id` and `profile_secret`. The response also includes `access_instructions`, a user-facing access card for clients that cannot persist connector state across sessions.
+5. If a profile already exists, assistant calls `save_event_preferences` with both `profile_id` and `profile_secret`.
+6. A request that names a city and a timeframe is one `search_events` call with the profile attached. Clarifying questions (type, vibe, budget, area) are asked conversationally and only when the request is genuinely ambiguous.
 7. Preferences can include `day_filters`, per-weekday rules such as techno Fridays but chill Sundays. Array fields add to the general taste and `max_price`/`free`/`nightlife` override it, but only on that weekday: single-day searches (tonight, tomorrow, an explicit date) and daily roundups apply the matching day automatically.
-8. For a daily digest ("what's happening today?", a scheduled morning briefing), assistant calls `dizko_daily_roundup` with the city plus the profile credentials and renders top picks followed by category sections.
-9. After the event, assistant asks whether the user went and liked it (prompt `dizko_post_event_feedback`), then calls `dizko_record_feedback` only after the user provides liked/disliked, rating, or notes.
+8. For a daily digest ("what's happening today?", a scheduled morning briefing), assistant calls `get_daily_roundup` with the city plus the profile credentials and renders top picks followed by category sections.
+9. After the event, assistant asks whether the user went and liked it (prompt `dizko_post_event_feedback`), then calls `record_event_feedback` only after the user provides liked/disliked, rating, or notes.
 
 Ticket purchase:
 
 1. User asks to buy or reserve tickets for an event.
-2. Assistant calls `dizko_ticket_offers` with the event id.
+2. Assistant calls `get_ticket_offers` with the event id.
 3. Assistant explains whether the offer supports autonomous purchase or only external checkout.
-4. Assistant calls `dizko_quote_tickets` with quantity, ticket type, max total, currency, and refund constraints, and receives a signed `quote_token` plus the confirmation prompt.
+4. Assistant calls `quote_ticket_order` with quantity, ticket type, max total, currency, and refund constraints, and receives a signed `quote_token` plus the confirmation prompt.
 5. Assistant asks for explicit written confirmation, for example: `Yes, buy 2 ticket(s) for Ostbahnhof XL, max total EUR240. Stop if price, date, venue, ticket type, quantity, or refund terms change.` The confirmation must contain `buy` or `purchase` as a whole word plus the quantity and the max total as whole numbers; `confirmation_mismatch` lists what is missing.
-6. Assistant calls `dizko_purchase_tickets` with the unchanged `quote_token` only after that confirmation. Quotes expire after 10 minutes (`quote_expired`); edited tokens fail signature verification (`invalid_quote_token`).
+6. Assistant calls `purchase_ticket_order` with the unchanged `quote_token` only after that confirmation. Quotes expire after 10 minutes (`quote_expired`); edited tokens fail signature verification (`invalid_quote_token`).
 7. If the quote uses `external_checkout`, the tool returns `requires_external_checkout` and a checkout URL. The assistant must not claim it purchased the ticket.
 8. If Hermes, OpenClaw, Dizko Checkout, or another integrated provider is configured, the provider can execute the bounded purchase and return order/receipt/ticket delivery status. `supported_modes`: `external_checkout`, `partner_api_purchase`, `dizko_checkout`, `delegated_payment_future`.
 

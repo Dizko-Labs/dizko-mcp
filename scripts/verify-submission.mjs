@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
+import { prompts as registryPrompts, tools as registryTools } from "../src/tools.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -10,65 +11,24 @@ const baseUrl = endpoint.replace(/\/mcp\/?$/, "");
 const companyUrl = process.env.EVENTCHAT_COMPANY_URL || "https://www.dizko.app";
 const requestTimeoutMs = Number(process.env.EVENTCHAT_VERIFY_TIMEOUT_MS || 15000);
 const evidenceOutputPath = process.env.EVENTCHAT_SUBMISSION_EVIDENCE_PATH || null;
-// Legacy Railway service name; the deployed code and branding are Dizko.
-const railwayService = process.env.EVENTCHAT_RAILWAY_SERVICE || "eventchat-events-mcp";
+const railwayService = process.env.DIZKO_RAILWAY_SERVICE || process.env.EVENTCHAT_RAILWAY_SERVICE || "dizko-mcp";
 
-// Every tool the 0.8 server lists, in tools/list order. Pre-0.8 names still
-// answer tools/call as hidden aliases but must not appear in the list.
-const requiredTools = [
-  "dizko_search_events",
-  "dizko_plan_night",
-  "dizko_daily_roundup",
-  "dizko_city_pulse",
-  "dizko_get_event",
-  "dizko_list_cities",
-  "dizko_find_artist",
-  "dizko_find_venue",
-  "dizko_find_promoter",
-  "dizko_artist_events",
-  "dizko_create_profile",
-  "dizko_update_profile",
-  "dizko_get_profile",
-  "dizko_delete_profile",
-  "dizko_record_feedback",
-  "dizko_ticket_offers",
-  "dizko_quote_tickets",
-  "dizko_purchase_tickets",
-  "dizko_calendar_file"
-];
+// Expected tools, order, annotations and security schemes come from the
+// package's own registry, so this preflight checks the live server against
+// what the package ships and cannot drift from it. The listed names are the
+// Muse connector contract surface.
+const requiredTools = registryTools.map((tool) => tool.name);
+const requiredPrompts = registryPrompts.map((prompt) => prompt.name);
+const ANNOTATION_KEYS = ["readOnlyHint", "destructiveHint", "openWorldHint"];
+const requiredAnnotations = Object.fromEntries(registryTools.map((tool) => [
+  tool.name,
+  Object.fromEntries(ANNOTATION_KEYS.map((key) => [key, tool.annotations?.[key]]))
+]));
+const requiredSecurity = Object.fromEntries(registryTools.map((tool) => [tool.name, JSON.stringify(tool.securitySchemes)]));
 
-const requiredPrompts = [
-  "dizko_onboarding",
-  "dizko_search_followups",
-  "dizko_post_event_feedback",
-  "dizko_ticket_policy"
-];
-
-const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
-const writes = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-const requiredAnnotations = {
-  dizko_search_events: readOnly,
-  dizko_plan_night: readOnly,
-  dizko_daily_roundup: readOnly,
-  dizko_city_pulse: readOnly,
-  dizko_get_event: readOnly,
-  dizko_list_cities: readOnly,
-  dizko_find_artist: readOnly,
-  dizko_find_venue: readOnly,
-  dizko_find_promoter: readOnly,
-  dizko_artist_events: readOnly,
-  dizko_create_profile: writes,
-  dizko_update_profile: writes,
-  dizko_get_profile: readOnly,
-  dizko_delete_profile: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-  dizko_record_feedback: writes,
-  dizko_ticket_offers: readOnly,
-  dizko_quote_tickets: readOnly,
-  dizko_purchase_tickets: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-  dizko_calendar_file: readOnly
-};
-
-// tools/list carries 19 fully described schemas; measured at ~32 KB.
+// tools/list carries 30 tools with full parameter descriptions (about 47 KB).
+// main budgets 26 KB by stripping them; which budget the Muse review surface
+// should hold is an open decision, so this only stops unnoticed growth.
 const TOOLS_LIST_BYTE_BUDGET = 48_000;
 
 async function main() {
@@ -270,14 +230,14 @@ function assertInstructions(instructions) {
   assert(typeof instructions === "string" && instructions.length > 0, "server returned no instructions");
   for (const phrase of [
     "47 cities",
-    "ONE dizko_search_events call",
+    "ONE search_events call",
     "nearest_covered_city",
-    "dizko_find_artist",
+    "get_artist",
     "dizko_onboarding",
     "consent",
     "profile_id and profile_secret",
-    "dizko_record_feedback",
-    "dizko_ticket_offers"
+    "record_event_feedback",
+    "get_ticket_offers"
   ]) {
     assert(instructions.includes(phrase), `server instructions missing ${phrase}`);
   }
@@ -377,7 +337,8 @@ async function checkTools() {
   const toolNames = response.tools.map((tool) => tool.name);
   assertIncludes(toolNames, requiredTools);
   assert(toolNames.length === requiredTools.length, `tools/list served ${toolNames.length} tools, expected ${requiredTools.length}: ${toolNames.join(", ")}`);
-  assert(toolNames.every((name) => name.startsWith("dizko_")), `tools/list still exposes a pre-0.8 name: ${toolNames.filter((name) => !name.startsWith("dizko_")).join(", ")}`);
+  assert(JSON.stringify(toolNames) === JSON.stringify(requiredTools), `tools/list order differs from the package registry: ${toolNames.join(", ")}`);
+  assert(!toolNames.some((name) => name.startsWith("dizko_")), `tools/list exposes an unshipped dizko_ name: ${toolNames.filter((name) => name.startsWith("dizko_")).join(", ")}`);
 
   const toolsByName = Object.fromEntries(response.tools.map((tool) => [tool.name, tool]));
   for (const tool of response.tools) {
@@ -385,8 +346,8 @@ async function checkTools() {
     assert(typeof tool.description === "string" && tool.description.length > 40, `${tool.name} description is missing or too short`);
     assert(tool.inputSchema && typeof tool.inputSchema === "object", `${tool.name} missing inputSchema`);
     assert(tool.outputSchema === undefined, `${tool.name} should omit redundant outputSchema`);
-    assert(JSON.stringify(tool.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must advertise noauth securitySchemes`);
-    assert(JSON.stringify(tool._meta?.securitySchemes) === JSON.stringify([{ type: "noauth" }]), `${tool.name} must mirror noauth securitySchemes in _meta`);
+    assert(JSON.stringify(tool.securitySchemes) === requiredSecurity[tool.name], `${tool.name} must advertise ${requiredSecurity[tool.name]} securitySchemes`);
+    assert(JSON.stringify(tool._meta?.securitySchemes) === requiredSecurity[tool.name], `${tool.name} must mirror its securitySchemes in _meta`);
     assert(typeof tool._meta?.["openai/toolInvocation/invoking"] === "string", `${tool.name} missing openai/toolInvocation/invoking`);
     assert(typeof tool._meta?.["openai/toolInvocation/invoked"] === "string", `${tool.name} missing openai/toolInvocation/invoked`);
     assert(tool._meta["openai/toolInvocation/invoking"].length <= 64, `${tool.name} invoking status exceeds 64 chars`);
@@ -395,21 +356,21 @@ async function checkTools() {
 
   assert(Buffer.byteLength(JSON.stringify(response), "utf8") < TOOLS_LIST_BYTE_BUDGET, `tools/list exceeds the ${TOOLS_LIST_BYTE_BUDGET.toLocaleString()}-byte result budget`);
 
-  const searchProperties = toolsByName.dizko_search_events.inputSchema?.properties || {};
+  const searchProperties = toolsByName.search_events.inputSchema?.properties || {};
   for (const [name, property] of Object.entries(searchProperties)) {
-    assert(typeof property.description === "string" && property.description.length > 0, `dizko_search_events.${name} needs a description`);
+    assert(typeof property.description === "string" && property.description.length > 0, `search_events.${name} needs a description`);
   }
-  assert(searchProperties.when?.description?.includes("YYYY-MM-DD"), "dizko_search_events.when must document the date form");
-  assert(Array.isArray(searchProperties.sort_by?.enum) && searchProperties.sort_by.enum.includes("distance"), "dizko_search_events.sort_by must enumerate distance");
-  assert(searchProperties.limit?.default === 12, "dizko_search_events.limit must serve its default");
-  assert(toolsByName.dizko_record_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("liked")), "dizko_record_feedback inputSchema must accept liked as a feedback signal");
-  assert(toolsByName.dizko_record_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("rating")), "dizko_record_feedback inputSchema must accept rating as a feedback signal");
-  assert(toolsByName.dizko_record_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("notes")), "dizko_record_feedback inputSchema must accept notes as a feedback signal");
-  assert(toolsByName.dizko_delete_profile.inputSchema?.properties?.confirm_delete?.type === "boolean", "dizko_delete_profile inputSchema missing confirm_delete");
-  assert(toolsByName.dizko_delete_profile.inputSchema?.required?.includes("confirm_delete"), "dizko_delete_profile inputSchema must require confirm_delete");
-  assert(toolsByName.dizko_create_profile.inputSchema?.required?.includes("consent"), "dizko_create_profile inputSchema must require consent");
-  assert(toolsByName.dizko_purchase_tickets.inputSchema?.required?.includes("confirmation_text"), "dizko_purchase_tickets inputSchema must require confirmation_text");
-  assert(toolsByName.dizko_purchase_tickets.inputSchema?.required?.includes("quote_token"), "dizko_purchase_tickets inputSchema must require quote_token");
+  assert(searchProperties.when?.description?.includes("YYYY-MM-DD"), "search_events.when must document the date form");
+  assert(Array.isArray(searchProperties.sort_by?.enum) && searchProperties.sort_by.enum.includes("distance"), "search_events.sort_by must enumerate distance");
+  assert(searchProperties.limit?.default === 12, "search_events.limit must serve its default");
+  assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("liked")), "record_event_feedback inputSchema must accept liked as a feedback signal");
+  assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("rating")), "record_event_feedback inputSchema must accept rating as a feedback signal");
+  assert(toolsByName.record_event_feedback.inputSchema?.anyOf?.some((branch) => branch.required?.includes("notes")), "record_event_feedback inputSchema must accept notes as a feedback signal");
+  assert(toolsByName.delete_event_preferences.inputSchema?.properties?.confirm_delete?.type === "boolean", "delete_event_preferences inputSchema missing confirm_delete");
+  assert(toolsByName.delete_event_preferences.inputSchema?.required?.includes("confirm_delete"), "delete_event_preferences inputSchema must require confirm_delete");
+  assert(toolsByName.create_event_preference_profile.inputSchema?.required?.includes("consent"), "create_event_preference_profile inputSchema must require consent");
+  assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("confirmation_text"), "purchase_ticket_order inputSchema must require confirmation_text");
+  assert(toolsByName.purchase_ticket_order.inputSchema?.required?.includes("quote_token"), "purchase_ticket_order inputSchema must require quote_token");
 
   for (const [toolName, annotations] of Object.entries(requiredAnnotations)) {
     const tool = toolsByName[toolName];
@@ -440,9 +401,9 @@ async function checkPrompts() {
 }
 
 async function checkCities() {
-  const cities = await callTool("dizko_list_cities", {});
-  assert(Array.isArray(cities.cities) && cities.cities.length > 0, "dizko_list_cities returned no cities");
-  assert(cities.live_count > 0, "dizko_list_cities reported no live cities");
+  const cities = await callTool("list_cities", {});
+  assert(Array.isArray(cities.cities) && cities.cities.length > 0, "list_cities returned no cities");
+  assert(cities.live_count > 0, "list_cities reported no live cities");
   for (const city of cities.cities) {
     assert(["live", "unlocking", "early"].includes(city.status), `${city.slug} has unexpected status ${city.status}`);
     assert(typeof city.timezone === "string" && city.timezone.length > 0, `${city.slug} has no timezone`);
@@ -456,7 +417,7 @@ async function checkCities() {
 }
 
 async function checkLiveSearch() {
-  const search = await callTool("dizko_search_events", { city: "berlin", when: "week", limit: 1 });
+  const search = await callTool("search_events", { city: "berlin", when: "week", limit: 1 });
   assert(Array.isArray(search.events) && search.events.length > 0, "Live search returned no Berlin events");
   const event = search.events[0];
   assert(typeof search.timezone === "string", "Live search did not report the city timezone");
@@ -479,7 +440,7 @@ async function checkLiveSearch() {
 // conversationally and only when a broad request is ambiguous.
 async function checkSearchFollowups() {
   const prompt = await getPrompt("dizko_search_followups", { city: "berlin", when: "tonight" });
-  assert(/dizko_search_events/.test(prompt.description || ""), "Search follow-ups prompt should point back at dizko_search_events");
+  assert(/search_events/.test(prompt.description || ""), "Search follow-ups prompt should point back at search_events");
   assert(prompt.questions.some((question) => question.includes("type of event")), "Search follow-ups missing event type question");
   assert(prompt.questions.some((question) => question.includes("vibe")), "Search follow-ups missing vibe question");
   return {
@@ -490,13 +451,13 @@ async function checkSearchFollowups() {
 }
 
 async function checkFeedbackPrompt() {
-  const search = await callTool("dizko_search_events", { city: "berlin", when: "week", limit: 1 });
+  const search = await callTool("search_events", { city: "berlin", when: "week", limit: 1 });
   assert(Array.isArray(search.events) && search.events.length > 0, "Feedback prompt could not get a live event id");
   const event = search.events[0];
   const prompt = await getPrompt("dizko_post_event_feedback", { event_id: event.id });
   assert((prompt.description || "").includes(event.title), "Feedback prompt did not name the event");
   assert(prompt.questions.some((question) => question.includes("Did you like")), "Feedback prompt missing like/dislike question");
-  assert(/dizko_record_feedback/.test(prompt.description || ""), "Feedback prompt missing dizko_record_feedback instruction");
+  assert(/record_event_feedback/.test(prompt.description || ""), "Feedback prompt missing record_event_feedback instruction");
   return {
     ok: true,
     prompt: "dizko_post_event_feedback",
@@ -506,9 +467,9 @@ async function checkFeedbackPrompt() {
 }
 
 async function checkPreferenceMemory() {
-  await assertToolError("dizko_create_profile", { consent: false, preferences: { genres: ["techno"] } });
+  await assertToolError("create_event_preference_profile", { consent: false, preferences: { genres: ["techno"] } });
 
-  const created = await callTool("dizko_create_profile", {
+  const created = await callTool("create_event_preference_profile", {
     consent: true,
     preferences: {
       event_types: ["concert", "club night"],
@@ -528,7 +489,7 @@ async function checkPreferenceMemory() {
   assert(created.access_instructions?.profile_secret_returned_now === true, "Profile creation should mark profile_secret_returned_now true");
   assert(created.access_instructions?.keep_private === true, "Profile creation should mark access instructions private");
 
-  const fetched = await callTool("dizko_get_profile", {
+  const fetched = await callTool("get_event_preferences", {
     profile_id: profileId,
     profile_secret: profileSecret
   });
@@ -538,20 +499,20 @@ async function checkPreferenceMemory() {
   assert(fetched.access_instructions?.profile_secret === null, "Preference read must not echo profile_secret");
   assert(fetched.access_instructions?.profile_secret_returned_now === false, "Preference read should mark profile_secret_returned_now false");
 
-  await assertToolError("dizko_get_profile", {
+  await assertToolError("get_event_preferences", {
     profile_id: profileId,
     profile_secret: "wrong-secret"
   });
 
-  const search = await callTool("dizko_search_events", { city: "berlin", when: "week", limit: 1 });
+  const search = await callTool("search_events", { city: "berlin", when: "week", limit: 1 });
   assert(Array.isArray(search.events) && search.events.length > 0, "Preference memory could not get a live event for feedback");
-  await assertToolError("dizko_record_feedback", {
+  await assertToolError("record_event_feedback", {
     profile_id: profileId,
     profile_secret: profileSecret,
     event_id: search.events[0].id
   });
 
-  const recorded = await callTool("dizko_record_feedback", {
+  const recorded = await callTool("record_event_feedback", {
     profile_id: profileId,
     profile_secret: profileSecret,
     event_id: search.events[0].id,
@@ -562,7 +523,7 @@ async function checkPreferenceMemory() {
   assert(recorded.saved === true, "Feedback was not saved");
   assert(recorded.profile?.feedback_count >= 1, "Feedback response did not carry profile.feedback_count");
 
-  const learned = await callTool("dizko_get_profile", {
+  const learned = await callTool("get_event_preferences", {
     profile_id: profileId,
     profile_secret: profileSecret
   });
@@ -570,13 +531,13 @@ async function checkPreferenceMemory() {
   assert(learned.profile?.learned_preferences?.avoid?.includes("crowded"), "Feedback notes did not create learned crowd avoid signal");
   assert(learned.profile?.learned_preferences?.avoid?.includes("expensive tickets"), "Feedback notes did not create learned price avoid signal");
 
-  await assertToolError("dizko_delete_profile", {
+  await assertToolError("delete_event_preferences", {
     profile_id: profileId,
     profile_secret: profileSecret,
     confirm_delete: false
   });
 
-  const deleted = await callTool("dizko_delete_profile", {
+  const deleted = await callTool("delete_event_preferences", {
     profile_id: profileId,
     profile_secret: profileSecret,
     confirm_delete: true

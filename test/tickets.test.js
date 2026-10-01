@@ -231,7 +231,7 @@ function ticketOptions(event, extra = {}) {
 }
 
 async function quoteThroughTool(event, options, input = {}) {
-  const quoted = await callTool("dizko_quote_tickets", { event_id: event.id, quantity: 2, max_total: 120, ...input }, options);
+  const quoted = await callTool("quote_ticket_order", { event_id: event.id, quantity: 2, max_total: 120, ...input }, options);
   assert.equal(quoted.isError, false, quoted.content[0].text);
   const result = body(quoted);
   assert.equal(result.quoted, true);
@@ -246,7 +246,7 @@ test("external checkout: purchase hands off with checkout_url and a tentative ca
   assert.equal(quoted.quote.quantity, 2);
   assert.equal(quoted.quote.max_total, 120);
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "Yes, buy 2 tickets max total 120"
   }, options);
@@ -268,7 +268,7 @@ test("a confirmation that does not match the quote is confirmation_mismatch", as
   const options = ticketOptions(event);
   const quoted = await quoteThroughTool(event, options);
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "I am the buyer, 20 people, 120 dollars"
   }, options);
@@ -285,7 +285,7 @@ test("an expired quote is refused before any handoff", async () => {
   const quoted = await quoteThroughTool(event, options);
 
   const later = { ...options, now: new Date(NOW.getTime() + 11 * 60 * 1000) };
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "Yes, buy 2 tickets max total 120"
   }, later);
@@ -306,7 +306,7 @@ test("a tampered token is rejected through the tool with invalid_quote_token", a
     quote.purchase_mode = "partner_api_purchase";
   });
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: forged,
     confirmation_text: "Yes, buy 12 tickets max total 999999"
   }, options);
@@ -332,7 +332,7 @@ test("an integrated provider completes the purchase and the calendar entry carri
   assert.equal(quoted.quote.purchase_mode, "partner_api_purchase");
   assert.equal(quoted.quote.autonomous_purchase_supported, true);
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "Yes, buy 2 tickets max total 120"
   }, options);
@@ -360,7 +360,7 @@ test("a provider failure is reported with a sanitized error", async () => {
   const options = ticketOptions(event, { ticketPurchaseProvider: provider });
   const quoted = await quoteThroughTool(event, options);
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "Yes, buy 2 tickets max total 120"
   }, options);
@@ -378,7 +378,7 @@ test("a partner quote without a configured provider cannot be purchased", async 
   const quoted = await quoteThroughTool(event, quoteOptions);
   assert.equal(quoted.quote.purchase_mode, "partner_api_purchase");
 
-  const purchased = await callTool("dizko_purchase_tickets", {
+  const purchased = await callTool("purchase_ticket_order", {
     quote_token: quoted.quote_token,
     confirmation_text: "Yes, buy 2 tickets max total 120"
   }, quoteOptions);

@@ -50,6 +50,7 @@ export const CITY_TABLE = [
   ["stockholm", "Stockholm", "Sweden", "Europe/Stockholm", 59.3293, 18.0686],
   ["tokyo", "Tokyo", "Japan", "Asia/Tokyo", 35.6762, 139.6503],
   ["toronto", "Toronto", "Canada", "America/Toronto", 43.6532, -79.3832],
+  ["vancouver", "Vancouver", "Canada", "America/Vancouver", 49.2827, -123.1207],
   ["vienna", "Vienna", "Austria", "Europe/Vienna", 48.2082, 16.3738],
   ["warsaw", "Warsaw", "Poland", "Europe/Warsaw", 52.2297, 21.0122]
 ].map(([slug, name, country, timezone, lat, lng]) => ({ slug, name, country, timezone, lat, lng }));
@@ -65,7 +66,7 @@ const CITY_ALIASES = {
   "warszawa": "warsaw", "praha": "prague", "roma": "rome", "milano": "milan",
   "lisboa": "lisbon", "münchen": null, "köln": null, "eivissa": "ibiza",
   "istanbul": "istanbul", "i̇stanbul": "istanbul", "bkk": "bangkok", "yyc": "calgary",
-  "nola": "new-orleans", "atl": "atlanta", "chi": "chicago", "mia": "miami"
+  "nola": "new-orleans", "atl": "atlanta", "chi": "chicago", "mia": "miami", yvr: "vancouver"
 };
 
 // Places people ask about that Dizko does not cover, so the nearest covered
@@ -97,7 +98,7 @@ const NEARBY_PLACES = {
   seattle: [47.6062, -122.3321], portland: [45.5152, -122.6784], "san diego": [32.7157, -117.1611], sacramento: [38.5816, -121.4944],
   oakland: [37.8044, -122.2712], "san jose": [37.3382, -121.8863], tampa: [27.9506, -82.4572], orlando: [28.5383, -81.3792],
   charlotte: [35.2271, -80.8431], raleigh: [35.7796, -78.6382], richmond: [37.5407, -77.436], memphis: [35.1495, -90.049],
-  louisville: [38.2527, -85.7585], vancouver: [49.2827, -123.1207], ottawa: [45.4215, -75.6972], quebec: [46.8139, -71.208],
+  louisville: [38.2527, -85.7585], ottawa: [45.4215, -75.6972], quebec: [46.8139, -71.208],
   "quebec city": [46.8139, -71.208], edmonton: [53.5461, -113.4938], winnipeg: [49.8951, -97.1384], guadalajara: [20.6597, -103.3496],
   monterrey: [25.6866, -100.3161], tijuana: [32.5149, -117.0382], cancun: [21.1619, -86.8515], "cancún": [21.1619, -86.8515],
   lima: [-12.0464, -77.0428], santiago: [-33.4489, -70.6693], montevideo: [-34.9011, -56.1645], cali: [3.4516, -76.532],

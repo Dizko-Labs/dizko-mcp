@@ -71,7 +71,7 @@ Profiles use an opaque `profile_id` (`dzk_...`) plus a one-time `profile_secret`
 
 ## Quote Signing
 
-Ticket quote tokens are HMAC-signed with `DIZKO_QUOTE_SIGNING_SECRET` so a caller cannot edit quantity, max total, purchase mode or checkout URL between `dizko_quote_tickets` and `dizko_purchase_tickets`. Without it the server generates a per-process secret: quotes then expire on every restart and would not verify across replicas. Set it on every hosted deployment.
+Ticket quote tokens are HMAC-signed with `DIZKO_QUOTE_SIGNING_SECRET` so a caller cannot edit quantity, max total, purchase mode or checkout URL between `quote_ticket_order` and `purchase_ticket_order`. Without it the server generates a per-process secret: quotes then expire on every restart and would not verify across replicas. Set it on every hosted deployment.
 
 ## Railway
 
@@ -86,7 +86,7 @@ Ticket quote tokens are HMAC-signed with `DIZKO_QUOTE_SIGNING_SECRET` so a calle
 ```bash
 railway login
 railway domain mcp.dizko.app \
-  --service eventchat-events-mcp \
+  --service dizko-mcp \
   --environment production \
   --project cab5c6fa-26dd-44d3-af60-d2329ae65f56 \
   --json
@@ -133,7 +133,7 @@ Use `plugin-submission.md` for the app name, descriptions, tool list, test promp
 Use `submission-fields.json` for stable machine-readable dashboard copy, then validate it against the latest live evidence with `npm run verify:submission:fields`.
 Use `OPERATIONS.md` after launch for health checks, logs, rollback, preference-data handling, and resubmission triggers.
 
-Because this app saves preferences and post-event feedback, confirm the submitted privacy policy states what is stored, why it is stored, how users delete it through `dizko_delete_profile`, and how generated profile ids plus profile secrets are used for access.
+Because this app saves preferences and post-event feedback, confirm the submitted privacy policy states what is stored, why it is stored, how users delete it through `delete_event_preferences`, and how generated profile ids plus profile secrets are used for access.
 
 ## Claude Custom Connector
 

@@ -58,8 +58,8 @@ test("nearestCoveredCity only considers cities that are live-covered", () => {
   assert.equal(nearestCoveredCity("Hamburg", ["london"], { maxKm: 800 }).slug, "london");
 });
 
-test("CITY_TABLE has 47 unique slugs with valid IANA timezones", () => {
-  assert.equal(CITY_TABLE.length, 47);
+test("CITY_TABLE has 48 unique slugs with valid IANA timezones", () => {
+  assert.equal(CITY_TABLE.length, 48);
   const slugs = new Set(CITY_TABLE.map((city) => city.slug));
   assert.equal(slugs.size, CITY_TABLE.length);
   for (const city of CITY_TABLE) {

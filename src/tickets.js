@@ -81,7 +81,7 @@ export function buildTicketOffers(event, options = {}) {
       ? "Tell the user ticket inventory is not available through Dizko for this event yet."
       : freeEntry
         ? "This event is free entry. Share the link for RSVP or guest list; no quote or purchase is needed unless the link sells add-ons."
-        : "Show ticket options, explain whether autonomous purchase is supported, and call dizko_quote_tickets only after the user chooses quantity and constraints."
+        : "Show ticket options, explain whether autonomous purchase is supported, and call quote_ticket_order only after the user chooses quantity and constraints."
   };
 }
 
@@ -94,7 +94,7 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
     return {
       quoted: false,
       error: input.offer_id && offersResult.offers.length
-        ? "That offer_id does not match this event. Call dizko_ticket_offers again and use the returned offer_id."
+        ? "That offer_id does not match this event. Call get_ticket_offers again and use the returned offer_id."
         : "No ticket offer is available for this event.",
       code: input.offer_id && offersResult.offers.length ? "unknown_offer" : "no_offer",
       event: offersResult.event,
@@ -134,7 +134,7 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
     quote_token: encodeQuoteToken(quote, quoteSigningSecret(options)),
     confirmation_required: true,
     confirmation_prompt: confirmationPrompt(quote),
-    assistant_instruction: "Ask the user for explicit written confirmation matching this quote before calling dizko_purchase_tickets. If purchase_mode is external_checkout, the next call returns a checkout handoff rather than an autonomous purchase."
+    assistant_instruction: "Ask the user for explicit written confirmation matching this quote before calling purchase_ticket_order. If purchase_mode is external_checkout, the next call returns a checkout handoff rather than an autonomous purchase."
   };
 }
 
@@ -221,7 +221,7 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
       status: "quote_expired",
       code: "quote_expired",
       quote,
-      assistant_instruction: "Tell the user the ticket quote expired and call dizko_quote_tickets again before any purchase."
+      assistant_instruction: "Tell the user the ticket quote expired and call quote_ticket_order again before any purchase."
     };
   }
 
@@ -245,7 +245,7 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
       status: "quote_already_used",
       code: "quote_already_used",
       quote,
-      assistant_instruction: "This quote was already submitted for purchase. Do not retry it. Check the user's existing order first, and only call dizko_quote_tickets for a fresh quote if they confirm nothing was bought."
+      assistant_instruction: "This quote was already submitted for purchase. Do not retry it. Check the user's existing order first, and only call quote_ticket_order for a fresh quote if they confirm nothing was bought."
     };
   }
   if (claim === "registry_full") {
@@ -341,7 +341,7 @@ export function encodeQuoteToken(quote, secret = quoteSigningSecret()) {
 
 export function decodeQuoteToken(token, secret = quoteSigningSecret()) {
   if (!token || typeof token !== "string") {
-    throw new ToolInputError("quote_token is required.", { field: "quote_token", hint: "Call dizko_quote_tickets first and pass its quote_token unchanged." });
+    throw new ToolInputError("quote_token is required.", { field: "quote_token", hint: "Call quote_ticket_order first and pass its quote_token unchanged." });
   }
   const [payload, signature, ...rest] = token.split(".");
   if (!payload || !signature || rest.length) {
@@ -366,7 +366,7 @@ function invalidToken() {
   return new ToolInputError("quote_token is invalid, altered, or was issued by another server.", {
     field: "quote_token",
     code: "invalid_quote_token",
-    hint: "Call dizko_quote_tickets again and pass the returned quote_token exactly as given."
+    hint: "Call quote_ticket_order again and pass the returned quote_token exactly as given."
   });
 }
 

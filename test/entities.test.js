@@ -77,8 +77,8 @@ test("find helpers require a query or an id", async () => {
     }
   }
 
-  for (const tool of ["dizko_find_artist", "dizko_find_venue", "dizko_find_promoter"]) {
-    const response = await callTool(tool, { city: "berlin" }, { ...OPTIONS, fetch: fakeFetch(() => { throw new Error("must not fetch"); }) });
+  for (const [tool, extra] of [["get_artist", {}], ["get_venue", {}], ["find_scene_entities", { kind: "promoter" }]]) {
+    const response = await callTool(tool, { city: "berlin", ...extra }, { ...OPTIONS, fetch: fakeFetch(() => { throw new Error("must not fetch"); }) });
     assert.equal(response.isError, true, `${tool} without a lookup is an input error`);
     assert.equal(response.structuredContent.code, "invalid_argument");
     assert.match(response.structuredContent.error, /query/);
@@ -274,7 +274,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
   assert.equal(result.upcoming_events[0].timezone, "Europe/Berlin");
   assert.equal(result.upcoming_events[0].ticket_url, "https://ra.co/events/dup-1", "the richer duplicate survives");
   assert.equal(result.upcoming_events[0].event_url, "https://www.dizko.app/events/dup-1");
-  assert.equal(result.upcoming_events[0].calendar_url, "https://mcp.dizko.app/e/dup-1/cal");
+  assert.equal(result.upcoming_events[0].calendar_url, "https://mcp.dizko.app/e/dup-1/ics");
 });
 
 test("artist profiles tolerate a missing page, directory profile and insights", async () => {
@@ -527,7 +527,7 @@ test("promoter profiles by id need a city and expose the promoter's events", asy
   });
   assert.deepEqual(paths(notFound), ["/scene/profiles/collective/mini-mal-elektrokneipe"], "without a city only the collective index is consulted");
 
-  const missingCity = await callTool("dizko_find_promoter", { id: "mini-mal-elektrokneipe" }, { ...OPTIONS, fetch: fakeFetch(() => NOT_FOUND) });
+  const missingCity = await callTool("find_scene_entities", { kind: "promoter", id: "mini-mal-elektrokneipe" }, { ...OPTIONS, fetch: fakeFetch(() => NOT_FOUND) });
   assert.equal(missingCity.isError, true);
   assert.equal(missingCity.structuredContent.code, "missing_city");
   assert.equal(missingCity.structuredContent.field, "city");
@@ -551,7 +551,7 @@ test("promoter profiles by id need a city and expose the promoter's events", asy
     if (url.pathname === "/scene/profiles/collective/mini-mal-elektrokneipe") return NOT_FOUND;
     throw new Error(`Unexpected request: ${url.pathname}`);
   });
-  const response = await callTool("dizko_find_promoter", { id: "mini-mal-elektrokneipe", city: "berlin" }, { ...OPTIONS, fetch });
+  const response = await callTool("find_scene_entities", { kind: "promoter", id: "mini-mal-elektrokneipe", city: "berlin" }, { ...OPTIONS, fetch });
   assert.deepEqual(paths(fetch).sort(), ["/promoters/berlin/mini-mal-elektrokneipe", "/scene/profiles/collective/mini-mal-elektrokneipe"]);
   assert.equal(response.isError, false);
   const body = response.structuredContent;
@@ -992,4 +992,57 @@ test("a venue with no exact listings still finds its colloquial short form", asy
 
   const result = await findVenue({ id: "renate", city: "berlin" }, { ...OPTIONS, fetch });
   assert.deepEqual(result.upcoming_events.map((row) => row.id), ["r1"], "the looser pass runs when nothing matched exactly");
+});
+
+// ---------- Muse V1 contract tools ----------
+
+function svenFetch() {
+  return fakeFetch((url) => {
+    switch (url.pathname) {
+      case "/scene/search":
+        return { count: 1, items: [{ id: "sven-vath", name: "Sven Vath", kind: "dj" }] };
+      case "/scene/profiles/dj/sven-vath":
+        return { id: "sven-vath", name: "Sven Vath", cities: ["Frankfurt"], genres: ["techno"] };
+      case "/scene/profiles/dj/sven-vath/insights":
+      case "/scene/directory/djs/sven-vath":
+      case "/artist-pages/public/for-artist/SvenVath":
+        return NOT_FOUND;
+      case "/events":
+        return { count: 0, events: [] };
+      default:
+        throw new Error(`Unexpected request: ${url.pathname}`);
+    }
+  });
+}
+
+test("get_artist resolves a confident name, accents and all, to the canonical profile", async () => {
+  const fetch = svenFetch();
+  const response = await callTool("get_artist", { query: "Sven Väth" }, { ...OPTIONS, fetch });
+  assert.equal(response.isError, false);
+  const body = response.structuredContent;
+  assert.equal(body.contract_version, "2026-09-19");
+  assert.equal(body.mode, "profile", "an exact-string comparison would miss the catalog's 'Sven Vath'");
+  assert.equal(body.entity.name, "Sven Vath");
+  assert.deepEqual(body.resolved_from, { query: "Sven Väth", id: "sven-vath", name: "Sven Vath" });
+  assert.ok(paths(fetch).includes("/scene/profiles/dj/sven-vath"));
+});
+
+test("get_artist returns choices, not a guessed profile, when two artists answer the name", async () => {
+  // Two different artists (two catalog rows with the same exact name would be
+  // one artist scraped twice), both with real careers, so nothing settles it.
+  const fetch = fakeFetch((url) => {
+    if (url.pathname === "/scene/search") {
+      return { count: 2, items: [{ id: "dj-a", name: "Sasha One", kind: "dj" }, { id: "dj-b", name: "Sasha Two", kind: "dj" }] };
+    }
+    if (url.pathname.endsWith("/insights")) return { indexed_events: 8, upcoming_events: 5, related_djs: new Array(6).fill("x"), top_venues: new Array(5).fill("x") };
+    return { dj: { experience_level: "established", press_clips: new Array(9).fill("x"), appearances: new Array(30).fill("x") } };
+  });
+  const response = await callTool("get_artist", { query: "Sasha" }, { ...OPTIONS, fetch });
+  const body = response.structuredContent;
+  assert.equal(body.mode, "search");
+  assert.equal(body.best_match.confident, false);
+  assert.equal(body.best_match.alternatives.length, 1);
+  assert.equal("resolved_from" in body, false);
+  assert.match(body.assistant_instruction, /ask the user to choose/);
+  assert.equal(paths(fetch).some((path) => path === "/scene/profiles/dj/dj-a" || path === "/scene/profiles/dj/dj-b"), false, "no profile is fetched on the user's behalf");
 });

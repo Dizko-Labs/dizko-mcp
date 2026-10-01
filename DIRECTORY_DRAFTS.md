@@ -30,7 +30,7 @@ Find current concerts, parties, nightlife, festivals, and cultural events from D
 Long description (one-paragraph fields):
 
 ```text
-Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across 47 cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, promoter, price, and event type, then returns verifiable event links, ticket URLs, and local times. It also looks up DJs, venues, and promoters with their upcoming dates, and gives daily city roundups and city trend reads. Recommendation tools include explainable taste ranking, compact night plans with fallbacks, consent-based saved preferences with per-weekday day filters, and post-event feedback learning. Ticket tools can show offers, create signed quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider when configured.
+Dizko Events is Dizko's connector for ChatGPT, Claude, and MCP-compatible agents. It connects users to live event listings across 48 cities, supports structured search by city, date, genre, vibe, neighborhood, venue, artist, promoter, price, and event type, then returns verifiable event links, ticket URLs, and local times. It also looks up DJs, venues, and promoters with their upcoming dates, and gives daily city roundups and city trend reads. Recommendation tools include explainable taste ranking, compact night plans with fallbacks, consent-based saved preferences with per-weekday day filters, and post-event feedback learning. Ticket tools can show offers, create signed quotes, require explicit written confirmation, and either hand off third-party checkout or use an integrated provider when configured.
 ```
 
 ## 1. Official MCP Registry (registry.modelcontextprotocol.io)
@@ -80,7 +80,7 @@ Repository: https://github.com/Dizko-Labs/dizko-mcp
 Hosted endpoint: https://mcp.dizko.app/mcp (streamable-http, no auth)
 npm: dizko-events (npx -y dizko-events mcp)
 Description: Find current concerts, parties, nightlife, festivals, and cultural
-events from Dizko's live event inventory across 47 cities. Structured search by city,
+events from Dizko's live event inventory across 48 cities. Structured search by city,
 date, genre, vibe, neighborhood, venue, artist, promoter, and price, plus DJ, venue
 and promoter lookups, with local times and verifiable event and ticket links.
 ```

@@ -86,7 +86,7 @@ The MCP service stores only a hash of the `profile_secret`. The raw secret is re
 
 ## What The Assistant Should Do
 
-- Make one `dizko_search_events` call when the request names a city and a timeframe; ask about type, vibe, budget, or area conversationally, and only when the request is genuinely ambiguous.
+- Make one `search_events` call when the request names a city and a timeframe; ask about type, vibe, budget, or area conversationally, and only when the request is genuinely ambiguous.
 - Render times exactly as returned (`when` is already in the city's local time).
 - Ask for explicit consent before creating or saving a preference profile.
 - Keep the `profile_secret` private and use it only for preference, feedback, recommendation, or deletion tools.

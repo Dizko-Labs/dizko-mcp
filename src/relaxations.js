@@ -137,7 +137,7 @@ export function buildNoResults(input = {}, { baselineCount = null, cityName = nu
 
 function buildInstruction({ baselineCount, active, label, timeframe, suggestions }) {
   if (baselineCount === 0) {
-    return `Tell the user Dizko has nothing listed in ${label} ${timeframe}. Offer a wider timeframe, and use dizko_list_cities if they may be asking about a city with thin coverage. Do not invent events.`;
+    return `Tell the user Dizko has nothing listed in ${label} ${timeframe}. Offer a wider timeframe, and use list_cities if they may be asking about a city with thin coverage. Do not invent events.`;
   }
   if (!active.length) {
     return `Tell the user nothing came back for ${label} ${timeframe} and offer a wider timeframe. Do not invent events.`;
@@ -147,7 +147,7 @@ function buildInstruction({ baselineCount, active, label, timeframe, suggestions
   const total = baselineCount == null ? "other events" : `${baselineCount} other event${baselineCount === 1 ? "" : "s"}`;
   return [
     `Do not say Dizko has nothing on. Say that ${total} are listed in ${label} ${timeframe}, but none match these filters: ${names}.`,
-    first ? `Offer to drop ${first.relax} first (${first.why}) and call dizko_search_events again with retry_with.` : "",
+    first ? `Offer to drop ${first.relax} first (${first.why}) and call search_events again with retry_with.` : "",
     "Never invent events to fill the gap."
   ].filter(Boolean).join(" ");
 }

@@ -13,13 +13,13 @@ https://mcp.dizko.app/mcp
 Railway project:
 
 ```text
-radar-backend
+dizko-backend (Railway project id cab5c6fa-26dd-44d3-af60-d2329ae65f56; formerly `radar-backend`)
 ```
 
 Railway service (legacy service name; the deployed code and public branding are Dizko):
 
 ```text
-eventchat-events-mcp
+dizko-mcp (formerly `eventchat-events-mcp`)
 ```
 
 Custom-domain readiness check:
@@ -43,8 +43,8 @@ npm run smoke:live
 Expected:
 
 - `/health` returns `{"ok":true,"name":"dizko","version":"<package version>"}`.
-- `npm run monitor:live` reports `ok: true`, health and metadata success, the full tool count (19 in 0.8.0; the script reads it from the package's tool registry, so it cannot drift), and at least one live read-only search result. This command does not create preference profiles, write feedback, or attempt ticket purchases.
-- `npm run smoke:live` reports `ok: true`, the expected `dizko_*` tool names, a live sample event, the `dizko_search_followups` and `dizko_post_event_feedback` prompts, and a temporary profile round-trip (create, read, wrong-secret rejection, delete).
+- `npm run monitor:live` reports `ok: true`, health and metadata success, the full tool count (30 in 0.9.0; the script reads it from the package's tool registry, so it cannot drift), and at least one live read-only search result. This command does not create preference profiles, write feedback, or attempt ticket purchases.
+- `npm run smoke:live` reports `ok: true`, every tool and prompt name in the package's registry, a live sample event, the `dizko_search_followups` and `dizko_post_event_feedback` prompts, and a temporary profile round-trip (create, read, wrong-secret rejection, delete).
 
 For hosted uptime monitoring, run `npm run monitor:live` on a 5 to 15 minute interval and alert on any non-zero exit. Keep `npm run smoke:live` as a daily or pre-release check because it also exercises temporary preference profile creation and deletion.
 
@@ -79,7 +79,7 @@ This covers:
 - Unit and integration tests.
 - Live MCP smoke test.
 - Public health, metadata, privacy, support, terms, user-guide, logo, and `security.txt` URLs.
-- Tool list, titles, descriptions, annotations, `noauth` security schemes, and invocation status text; it also confirms that no `outputSchema` is served (results are `structuredContent`).
+- Tool list, titles, descriptions, annotations, security schemes (`noauth`, or `oauth2` with its scope for the four signed-in account tools, exactly as the registry declares them), and invocation status text; it also confirms that no `outputSchema` is served (results are `structuredContent`).
 - Rate-limit headers.
 - Live event search.
 - The `dizko_search_followups` and `dizko_post_event_feedback` prompts.
@@ -98,7 +98,7 @@ submission-evidence/latest-summary.md
 Tail the current deployment logs:
 
 ```bash
-railway logs --service eventchat-events-mcp --environment production --tail 120
+railway logs --service dizko-mcp --environment production --tail 120
 ```
 
 Tail a specific deployment:
@@ -122,7 +122,7 @@ If a deployment breaks `/health`, `/mcp`, or preference-memory behavior:
 1. Find the last successful deployment:
 
 ```bash
-railway deployment list --service eventchat-events-mcp --environment production --limit 5 --json
+railway deployment list --service dizko-mcp --environment production --limit 5 --json
 ```
 
 2. Redeploy the last known-good local state or use Railway's dashboard rollback controls.
@@ -132,7 +132,13 @@ railway deployment list --service eventchat-events-mcp --environment production 
 npm run preflight:submission
 ```
 
-Record the last known-good deployment id from `submission-evidence/latest.json` (`deployment.id`) after each successful preflight. The 0.7-era id previously listed here predates the 0.8.0 tool rename; rolling back to it restores the old tool names.
+Last known-good deployment at this runbook update:
+
+```text
+771149dc-039d-4fc1-aeef-7d7db59c15eb
+```
+
+After each successful preflight, update it from `submission-evidence/latest.json` (`deployment.id`).
 
 ## Preference Data Handling
 
@@ -150,7 +156,7 @@ Store characteristics:
 - Safe for one replica only. Two replicas sharing the volume would race, so do not scale the service out until the store is moved behind an external store (Postgres, Redis, or the Dizko backend) that implements the same interface: `getProfile`, `createProfile`, `savePreferences`, `recordFeedback`, `deleteProfile`.
 - Inactive profiles are pruned on access after `DIZKO_PREFERENCE_RETENTION_DAYS` (alias `EVENTCHAT_PREFERENCE_RETENTION_DAYS`), defaulting to `730` days.
 - One profile serializes to at most `DIZKO_MAX_PROFILE_BYTES` (default `98304`). Past it the oldest feedback entries are dropped to fit, since their signal is already folded into `learned`. This is the bound that actually holds: free-text notes and event snapshots dominate a large profile, and no per-field term count constrains them.
-- The store holds at most `DIZKO_MAX_PROFILES` profiles (default `10000`). At the ceiling, profiles created but never used or consented to are evicted oldest-first; consented profiles are never evicted for space. If nothing can be freed, `dizko_create_profile` returns `profile_limit_reached` while every existing profile keeps working. Raising the ceiling raises the cost of every write, since the store is one JSON file rewritten per operation.
+- The store holds at most `DIZKO_MAX_PROFILES` profiles (default `10000`). At the ceiling, profiles created but never used or consented to are evicted oldest-first; consented profiles are never evicted for space. If nothing can be freed, `create_event_preference_profile` returns `profile_limit_reached` while every existing profile keeps working. Raising the ceiling raises the cost of every write, since the store is one JSON file rewritten per operation.
 
 Privacy invariants:
 
@@ -159,7 +165,7 @@ Privacy invariants:
 - Only a hash of the `profile_secret` is stored.
 - Later preference reads must not echo the raw secret.
 - Preference access requires both `profile_id` (`dzk_...`) and `profile_secret`.
-- Deletion through `dizko_delete_profile` removes saved preferences and feedback for that profile only when the request includes `confirm_delete: true` after user confirmation.
+- Deletion through `delete_event_preferences` removes saved preferences and feedback for that profile only when the request includes `confirm_delete: true` after user confirmation.
 - `EVENTCHAT_ALLOW_LEGACY_PROFILE_IDS` must stay unset in production; `true` disables secret checks for legacy profiles that have no stored hash.
 
 If a user requests deletion through support instead of a tool call, verify ownership with both `profile_id` and `profile_secret` before deleting the profile from active storage.
@@ -244,4 +250,4 @@ Resubmit to OpenAI review when any of these change materially:
 - CSP fetch/image/frame domains.
 - OAuth or bearer-token requirements.
 
-Run `npm run preflight:submission` and capture fresh ChatGPT Developer Mode screenshots before resubmitting. The 0.8.0 tool rename is such a change.
+Run `npm run preflight:submission` and capture fresh ChatGPT Developer Mode screenshots before resubmitting. 0.9.0 is such a change: it rewrites tool descriptions and input schemas and adds the prompt list.

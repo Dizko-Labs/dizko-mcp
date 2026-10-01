@@ -8,6 +8,12 @@ Use the production MCP endpoint:
 https://mcp.dizko.app/mcp
 ```
 
+Do not use:
+
+```text
+https://mcp.dizko.app/mcp
+```
+
 ## Required Screenshots
 
 1. `01-connector-connected.png`
@@ -16,7 +22,7 @@ https://mcp.dizko.app/mcp
 
 2. `02-tool-list.png`
    - Show tool list or tool-call details.
-   - It should be clear that Dizko Events exposes all 19 `dizko_*` tools (the count comes from `tools.length` in `src/tools.js`).
+   - It should be clear that Dizko Events exposes 21 tools.
 
 3. `03-live-event-search.png`
    - Prompt:
@@ -25,16 +31,16 @@ https://mcp.dizko.app/mcp
 Find five techno events in Berlin this weekend.
 ```
 
-   - Expected: a single `dizko_search_events` call; live events with local times, Dizko event URLs and ticket/source links when available.
+   - Expected: live events with Dizko event URLs and ticket/source links when available.
 
-4. `04-clarifying-questions.png`
+4. `04-current-context-followups.png`
    - Prompt:
 
 ```text
 Find something good tonight in Berlin, but ask me what kind of event and vibe first.
 ```
 
-   - Expected: one or two clarifying questions asked conversationally (the optional `dizko_search_followups` prompt lists them), then one `dizko_search_events` call.
+   - Expected: concise follow-up questions before search, using `get_event_search_followups`.
 
 5. `05-consent-onboarding.png`
    - Prompt:
@@ -43,7 +49,7 @@ Find something good tonight in Berlin, but ask me what kind of event and vibe fi
 Ask what kind of events I generally like, then ask whether Dizko may save my preferences.
 ```
 
-   - Expected: the `dizko_onboarding` questions and an explicit consent request before `dizko_create_profile`.
+   - Expected: onboarding questions and explicit consent request before profile creation.
 
 6. `06-personalized-recommendation.png`
    - Prompt:
@@ -52,7 +58,7 @@ Ask what kind of events I generally like, then ask whether Dizko may save my pre
 Save my preferences after I consent, then recommend events for this weekend.
 ```
 
-   - Expected: `dizko_search_events` with the profile attached; personalized ranking using saved preferences and the current request.
+   - Expected: personalized recommendations using saved preferences and current request context.
 
 7. `07-post-event-feedback.png`
    - Prompt after choosing an event:
@@ -61,7 +67,7 @@ Save my preferences after I consent, then recommend events for this weekend.
 Ask me a follow-up about whether I liked that event and remember my answer for future recommendations.
 ```
 
-   - Expected: the `dizko_post_event_feedback` questions before `dizko_record_feedback`, plus an explanation of learned positive or negative signals.
+   - Expected: `get_event_feedback_prompt` before `record_event_feedback`, plus an explanation of learned positive or negative signals.
 
 8. `08-delete-preferences.png`
    - Prompt:
@@ -70,7 +76,7 @@ Ask me a follow-up about whether I liked that event and remember my answer for f
 Delete my Dizko saved event preferences and feedback history.
 ```
 
-   - Expected: `dizko_delete_profile` and an explanation that deletion is scoped to Dizko connector preferences and feedback.
+   - Expected: `delete_event_preferences` and an explanation that deletion is scoped to Dizko connector preferences and feedback.
 
 ## Optional Mobile Screenshots
 
@@ -82,6 +88,6 @@ OpenAI review may ask for web and mobile coverage. Capture these on mobile if po
 
 ## Review Notes
 
-- Do not include real private `profile_secret` values (`dzs_...`) in public-facing screenshots unless the dashboard explicitly requires proof of creation-time behavior.
+- Do not include real private `profile_secret` values in public-facing screenshots unless the dashboard explicitly requires proof of creation-time behavior.
 - If a profile secret appears, crop or redact it before sharing outside the private OpenAI submission workflow.
 - Use `submission-evidence/latest-summary.md` as the technical evidence companion for these screenshots.

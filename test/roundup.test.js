@@ -166,8 +166,8 @@ test("daily roundup groups the day into top picks and deduped category sections"
   assert.equal(top.lineup.length, 8);
   assert.equal(top.lineup_count, 10);
   assert.equal(top.description, undefined, "boilerplate descriptions are dropped");
-  assert.equal(top.featured, undefined);
-  assert.equal(top.pick, undefined);
+  assert.equal("featured" in top, false);
+  assert.equal(top.pick, false, "pick is the contract's boolean, present even when false");
 
   assert.deepEqual(roundup.sections.map((section) => [section.key, section.title, section.count]), [
     ["parties", "Parties & club nights", 1],
@@ -184,7 +184,7 @@ test("daily roundup groups the day into top picks and deduped category sections"
   assert.equal(parties.events[0].recommendation_score, 7);
 
   const live = roundup.sections.find((section) => section.key === "live_music");
-  assert.equal(live.events[0].featured, true);
+  assert.equal(live.events[0].pick, true);
   assert.deepEqual(live.events[0].recommendation_reasons, ["featured pick", "evening show"]);
   assert.equal(live.events[0].when, "Fri 7 Aug, 20:00");
 
@@ -194,7 +194,7 @@ test("daily roundup groups the day into top picks and deduped category sections"
   assert.equal(more.events[1].recommendation_score, -8);
 });
 
-test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters without filtering upstream", async () => {
+test("get_daily_roundup ranks by saved taste plus that weekday's day_filters without filtering upstream", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dizko-roundup-"));
   const preferencesPath = join(dir, "preferences.json");
 
@@ -202,7 +202,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
     // A misspelled weekday is refused with the accepted keys rather than
     // silently dropped: a saved rule that quietly vanishes is worse than an
     // error the model can correct on the spot.
-    const typo = body(await callTool("dizko_create_profile", {
+    const typo = body(await callTool("create_event_preference_profile", {
       consent: true,
       preferences: { genres: ["house"], day_filters: { friday: { genres: ["techno"] }, funday: { genres: ["ignored"] } } }
     }, { preferencesPath }));
@@ -210,7 +210,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
     assert.equal(typo.field, "preferences.day_filters.funday");
     assert.deepEqual(typo.allowed, ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
 
-    const created = body(await callTool("dizko_create_profile", {
+    const created = body(await callTool("create_event_preference_profile", {
       consent: true,
       preferences: {
         genres: ["house"],
@@ -232,7 +232,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
       return Response.json({ count: events.length, events });
     };
 
-    const friday = await callTool("dizko_daily_roundup", {
+    const friday = await callTool("get_daily_roundup", {
       city: "berlin",
       profile_id,
       profile_secret,
@@ -270,7 +270,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
     assert.ok(parties.events[0].recommendation_score < fridayBody.top_picks[0].recommendation_score);
     assert.match(fridayBody.assistant_instruction, /daily digest/i);
 
-    const saturday = body(await callTool("dizko_daily_roundup", {
+    const saturday = body(await callTool("get_daily_roundup", {
       city: "berlin",
       date: "2026-08-08",
       profile_id,
@@ -282,7 +282,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
     assert.equal(saturday.ranking, "saved_and_learned_taste");
     assert.deepEqual(saturday.personalization.applied_ranking_hints, { genres: ["house"] }, "day_filters stay scoped to their weekday");
 
-    const wrongSecret = await callTool("dizko_daily_roundup", {
+    const wrongSecret = await callTool("get_daily_roundup", {
       city: "berlin",
       profile_id,
       profile_secret: "dzs_wrong",
@@ -291,7 +291,7 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
     assert.equal(wrongSecret.isError, true);
     assert.equal(body(wrongSecret).code, "profile_secret_invalid");
 
-    const missingProfile = await callTool("dizko_daily_roundup", {
+    const missingProfile = await callTool("get_daily_roundup", {
       city: "berlin",
       profile_id: "dzk_00000000-0000-0000-0000-000000000000",
       profile_secret
@@ -303,9 +303,9 @@ test("dizko_daily_roundup ranks by saved taste plus that weekday's day_filters w
   }
 });
 
-test("unpersonalized dizko_daily_roundup returns the digest with render instructions", async () => {
+test("unpersonalized get_daily_roundup returns the digest with render instructions", async () => {
   const events = [dayEvent("solo", { event_types: ["party"] })];
-  const result = await callTool("dizko_daily_roundup", { city: "berlin" }, {
+  const result = await callTool("get_daily_roundup", { city: "berlin" }, {
     now: FRIDAY_NOON,
     fetch: async () => Response.json({ count: 1, events })
   });
@@ -332,7 +332,7 @@ test("unpersonalized dizko_daily_roundup returns the digest with render instruct
   assert.match(digest.assistant_instruction, /Top picks/);
 });
 
-test("compact dizko_daily_roundup trims to 3 picks, 4 sections of 3, and short event rows", async () => {
+test("compact get_daily_roundup trims to 3 picks, 4 sections of 3, and short event rows", async () => {
   const party = (id, attendance) => dayEvent(id, { event_types: ["party"], attendance_count: attendance, price_min: 10, currency: "EUR" });
   const at = (id, type, start) => dayEvent(id, { event_types: [type], start_time: start, price_min: 10, currency: "EUR" });
   const events = [
@@ -344,7 +344,7 @@ test("compact dizko_daily_roundup trims to 3 picks, 4 sections of 3, and short e
     at("t1", "talk", "2026-08-07T17:00:00Z"),
     at("f1", "food", "2026-08-07T11:00:00Z")
   ];
-  const result = await callTool("dizko_daily_roundup", { city: "berlin", compact: true }, {
+  const result = await callTool("get_daily_roundup", { city: "berlin", compact: true }, {
     now: FRIDAY_NOON,
     fetch: async () => Response.json({ count: events.length, events })
   });
@@ -375,14 +375,14 @@ test("compact dizko_daily_roundup trims to 3 picks, 4 sections of 3, and short e
   assert.match(digest.assistant_instruction, /short digest/i);
 });
 
-test("dizko_daily_roundup rejects ranges and malformed dates before any upstream call", async () => {
+test("get_daily_roundup rejects ranges and malformed dates before any upstream call", async () => {
   let fetchCalled = false;
   const fetch = async () => {
     fetchCalled = true;
     return Response.json({ count: 0, events: [] });
   };
 
-  const weekend = await callTool("dizko_daily_roundup", { city: "berlin", when: "weekend" }, { now: FRIDAY_NOON, fetch });
+  const weekend = await callTool("get_daily_roundup", { city: "berlin", when: "weekend" }, { now: FRIDAY_NOON, fetch });
   assert.equal(weekend.isError, true);
   const weekendBody = body(weekend);
   assert.equal(weekendBody.code, "invalid_argument");
@@ -390,26 +390,26 @@ test("dizko_daily_roundup rejects ranges and malformed dates before any upstream
   assert.match(weekendBody.error, /"weekend" is a range/);
   assert.ok(weekendBody.allowed.includes("today"));
   assert.match(weekendBody.hint, /date=2026-08-07/);
-  assert.match(weekendBody.hint, /dizko_search_events/);
+  assert.match(weekendBody.hint, /search_events/);
 
-  const nextWeek = await callTool("dizko_daily_roundup", { city: "berlin", when: "next week" }, { now: FRIDAY_NOON, fetch });
+  const nextWeek = await callTool("get_daily_roundup", { city: "berlin", when: "next week" }, { now: FRIDAY_NOON, fetch });
   assert.equal(nextWeek.isError, true);
   assert.equal(body(nextWeek).field, "when");
 
-  const badDate = await callTool("dizko_daily_roundup", { city: "berlin", date: "08/07/2026" }, { now: FRIDAY_NOON, fetch });
+  const badDate = await callTool("get_daily_roundup", { city: "berlin", date: "08/07/2026" }, { now: FRIDAY_NOON, fetch });
   assert.equal(badDate.isError, true);
   assert.equal(body(badDate).code, "invalid_argument");
   assert.equal(body(badDate).field, "date");
   assert.match(body(badDate).error, /YYYY-MM-DD/);
 
-  const missingCity = await callTool("dizko_daily_roundup", { when: "today" }, { now: FRIDAY_NOON, fetch });
+  const missingCity = await callTool("get_daily_roundup", { when: "today" }, { now: FRIDAY_NOON, fetch });
   assert.equal(missingCity.isError, true);
   assert.equal(body(missingCity).field, "city");
 
   assert.equal(fetchCalled, false);
 
   // Single-day presets still resolve, so the same inputs minus the range work.
-  const single = await callTool("dizko_daily_roundup", { city: "berlin", when: "sunday" }, { now: FRIDAY_NOON, fetch });
+  const single = await callTool("get_daily_roundup", { city: "berlin", when: "sunday" }, { now: FRIDAY_NOON, fetch });
   assert.equal(single.isError, false);
   assert.equal(body(single).date, "2026-08-09");
   assert.equal(body(single).weekday, "sunday");

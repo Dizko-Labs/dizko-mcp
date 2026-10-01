@@ -68,7 +68,7 @@ test("get_artist_page tool steers to fallback when nothing is published", async 
 
   const body = JSON.parse(result.content[0].text);
   assert.equal(body.published, false);
-  assert.match(body.assistant_instruction, /dizko_find_artist/);
+  assert.match(body.assistant_instruction, /get_artist/);
   assert.match(body.assistant_instruction, /SoundCloud/);
 });
 
@@ -84,16 +84,14 @@ test("get_artist_page tool requires a handle without a request", async () => {
   assert.equal(called, false);
 });
 
-test("get_artist_page is a legacy alias: unlisted but still callable, superseded by dizko_find_artist", async () => {
+test("get_artist_page is a listed, read-only contract tool", async () => {
   const listed = await handleMcpRequest({ method: "tools/list" });
-  assert.equal(tools.find((tool) => tool.name === "get_artist_page"), undefined);
-  assert.equal(listed.tools.some((tool) => tool.name === "get_artist_page"), false);
-
-  const artist = listed.tools.find((tool) => tool.name === "dizko_find_artist");
-  assert.ok(artist, "dizko_find_artist is the listed replacement");
-  assert.equal(artist.annotations.readOnlyHint, true);
-  assert.equal(artist.annotations.destructiveHint, false);
-  assert.match(artist.description, /Dizko page/);
+  const page = listed.tools.find((tool) => tool.name === "get_artist_page");
+  assert.ok(page, "get_artist_page is listed");
+  assert.ok(tools.find((tool) => tool.name === "get_artist_page"));
+  assert.equal(page.annotations.readOnlyHint, true);
+  assert.equal(page.annotations.destructiveHint, false);
+  assert.deepEqual(page.inputSchema.required, ["handle"]);
 
   const response = await handleMcpRequest({
     method: "tools/call",

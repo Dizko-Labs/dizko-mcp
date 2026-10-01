@@ -25,7 +25,6 @@ export {
   getPrompt,
   toolJson,
   buildSearchFollowups,
-  LEGACY_TOOL_ALIASES,
   EVENT_LINKS_INSTRUCTION
 } from "./tools.js";
 export {
@@ -57,7 +56,7 @@ export {
   SORT_OPTIONS,
   DizkoAPIError,
   DizkoNetworkError,
-  // Pre-0.8 aliases for the same classes.
+  // The EventChat-era names for the same classes.
   EventChatAPIError,
   EventChatNetworkError
 } from "./api.js";

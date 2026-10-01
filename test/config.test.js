@@ -139,6 +139,7 @@ test("SUPPORTED_CITIES includes the live Dizko city catalog", () => {
     "stockholm",
     "tokyo",
     "toronto",
+    "vancouver",
     "vienna",
     "warsaw"
   ]);

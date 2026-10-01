@@ -32,7 +32,7 @@ export function resolveRoundupDay(input = {}, now = new Date(), timezone) {
     throw new ToolInputError(`The roundup covers one day; "${input.when}" is a range.`, {
       field: "when",
       allowed: ["today", "tonight", "tomorrow", "a weekday name", "YYYY-MM-DD"],
-      hint: `Pass date=${range.date_from} for the first day of that range, or use dizko_search_events for the whole range.`
+      hint: `Pass date=${range.date_from} for the first day of that range, or use search_events for the whole range.`
     });
   }
   return range.date_from || isoDate(now, zone);
