@@ -60,9 +60,13 @@ const WHEN_DESCRIPTION = `Timeframe preset resolved in the city's local timezone
 // what comes back, because not every client surfaces server instructions.
 // ---------------------------------------------------------------------------
 
+// recommendEvents (src/planner.js) ranks at most this many results.
+const TASTE_RESULT_CAP = 50;
+
 // recommend_events accepts the same filters as search_events and always ranks
 // one candidate window by taste, so the paging and rank inputs are left out
-// and result_limit (how many ranked events to return) is added.
+// and result_limit (how many ranked events to return) is added, with limit
+// kept as its alias.
 function recommendInputSchema() {
   const search = rawTools.find((tool) => tool.name === "search_events").inputSchema;
   const { offset: _offset, cursor: _cursor, rank: _rank, ...properties } = search.properties;
@@ -70,7 +74,8 @@ function recommendInputSchema() {
     ...search,
     properties: {
       ...properties,
-      result_limit: { type: "integer", minimum: 1, maximum: 50, default: 10, description: "How many ranked events to return (1-50, default 10)." }
+      limit: { type: "integer", minimum: 1, maximum: TASTE_RESULT_CAP, description: `Same as result_limit; result_limit wins when both are given.` },
+      result_limit: { type: "integer", minimum: 1, maximum: TASTE_RESULT_CAP, default: 10, description: `How many ranked events to return (1-${TASTE_RESULT_CAP}, default 10).` }
     }
   };
 }
@@ -286,7 +291,7 @@ const rawTools = [
         profile_id: { type: "string", description: "Optional Dizko preference profile id; pass with profile_secret to rank by saved and learned taste." },
         profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
         fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS }, description: "Extra per-event fields: description (long form), coordinates, socials, promoters (full objects). Images and source are always included. Omit for the compact default." },
-        limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, default: 12, description: `Events to return per page (1-${MAX_SEARCH_LIMIT}, default 12). count is the total available; page with offset.` },
+        limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, default: 12, description: `Events to return per page (1-${MAX_SEARCH_LIMIT}, default 12; rank: taste returns at most ${TASTE_RESULT_CAP}). count is the total available; page with next_cursor.` },
         offset: { type: "integer", minimum: 0, default: 0, description: "Legacy pagination offset; prefer cursor. Pass back next_offset from the previous page, never a number you computed. Applies to relevance ranking only; taste ranking scores one window and ignores it." },
         cursor: { type: "string", description: "Opaque next_cursor returned by a prior search_events call. Takes precedence over offset." }
       },
@@ -315,8 +320,8 @@ const rawTools = [
         event_types: { type: "array", items: { type: "string" } }, genres: { type: "array", items: { type: "string" } }, vibe: { type: "array", items: { type: "string" } }, neighborhoods: { type: "array", items: { type: "string" } },
         venue: { type: "string" }, featuring: { type: "string" }, free: { type: "boolean" }, nightlife: { type: "boolean" },
         avoid: { type: "array", items: { type: "string" } }, max_price: { type: "number" }, price_max: { type: "number" },
-        limit: { type: "number", default: 50 },
-        result_limit: { type: "number", default: 10 }
+        limit: { type: "integer", minimum: 1, maximum: TASTE_RESULT_CAP, description: "Same as result_limit; result_limit wins when both are given." },
+        result_limit: { type: "integer", minimum: 1, maximum: TASTE_RESULT_CAP, default: 10, description: `How many ranked events to return (1-${TASTE_RESULT_CAP}, default 10).` }
       },
       required: ["profile_id", "profile_secret"]
     }
@@ -714,12 +719,25 @@ export async function callTool(name, input = {}, options = {}) {
     });
     const { value, errors } = validateInput(tool.inputSchema, input || {});
     if (errors.length) return toolJson(firstErrorPayload(errors, name), true);
+    // The validator turns "yes" or 1 into true for ordinary flags. A consent
+    // or confirmation flag is the user's decision, so it has to arrive as the
+    // literal boolean the description asks for.
+    for (const flag of STRICT_FLAGS) {
+      if (Object.hasOwn(input || {}, flag) && typeof input[flag] !== "boolean") {
+        throw new ToolInputError(`${flag} must be the boolean true or false.`, {
+          field: flag,
+          hint: `Send ${flag}: true only after the user has said yes, then call ${name} again.`
+        });
+      }
+    }
     const result = await handlers[name](value, context);
     return result?.structuredContent ? result : toolJson(result, false);
   } catch (error) {
     return toolJson(await errorPayload(error, name, input, context), true);
   }
 }
+
+const STRICT_FLAGS = ["consent", "confirm_delete", "confirmed"];
 
 function missingScope(tool, authContext) {
   const required = (tool.securitySchemes || []).filter((scheme) => scheme.type === "oauth2").flatMap((scheme) => scheme.scopes || []);
@@ -783,8 +801,12 @@ const handlers = {
       // cursor to move: passing it upstream shifted the window and quietly
       // returned different events for the same request, with has_more false
       // and no next_offset to explain it. It is dropped, and the note says so.
-      const { offset: _ignoredOffset, ...tasteInput } = searchInput;
-      const response = await recommendEvents({ ...tasteInput, preferences: hints, result_limit: input.limit ?? 12 }, { ...options, config });
+      // A cursor is still checked, so a forged one is refused here as it is
+      // on the relevance path rather than silently read as page one.
+      const requestedOffset = cursorOffset(input);
+      const { offset: _ignoredOffset, cursor: _ignoredCursor, ...tasteInput } = searchInput;
+      const tasteLimit = Math.min(input.limit ?? 12, TASTE_RESULT_CAP);
+      const response = await recommendEvents({ ...tasteInput, preferences: hints, result_limit: tasteLimit }, { ...options, config });
       const emptyTaste = response.events.length ? null : await noResultsPayload(searchInput, coveredCityName(city), { ...options, config });
       // Taste ranks a candidate window rather than walking the inventory in
       // order, so there is no stable cursor to hand back. Say so instead of
@@ -797,14 +819,16 @@ const handlers = {
         sort_by: sortBy || "popular",
         ...response,
         returned: response.events.length,
-        offset: input.offset ?? 0,
+        offset: 0,
         has_more: false,
         next_offset: null,
         contract_version: CONNECTOR_CONTRACT_VERSION,
-        page: { limit: input.limit ?? 12, returned: response.events.length, next_cursor: null },
-        paging_note: (input.offset ?? 0) > 0
-          ? "Taste ranking scores one candidate window, so offset does not apply and was not used. Raise limit instead, or pass rank: \"relevance\" to page the inventory in order."
-          : "Taste ranking scores one candidate window; raise limit rather than paging.",
+        page: { limit: tasteLimit, returned: response.events.length, next_cursor: null },
+        paging_note: requestedOffset > 0
+          ? `Taste ranking scores one candidate window, so offset and cursor do not apply and were not used. Raise limit (up to ${TASTE_RESULT_CAP}) instead, or pass rank: "relevance" to page the inventory in order.`
+          : (input.limit ?? 12) > TASTE_RESULT_CAP
+            ? `Taste ranking returns at most ${TASTE_RESULT_CAP} events. Pass rank: "relevance" to page through more in order.`
+            : `Taste ranking scores one candidate window; raise limit (up to ${TASTE_RESULT_CAP}) rather than paging.`,
         ...(emptyTaste ? { no_results: emptyTaste } : {}),
         app_download_url: config.appDownloadUrl,
         assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : EVENT_LINKS_INSTRUCTION
@@ -823,8 +847,11 @@ const handlers = {
     // pages wrongly against each other. So `offset` indexes the day's own
     // list here, and the upstream request is the same URL for every page,
     // which also means every page after the first is a cache hit.
+    // The decoded cursor has to reach the upstream request on the multi-day
+    // path: spreading `input` forwards only a raw `offset`, so a cursor alone
+    // re-fetched page one while reporting page two.
     const response = await searchEvents(
-      { ...searchInput, limit: sameDay ? MAX_SEARCH_LIMIT : pageLimit, ...(sameDay ? { offset: 0 } : {}) },
+      { ...searchInput, limit: sameDay ? MAX_SEARCH_LIMIT : pageLimit, offset: sameDay ? 0 : offset },
       { ...options, config }
     );
     const now = options.now || new Date();
@@ -1105,7 +1132,7 @@ const handlers = {
 
   async recommend_events_for_user(input, context) {
     const { result_limit: resultLimit, ...search } = input;
-    return handlers.search_events({ ...search, rank: "taste", limit: resultLimit ?? 10 }, context);
+    return handlers.search_events({ ...search, rank: "taste", limit: resultLimit ?? input.limit ?? 10 }, context);
   },
 
   async get_artist(input, context) {
@@ -1339,7 +1366,7 @@ async function errorPayload(error, name, input, context) {
   }
   const described = describeNetworkError(error, error?.url);
   const retryable = error?.retryable ?? (error?.status != null ? isRetryableStatus(error.status) : described.retryable);
-  return publicToolError(error, { retryable, entity: /find_|scene|artist_page/.test(name) });
+  return publicToolError(error, { retryable, entity: /find_|scene|artist_page|^get_(artist|venue)$/.test(name) });
 }
 
 function parseValidationDetail(body) {

@@ -11,7 +11,7 @@ import { clientIp, isExempt, readJson } from "../src/httpServer.js";
 import { FilePreferenceStore, publicProfile } from "../src/preferences.js";
 import { validatePurchaseConfirmation } from "../src/tickets.js";
 import { decodeEventCursor } from "../src/connectorV1.js";
-import { callTool } from "../src/tools.js";
+import { callTool, tools } from "../src/tools.js";
 
 const CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
 const NOW = new Date("2026-09-08T12:00:00Z");
@@ -261,8 +261,8 @@ test("the rate-limit client key comes from the proxy, not from the caller", () =
   assert.equal(clientIp(request(null, "198.51.100.7"), 1), "198.51.100.7");
   assert.equal(clientIp(request("   ", "198.51.100.7"), 1), "198.51.100.7");
 
-  // The exemption is keyed on the socket peer, which the caller cannot set,
-  // so claiming an exempt-looking prefix in the header buys nothing.
+  // isExempt is a plain prefix check; which address it is handed (the one
+  // clientIp settled on) is pinned by the HTTP exemption test.
   assert.equal(isExempt("10.0.0.7", ["10.0.0."]), true);
   assert.equal(isExempt("203.0.113.9", ["10.0.0."]), false);
   assert.equal(isExempt(undefined, ["10.0.0."]), false);
@@ -485,4 +485,125 @@ test("an evening search for tomorrow drops the matinee and does not talk about t
 
   assert.deepEqual(body.events.map((event) => event.id), ["clubnight"]);
   assert.doesNotMatch(body.filter_note, /today/, "a search for tomorrow must not be explained in terms of today");
+});
+
+// ---------------------------------------------------------------------------
+// Reproductions from the review of the merge onto main's connector contract.
+// ---------------------------------------------------------------------------
+
+test("next_cursor on a multi-day range reaches the upstream request", async () => {
+  // The decoded cursor was used for the response fields but never sent
+  // upstream, so following next_cursor re-fetched page one forever while
+  // reporting page two.
+  const rows = Array.from({ length: 20 }, (_, index) => eventRow(`m${index}`, {
+    start_time: new Date(Date.UTC(2026, 8, 10 + index, 21)).toISOString(),
+    end_time: new Date(Date.UTC(2026, 8, 11 + index, 4)).toISOString()
+  }));
+  const offsets = [];
+  const fetch = async (url) => {
+    const params = new URL(url).searchParams;
+    const offset = Number(params.get("offset") || 0);
+    const limit = Number(params.get("limit") || 12);
+    offsets.push(offset);
+    return Response.json({ count: rows.length, events: rows.slice(offset, offset + limit) });
+  };
+  const seen = [];
+  let cursor = null;
+  for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+    const response = await callTool("search_events", { city: "berlin", when: "month", limit: 5, ...(cursor ? { cursor } : {}) }, { config: CONFIG, now: NOW, fetch });
+    assert.equal(response.isError, false);
+    seen.push(...response.structuredContent.events.map((event) => event.id));
+    cursor = response.structuredContent.page.next_cursor;
+    if (!cursor) break;
+  }
+  assert.deepEqual(offsets, [0, 5, 10, 15]);
+  assert.equal(new Set(seen).size, 20, "every event once, none repeated");
+});
+
+test("a short limit does not shrink the candidates a confident match is judged against", async () => {
+  // Upstream lists BJ Klock first. Searching only `limit` rows meant limit: 1
+  // never fetched Ben Klock, and BJ Klock came back as a confident answer.
+  const items = [
+    { id: "bj-klock", name: "BJ Klock", kind: "dj", score: 0.0156 },
+    { id: "ben-klock", name: "Ben Klock", kind: "dj", score: 0.0155 }
+  ];
+  const fetch = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/scene/search") {
+      const limit = Number(parsed.searchParams.get("limit") || 10);
+      return Response.json({ count: items.length, items: items.slice(0, limit) });
+    }
+    if (parsed.pathname === "/scene/profiles/dj/ben-klock/insights") return Response.json({ indexed_events: 9, upcoming_events: 6, related_djs: new Array(8).fill("x"), top_venues: new Array(7).fill("x") });
+    if (parsed.pathname === "/scene/profiles/dj/bj-klock/insights") return Response.json({ indexed_events: 0, upcoming_events: 0, related_djs: [], top_venues: [] });
+    if (parsed.pathname === "/scene/directory/djs/ben-klock") return Response.json({ dj: { experience_level: "established", press_clips: new Array(12).fill("x"), appearances: new Array(30).fill("x") } });
+    if (parsed.pathname === "/scene/directory/djs/bj-klock") return Response.json({ dj: { appearances: [{ id: "one" }] } });
+    throw new Error(`Unexpected request: ${parsed.pathname}`);
+  };
+  const { findArtist } = await import("../src/entities.js");
+  const result = await findArtist({ query: "Klock", limit: 1 }, { config: CONFIG, retries: 0, fetch });
+  assert.equal(result.best_match.id, "ben-klock");
+  assert.equal(result.entities.length, 1, "limit still bounds the rows returned");
+  assert.equal(result.entities[0].id, "ben-klock");
+});
+
+test("zero trusted proxies keys the limiter on the socket, not on a caller's header", () => {
+  const request = { headers: { "x-forwarded-for": "6.6.6.6" }, socket: { remoteAddress: "198.51.100.1" } };
+  assert.equal(clientIp(request, 0), "198.51.100.1");
+  // An unset or unparseable value keeps the one-proxy default.
+  assert.equal(clientIp(request, Number.NaN), "6.6.6.6");
+});
+
+test("get_artist and get_venue report a missing id as an entity, not an event", async () => {
+  for (const name of ["get_artist", "get_venue"]) {
+    const response = await callTool(name, { id: "nobody" }, {
+      config: CONFIG,
+      retries: 0,
+      fetch: async () => Response.json({ detail: "Not found" }, { status: 404 })
+    });
+    assert.equal(response.isError, true, name);
+    assert.equal(response.structuredContent.code, "entity_not_found", name);
+  }
+});
+
+test("consent and confirmation flags must be the literal boolean", async () => {
+  // The validator coerces "yes" and 1 to true for ordinary flags. A user's
+  // decision to bin, delete or consent must not be read out of a string.
+  const auth = { authenticated: true, subject: "user-1", clientId: "muse", token: "opaque", scopes: ["saved:write"] };
+  let fetched = false;
+  const fetch = async () => { fetched = true; return Response.json({ binned: true }); };
+  for (const value of ["yes", "true", 1]) {
+    const response = await callTool("bin_event", { event_id: "e1", confirmed: value, idempotency_key: "abcdefghijklmnop" }, {
+      authContext: auth,
+      fetch,
+      config: { ...CONFIG, oauthIssuer: "https://api.dizko.test" }
+    });
+    assert.equal(response.isError, true, JSON.stringify(value));
+    assert.equal(response.structuredContent.field, "confirmed");
+  }
+  assert.equal(fetched, false);
+  const consent = await callTool("create_event_preference_profile", { consent: "yes" }, { config: CONFIG });
+  assert.equal(consent.isError, true);
+  assert.equal(consent.structuredContent.field, "consent");
+});
+
+test("the taste path says what it returns: a 50-event cap, no cursor, a checked cursor", async () => {
+  const rows = Array.from({ length: 120 }, (_, index) => eventRow(`t${index}`, { genres: ["techno"] }));
+  const fetch = async () => Response.json({ count: rows.length, events: rows });
+  const options = { config: CONFIG, now: NOW, fetch };
+
+  const capped = (await callTool("search_events", { city: "berlin", when: "week", rank: "taste", limit: 120 }, options)).structuredContent;
+  assert.equal(capped.events.length, 50);
+  assert.equal(capped.page.limit, 50, "the page reports the limit it applied");
+  assert.match(capped.paging_note, /at most 50/);
+
+  const forged = await callTool("search_events", { city: "berlin", rank: "taste", cursor: "not-a-cursor" }, options);
+  assert.equal(forged.isError, true);
+  assert.equal(forged.structuredContent.code, "invalid_cursor");
+
+  const forUser = tools.find((tool) => tool.name === "recommend_events_for_user").inputSchema.properties;
+  assert.equal(forUser.limit.maximum, 50);
+  assert.equal("default" in forUser.limit, false, "limit no longer advertises a default the handler ignored");
+  const recommend = tools.find((tool) => tool.name === "recommend_events").inputSchema.properties;
+  assert.equal(recommend.limit.maximum, 50);
+  assert.doesNotMatch(recommend.limit.description, /offset/);
 });

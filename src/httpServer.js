@@ -120,7 +120,7 @@ export function createHttpMcpServer(options = {}) {
       if (shortLink) {
         // Short links trigger upstream event lookups, so they share the
         // /mcp rate limiter - random-id scans must not hammer the backend.
-        const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress);
+        const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies));
         if (!rateLimit.allowed) {
           sendJson(response, 429, { error: "Rate limit exceeded. Please retry shortly." }, {
             ...corsHeaders(request, settings),
@@ -177,7 +177,7 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress);
+      const rateLimit = rateLimiter.check(clientIp(request, settings.trustedProxies));
       const rateLimitHeaders = rateLimitHeadersFor(rateLimit);
       if (!rateLimit.allowed) {
         sendJson(response, 429, {
@@ -214,7 +214,7 @@ export function createHttpMcpServer(options = {}) {
       // envelope that carries them.
       const batchCost = Array.isArray(payload) ? payload.length : 1;
       if (batchCost > 1) {
-        const batchLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), request.socket?.remoteAddress, batchCost - 1);
+        const batchLimit = rateLimiter.check(clientIp(request, settings.trustedProxies), batchCost - 1);
         if (!batchLimit.allowed) {
           sendJson(response, 429, {
             jsonrpc: "2.0",
@@ -449,9 +449,11 @@ function createRateLimiter(settings) {
   const max = Math.max(1, Number(settings.rateLimitMax) || 120);
 
   return {
-    check(key, exemptAddress = null, cost = 1) {
+    // `key` is the client address clientIp() settled on, which is also what
+    // an exemption is checked against.
+    check(key, cost = 1) {
       const now = Date.now();
-      if (settings.rateLimitDisabled || isExempt(exemptAddress, settings.rateLimitExempt)) {
+      if (settings.rateLimitDisabled || isExempt(key, settings.rateLimitExempt)) {
         return {
           allowed: true,
           limit: max,
@@ -485,9 +487,13 @@ function createRateLimiter(settings) {
   };
 }
 
-// Checked against the socket peer address, never a forwarded header: an
-// exemption that any caller can claim by setting X-Forwarded-For is not an
-// exemption, it is an open door.
+// Checked against the address clientIp() resolves, never the raw leftmost
+// X-Forwarded-For entry: an exemption any caller can claim by setting a
+// header is an open door. Behind a proxy the socket peer is the proxy
+// itself, so checking the socket would never match the assistant egress
+// ranges this list exists for. That makes the exemption only as trustworthy
+// as EVENTCHAT_MCP_TRUSTED_PROXIES: a server with no proxy in front must set
+// it to 0.
 export function isExempt(address, prefixes) {
   if (!Array.isArray(prefixes) || !prefixes.length || !address) return false;
   return prefixes.some((prefix) => prefix && String(address).startsWith(prefix));
@@ -513,9 +519,11 @@ export function clientIp(request, trustedProxies = 1) {
     const real = request.headers["x-real-ip"];
     if (typeof real === "string" && real.trim()) return real.trim();
   }
+  const socketAddress = request.socket?.remoteAddress || "unknown";
+  // No proxy in front: every X-Forwarded-For entry is the caller's own claim.
+  if (trustedProxies === 0) return socketAddress;
   const header = request.headers["x-forwarded-for"];
   const raw = Array.isArray(header) ? header.join(",") : header;
-  const socketAddress = request.socket?.remoteAddress || "unknown";
   if (typeof raw !== "string" || !raw.trim()) return socketAddress;
   const hops = raw.split(",").map((hop) => hop.trim()).filter(Boolean);
   if (!hops.length) return socketAddress;

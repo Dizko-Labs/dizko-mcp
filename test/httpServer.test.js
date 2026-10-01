@@ -299,6 +299,28 @@ test("HTTP MCP server supports CORS preflight and optional bearer auth", async (
   }
 });
 
+test("a rate-limit exemption matches the client address behind the proxy, not the proxy", async () => {
+  // Behind Railway the socket peer is always the edge proxy, so checking the
+  // exemption there never matched the assistant egress ranges it is for.
+  const server = createHttpMcpServer({ rateLimitMax: 1, rateLimitWindowMs: 60_000, rateLimitExempt: "203.0.113.", trustedProxies: 1 });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const call = (forwarded, id) => fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST",
+    headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json", "X-Forwarded-For": forwarded },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list" })
+  });
+  try {
+    for (const id of [1, 2, 3]) assert.equal((await call("203.0.113.42", id)).status, 200, `exempt call ${id}`);
+    // A caller cannot buy the exemption by prepending the prefix: the proxy's
+    // own hop is the one that counts.
+    assert.equal((await call("203.0.113.42, 198.51.100.9", 4)).status, 200);
+    assert.equal((await call("203.0.113.42, 198.51.100.9", 5)).status, 429);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("HTTP MCP server rate-limits MCP POST requests with JSON-RPC errors", async () => {
   const server = createHttpMcpServer({
     rateLimitMax: 1,

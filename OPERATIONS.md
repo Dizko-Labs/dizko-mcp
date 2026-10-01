@@ -185,7 +185,7 @@ The command uses the same profile-secret verification as the MCP tools. It exits
 
 - `DIZKO_QUOTE_SIGNING_SECRET` (alias `EVENTCHAT_QUOTE_SIGNING_SECRET`) signs ticket quote tokens. Set it on the Railway service: without it every restart invalidates outstanding quotes (`invalid_quote_token`), and a second replica would reject the first one's tokens.
 - `DIZKO_MCP_UPSTREAM_SECRET` (alias `EVENTCHAT_MCP_UPSTREAM_SECRET`) is sent to the Dizko API as `X-Dizko-MCP-Secret`.
-- The rate limiter allows `EVENTCHAT_MCP_RATE_LIMIT_MAX` requests (default `600`) per `EVENTCHAT_MCP_RATE_LIMIT_WINDOW_MS` (default `60000`) per client IP on `/mcp` and the `/e/` short links. Hosted assistants call from shared egress addresses, so add their prefixes to `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` (comma-separated IP prefixes) if legitimate traffic sees 429s. `EVENTCHAT_MCP_RATE_LIMIT_DISABLED=true` turns the limiter off and is not for production.
+- The rate limiter allows `EVENTCHAT_MCP_RATE_LIMIT_MAX` requests (default `600`) per `EVENTCHAT_MCP_RATE_LIMIT_WINDOW_MS` (default `60000`) per client IP on `/mcp` and the `/e/` short links. Hosted assistants call from shared egress addresses, so add their prefixes to `EVENTCHAT_MCP_RATE_LIMIT_EXEMPT` (comma-separated IP prefixes) if legitimate traffic sees 429s. Prefixes are matched against the client IP resolved through `EVENTCHAT_MCP_TRUSTED_PROXIES` (default `1`, Railway's edge); with the wrong hop count a caller can claim an exempt address in `X-Forwarded-For`. `EVENTCHAT_MCP_RATE_LIMIT_DISABLED=true` turns the limiter off and is not for production.
 
 ## Script Environment
 

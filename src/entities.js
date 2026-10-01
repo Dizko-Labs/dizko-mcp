@@ -66,7 +66,7 @@ export async function findArtist(input = {}, options = {}) {
   if (input.id) return artistProfile(String(input.id).trim(), input, options);
   const query = String(input.query).trim();
   const limit = boundedLimit(input.limit, 10, 20);
-  const response = await searchScene({ query, kind: "dj", city: input.city, genre: input.genre, limit }, options);
+  const response = await searchScene({ query, kind: "dj", city: input.city, genre: input.genre, limit: MATCH_WINDOW }, options);
   const relevant = relevantItems(response.items, query);
   const named = relevant.items.map((profile) => sceneProfileSummary(profile, "artist"));
   const ranked = await applyArtistProminence(named, relevant.tiers, options);
@@ -78,7 +78,7 @@ export async function findArtist(input = {}, options = {}) {
     city: input.city || null,
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
-    entities,
+    entities: entities.slice(0, limit),
     best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
@@ -215,7 +215,7 @@ export async function findVenue(input = {}, options = {}) {
   if (input.id) return venueProfile(String(input.id).trim(), input, options);
   const query = String(input.query).trim();
   const limit = boundedLimit(input.limit, 10, 20);
-  const response = await searchScene({ query, kind: "venue", city: input.city, genre: input.genre, limit }, options);
+  const response = await searchScene({ query, kind: "venue", city: input.city, genre: input.genre, limit: MATCH_WINDOW }, options);
   const relevant = relevantItems(response.items, query);
   const named = relevant.items.map((profile) => sceneProfileSummary(profile, "venue"));
   const ranked = applyRowProminence(named, relevant.tiers, venueProminence);
@@ -227,7 +227,7 @@ export async function findVenue(input = {}, options = {}) {
     city: input.city || null,
     count: response.count ?? entities.length,
     total_indexed: response.total_indexed ?? null,
-    entities,
+    entities: entities.slice(0, limit),
     best_match: bestMatchPayload(entities, query, relevant.matched, relevant.tiers, ranked.scores, ranked.displaced),
     ...(relevant.matched ? {} : { match_note: "No profile name matched the query; these are the closest entries in the catalog." })
   };
@@ -347,19 +347,18 @@ export async function findPromoter(input = {}, options = {}) {
   const needle = normalizeText(query);
   const genre = normalizeText(input.genre);
   const [collectives, promoters] = await Promise.all([
-    input.kind === "promoter" ? Promise.resolve({ items: [] }) : searchScene({ query, kind: "collective", genre: input.genre, limit }, options).catch(() => ({ items: [] })),
+    input.kind === "promoter" ? Promise.resolve({ items: [] }) : searchScene({ query, kind: "collective", genre: input.genre, limit: MATCH_WINDOW }, options).catch(() => ({ items: [] })),
     input.city && input.kind !== "collective" ? listPromoters(input.city, 200, options).catch(() => ({ promoters: [] })) : Promise.resolve({ promoters: [] })
   ]);
   const promoterRows = (promoters.promoters || [])
     .filter((item) => !needle || normalizeText(`${item.name} ${item.slug}`).includes(needle))
     .filter((item) => !genre || (item.genres || []).some((value) => normalizeText(value).includes(genre)))
-    .slice(0, limit)
     .map((item) => promoterSummary(item, promoters.city || input.city));
   const collectiveRows = relevantItems(collectives.items, query, { max: 5 }).items.map((profile) => sceneProfileSummary(profile, "collective"));
   // Promoters and collectives come from two catalogs, so the merged list is
   // in merge order, not answer order. Rank it the same way the artist and
   // venue searches are ranked so best_match means the same thing everywhere.
-  const merged = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, limit);
+  const merged = rankByMatch(mergeByName([...promoterRows, ...collectiveRows]), query).slice(0, MATCH_WINDOW);
   const promoterTiers = merged.map((entity) => matchTier(entity?.name, query)).filter((tier) => tier !== null);
   const ranked = applyRowProminence(merged, promoterTiers, promoterProminence);
   const entities = ranked.entities;
@@ -369,7 +368,7 @@ export async function findPromoter(input = {}, options = {}) {
     query,
     city: input.city || null,
     count: entities.length,
-    entities,
+    entities: entities.slice(0, limit),
     best_match: bestMatchPayload(entities, query, entities.length > 0, promoterTiers, ranked.scores, ranked.displaced),
     ...(input.city ? {} : { note: "Pass a city to include promoters with upcoming Dizko event listings; collectives are searched worldwide." })
   };
@@ -488,6 +487,14 @@ export function rankByMatch(entities, query) {
 // one clear name winner, costs nothing extra. The fetch is bounded so a
 // query matching a dozen profiles cannot fan out without limit.
 const MAX_PROMINENCE_LOOKUPS = 6;
+
+// Name searches rank and judge confidence over a fixed candidate window and
+// apply the caller's `limit` only to the rows they return. Searching only
+// `limit` rows let limit: 1 hand back whichever profile upstream listed
+// first as a confident answer, because the real one was never fetched to
+// compete with it. The window costs nothing extra: it is the same single
+// search request, and prominence lookups stay capped above.
+const MATCH_WINDOW = 20;
 
 // Who is actually competing for the answer: the best name tier, plus the one
 // immediately below it. One step, deliberately. A catalog carries the same
