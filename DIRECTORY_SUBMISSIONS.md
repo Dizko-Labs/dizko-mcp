@@ -53,9 +53,10 @@ already prepared in this repo: privacy policy, support page, security contact
 (all live on the hosted service), plus the endpoint. Reuse
 `OPENAI_SUBMISSION_PACKET.md` content.
 
-## 6. OpenAI ChatGPT apps
+## 6. ChatGPT and Codex plugin directory
 
-Already in progress - see `OPENAI_SUBMISSION_PACKET.md` and `submission-fields.json`.
+Submitted as a plugin ZIP pointing at the read-only `/openai/mcp` surface. See
+`OPENAI_PLUGIN_SUBMISSION.md` and `npm run build:openai-plugin`.
 
 ## Status
 
@@ -66,4 +67,4 @@ Already in progress - see `OPENAI_SUBMISSION_PACKET.md` and `submission-fields.j
 | PulseMCP | not submitted | |
 | mcp.so | not submitted | |
 | Anthropic directory | not submitted | reuse OpenAI packet |
-| OpenAI apps | in review | see SUBMISSION_AUDIT.md |
+| ChatGPT and Codex plugins | package ready, not submitted | see OPENAI_PLUGIN_SUBMISSION.md |

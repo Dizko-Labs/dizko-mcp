@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dizko-events",
+  "version": "1.0.0",
+  "description": "Find current concerts, club nights, festivals, and cultural events in 30 cities from Dizko's live listings.",
+  "author": {
+    "name": "Dizko Labs",
+    "email": "support@dizko.app",
+    "url": "https://www.dizko.app"
+  },
+  "homepage": "https://www.dizko.app",
+  "repository": "https://github.com/Dizko-Labs/dizko-mcp",
+  "license": "MIT",
+  "keywords": ["events", "nightlife", "concerts", "music", "clubs", "festivals"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Dizko Events",
+        "shortDescription": "Live events and nightlife",
+        "longDescription": "Dizko Events searches Dizko's live listings for concerts, club nights, parties, festivals, comedy, art, and cultural events in 30 cities, including Berlin, London, New York, Paris, Amsterdam, Los Angeles, Mexico City, São Paulo, Tokyo, and Vancouver.\n\nAsk for events by city and timeframe, then narrow by genre, event type, vibe, neighborhood, venue, artist, price, or things to avoid. Each result links to its Dizko event page and the original ticket source, with a calendar file and directions when the listing has them.\n\nBeyond search, Dizko Events can:\n- Rank events against a taste you describe and explain why each one fits\n- Plan a night out with a main pick and fallbacks nearby or later in the evening\n- Give a daily roundup of a city's top picks and category highlights\n- Show when named artists play next\n- Look up an artist, venue, collective, or promoter and their upcoming dates\n- Summarize a city's busiest nights, venues, and genre mix for the week ahead\n\nDizko Events only reads listings. It does not need an account, does not save anything about you, and does not buy tickets. Prices and availability come from the source listing and can change, so confirm them on the ticket page.",
+        "developerName": "Dizko Labs",
+        "category": "Entertainment",
+        "capabilities": ["Read"],
+        "websiteURL": "https://www.dizko.app",
+        "supportURL": "https://mcp.dizko.app/support.html",
+        "privacyPolicyURL": "https://mcp.dizko.app/privacy-policy.html",
+        "termsOfServiceURL": "https://mcp.dizko.app/terms.html",
+        "defaultPrompt": [
+          "Find techno events in Berlin this weekend",
+          "Plan a Saturday night out in London with live music first and a club after",
+          "What's happening in New York tomorrow?"
+        ],
+        "brandColor": "#4E6B00",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

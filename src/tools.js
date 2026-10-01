@@ -969,6 +969,9 @@ async function unsupportedCityPayload(requestedCity, options = {}) {
 }
 
 function publicToolError(error, { retryable, entity = false }) {
+  if (error?.code === "unsupported_date_preset") {
+    return { error: "That date is not supported. Use today, tonight, tomorrow, weekend, week, a weekday name such as saturday, or a YYYY-MM-DD date.", code: "unsupported_date" };
+  }
   if (error?.status === 404) {
     return entity
       ? { error: "The requested scene entity was not found.", code: "entity_not_found" }
@@ -1220,7 +1223,7 @@ function eventSearchSchema() {
     type: "object",
     properties: {
       city: { type: "string", description: "City name, for example berlin or new york." },
-      when: { type: "string", description: "Date preset: today, tonight, tomorrow, weekend, week, this week, any, or YYYY-MM-DD." },
+      when: { type: "string", description: "Date preset: today, tonight, tomorrow, weekend, week, this week, a weekday name such as saturday, any, or YYYY-MM-DD." },
       date_from: { type: "string", description: "Inclusive start date in YYYY-MM-DD format." },
       date_to: { type: "string", description: "Inclusive end date in YYYY-MM-DD format." },
       query: { type: "string", description: "Free-text search, hybrid-ranked by the live API: exact prefix > substring > fuzzy > semantic similarity over event embeddings. Handles soft natural-language intent ('dark queer warehouse rave', 'ambient listening bar') as well as literal names, and recognizes date phrases." },
