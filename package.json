@@ -62,7 +62,8 @@
     "monitor:live": "node ./scripts/monitor-live.mjs",
     "build:mcpb": "node ./scripts/build-mcpb.mjs",
     "preflight:submission": "npm test && npm run smoke:live && npm run verify:submission:bundle && npm run verify:submission:fields",
-    "test": "node --import ./test/setup.mjs --test"
+    "test": "node --import ./test/setup.mjs --test",
+    "build:openai-plugin": "node ./scripts/build-openai-plugin.mjs"
   },
   "engines": {
     "node": ">=20"

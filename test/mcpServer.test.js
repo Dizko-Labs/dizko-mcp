@@ -184,7 +184,7 @@ test("MCP tool metadata is review-friendly", async () => {
   for (const tool of response.tools) {
     assert.equal(typeof tool.title, "string", `${tool.name} is missing a title`);
     assert.ok(tool.title.length > 0, `${tool.name} has an empty title`);
-    assert.ok(tool.description.length >= 40, `${tool.name} description should say when to use it`);
+    assert.match(tool.description, /^Use this (when|only when)\b/, `${tool.name} description should start with "Use this..."`);
     assert.equal(typeof tool.inputSchema, "object", `${tool.name} is missing inputSchema`);
     assert.equal(tool.outputSchema, undefined, `${tool.name} should omit redundant outputSchema`);
     const expectedSecurity = tool.name === "get_taste_profile"
@@ -1094,4 +1094,230 @@ test("MCP event results include bounded HTTPS flyer resource links", async () =>
   assert.equal(links.length, 1);
   assert.equal(links[0].uri, "https://images.example.test/one.jpg");
   assert.match(links[0].name, /Night One/);
+});
+
+// ---------------------------------------------------------------------------
+// main's own server tests, kept so the merge cannot quietly drop coverage.
+// Payloads here are a superset of main's (retryable, hint, status, timezone),
+// so these check main's fields rather than the whole object.
+// ---------------------------------------------------------------------------
+
+function expectFields(actual, expected) {
+  assert.deepEqual(Object.fromEntries(Object.keys(expected).map((key) => [key, actual?.[key]])), expected);
+}
+
+test("MCP lists covered cities with live counts and freshness", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "list_cities", arguments: {} }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({
+      live: [{ slug: "berlin", name: "Berlin", country: "Germany", event_count: 321, last_scraped_at: "2026-08-24T08:00:00Z", stale: false }]
+    })
+  });
+
+  assert.equal(response.structuredContent.count, 1);
+  expectFields(response.structuredContent.cities[0], {
+    slug: "berlin",
+    name: "Berlin",
+    country: "Germany",
+    event_count: 321,
+    freshness: "fresh",
+    last_successful_fetch: "2026-08-24T08:00:00Z"
+  });
+});
+
+test("MCP get_event_search_followups asks for missing event type and vibe", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_event_search_followups", arguments: { city: "berlin", when: "tonight" } }
+  });
+
+  assert.equal(response.structuredContent.needs_followup, true);
+  assert.ok(response.structuredContent.missing_fields.includes("event_types"));
+  assert.ok(response.structuredContent.missing_fields.includes("vibe"));
+  assert.ok(response.structuredContent.questions.some((question) => question.includes("type of event")));
+  assert.ok(response.structuredContent.questions.some((question) => question.includes("vibe")));
+  assert.equal(response.structuredContent.search_args_hint.city, "berlin");
+  assert.equal(response.structuredContent.search_args_hint.when, "tonight");
+});
+
+test("MCP get_event_feedback_prompt returns questions for post-event learning", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "get_event_feedback_prompt", arguments: { event_id: "event-1", attended_at: "2026-06-09" } }
+  }, {
+    fetch: async () => Response.json({
+      id: "event-1",
+      title: "Basement Night",
+      start_time: "2026-06-09T22:00:00Z",
+      genres: ["techno"],
+      vibe: ["warehouse"],
+      event_types: ["party"],
+      lineup: [],
+      venue_name: "RSO.BERLIN"
+    })
+  });
+
+  assert.equal(response.structuredContent.event.title, "Basement Night");
+  assert.equal(response.structuredContent.attended_at, "2026-06-09");
+  assert.ok(response.structuredContent.questions.some((question) => question.includes("Did you like")));
+  assert.match(response.structuredContent.assistant_instruction, /record_event_feedback/);
+});
+
+test("MCP search_events returns tool content", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin" } }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test" },
+    fetch: async () => Response.json({
+      count: 1,
+      events: [{
+        id: "1",
+        title: "Night One",
+        genres: [],
+        vibe: [],
+        event_types: [],
+        lineup: ["DJ One", "DJ Two"],
+        venue_name: "Else",
+        start_time: "2026-09-20T12:00:00Z",
+        end_time: "2026-09-21T04:00:00Z",
+        ticket_url: "https://tickets.example/night-one",
+        attendance_count: 829,
+        ra_pick: true,
+        price_trend: "selling_fast",
+        sound_tags: ["dub techno"],
+        promoters: ["Example Collective"],
+        image_url: "https://images.example.test/night-one.jpg",
+        lat: 52.5,
+        lng: 13.4
+      }]
+    })
+  });
+
+  assert.equal(response.content[0].type, "text");
+  assert.match(response.content[0].text, /Night One/);
+  assert.equal(response.structuredContent.events[0].title, "Night One");
+  assert.equal(response.structuredContent.events[0].pick, true);
+  assert.equal(response.structuredContent.events[0].price_trend, "selling_fast");
+  // sound_tags, lat and lng are opt-in on this branch (audit F7): sound_tags
+  // with get_event detail, coordinates through `fields`.
+  assert.equal("sound_tags" in response.structuredContent.events[0], false);
+  assert.deepEqual(response.structuredContent.events[0].promoters, ["Example Collective"]);
+  assert.equal(response.structuredContent.events[0].image_url, "https://images.example.test/night-one.jpg");
+  assert.equal("lat" in response.structuredContent.events[0], false);
+  assert.equal(response.structuredContent.events[0].dizko_url, response.structuredContent.events[0].event_url);
+  assert.equal(response.structuredContent.events[0].venue_name, "Else");
+  assert.deepEqual(response.structuredContent.events[0].lineup_artists, ["DJ One", "DJ Two"]);
+  assert.equal(response.structuredContent.events[0].going_count, 829);
+  assert.match(response.structuredContent.events[0].calendar_url, /\/e\/1\/ics$/);
+  assert.match(response.structuredContent.assistant_instruction, /three compact, scannable lines/);
+  assert.equal(response.structuredContent.app_download_url, "https://www.dizko.app/ios");
+});
+
+test("MCP search_events returns structured tool errors for slow upstream calls", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin" } }
+  }, {
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "test", apiTimeoutMs: 5 },
+    fetch: async (_url, init) => {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 50);
+        init.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        });
+      });
+    }
+  });
+
+  assert.equal(response.isError, true);
+  expectFields(response.structuredContent, {
+    error: "The event service timed out. Try again shortly.",
+    code: "upstream_timeout"
+  });
+});
+
+test("MCP purchase_ticket_order rejects vague confirmation", async () => {
+  const options = {
+    fetch: async () => Response.json({
+      id: "event-1",
+      title: "Club Night",
+      ticket_url: "https://tickets.example.test/event-1",
+      source: "hermes",
+      genres: [],
+      vibe: [],
+      event_types: [],
+      lineup: []
+    }),
+    now: new Date("2026-06-10T12:00:00Z")
+  };
+  const quote = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "quote_ticket_order", arguments: { event_id: "event-1", quantity: 2, max_total: 80 } }
+  }, options);
+
+  const purchase = await handleMcpRequest({
+    method: "tools/call",
+    params: {
+      name: "purchase_ticket_order",
+      arguments: {
+        quote_token: quote.structuredContent.quote_token,
+        confirmation_text: "sounds good"
+      }
+    }
+  }, options);
+
+  assert.equal(purchase.structuredContent.purchased, false);
+  assert.equal(purchase.structuredContent.status, "confirmation_required");
+  assert.match(purchase.structuredContent.error, /buy or purchase/);
+});
+
+test("MCP search_events sanitizes retryable DNS failures", async () => {
+  const dnsError = new TypeError("fetch failed");
+  dnsError.cause = Object.assign(new Error("getaddrinfo EAI_AGAIN backend.example.test"), {
+    code: "EAI_AGAIN",
+    syscall: "getaddrinfo",
+    hostname: "backend.example.test"
+  });
+
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "los angeles", when: "week", limit: 1 } }
+  }, {
+    config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
+    retries: 1,
+    sleep: async () => {},
+    fetch: async () => { throw dnsError; }
+  });
+
+  assert.equal(response.isError, true);
+  const body = response.structuredContent;
+  expectFields(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
+});
+
+test("MCP search_events sanitizes retryable HTTP 5xx errors", async () => {
+  const response = await handleMcpRequest({
+    method: "tools/call",
+    params: { name: "search_events", arguments: { city: "berlin", when: "week", limit: 1 } }
+  }, {
+    config: { apiBaseUrl: "https://backend.example.test", userAgent: "test" },
+    retries: 0,
+    fetch: async () => new Response("upstream exploded", { status: 503 })
+  });
+
+  assert.equal(response.isError, true);
+  const body = response.structuredContent;
+  expectFields(body, {
+    error: "The event service is temporarily unavailable. Try again shortly.",
+    code: "upstream_unavailable"
+  });
 });

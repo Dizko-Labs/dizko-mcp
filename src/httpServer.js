@@ -42,9 +42,14 @@ export function createHttpMcpServer(options = {}) {
   // serving for 2025-era clients, both from the same server definition.
   // The factory runs once per request - nothing is retained between calls,
   // which is what the stateless core requires.
-  const mcpHandler = toNodeHandler(createMcpHandler(() => createSdkMcpServer(options), {
-    onerror: (error) => process.stderr.write(`dizko MCP error: ${error.message}\n`)
-  }));
+  const onerror = (error) => process.stderr.write(`dizko MCP error: ${error.message}\n`);
+  // /openai/mcp serves the reviewed ChatGPT and Codex plugin subset from the
+  // same deployment; see surfaces.js.
+  const mcpHandlers = {
+    "/mcp": toNodeHandler(createMcpHandler(() => createSdkMcpServer(options), { onerror })),
+    "/openai/mcp": toNodeHandler(createMcpHandler(() => createSdkMcpServer({ ...options, surface: "openai" }), { onerror }))
+  };
+  const openaiAppsChallenge = String(options.openaiAppsChallenge ?? process.env.DIZKO_OPENAI_APPS_CHALLENGE ?? "").trim();
 
   return http.createServer(async (request, response) => {
     try {
@@ -77,6 +82,18 @@ export function createHttpMcpServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
         sendJson(response, 200, { resource: oauthConfig.oauthResource, authorization_servers: [oauthConfig.oauthIssuer], scopes_supported: ["events:read", "saved:read", "saved:write"], bearer_methods_supported: ["header"] }, corsHeaders(request, settings));
+        return;
+      }
+
+      // OpenAI plugin domain verification: the dashboard issues a token that
+      // must be served verbatim at this path.
+      if (request.method === "GET" && url.pathname === "/.well-known/openai-apps-challenge") {
+        if (!openaiAppsChallenge) {
+          sendJson(response, 404, { error: "Not found" }, corsHeaders(request, settings));
+          return;
+        }
+        response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...securityHeaders(), ...corsHeaders(request, settings) });
+        response.end(openaiAppsChallenge);
         return;
       }
 
@@ -158,7 +175,8 @@ export function createHttpMcpServer(options = {}) {
         return;
       }
 
-      if (url.pathname !== "/mcp") {
+      const mcpHandler = mcpHandlers[url.pathname];
+      if (!mcpHandler) {
         sendJson(response, 404, { error: "Not found" }, corsHeaders(request, settings));
         return;
       }

@@ -91,7 +91,7 @@ const rawTools = [
   {
     name: "create_event_preference_profile",
     title: "Create Event Preference Profile",
-    description: "Create a private Dizko preference profile after the user explicitly agrees to save their taste. Returns profile_id and a one-time profile_secret to keep for future personalized calls. Ask the onboarding questions (get_preference_onboarding) and get consent first; consent must be true.",
+    description: "Use this only when the user has explicitly agreed to let Dizko save their taste. Creates a private preference profile and returns profile_id and a one-time profile_secret to keep for future personalized calls. Ask the onboarding questions (get_preference_onboarding) first; consent must be true.",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       ...preferenceInputDefinitions(),
@@ -106,7 +106,7 @@ const rawTools = [
   {
     name: "save_event_preferences",
     title: "Save Event Preferences",
-    description: "Add to or replace saved preferences on an existing profile (mode merge or replace). Needs profile_id, profile_secret and consent=true. Use when the user shares new taste, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters).",
+    description: "Use this when the user shares new taste for an existing profile: genres, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters). Adds to (mode merge) or replaces saved preferences. Needs profile_id, profile_secret and consent=true.",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       ...preferenceInputDefinitions(),
@@ -124,14 +124,14 @@ const rawTools = [
   {
     name: "get_event_preferences",
     title: "Get Event Preferences",
-    description: "Read a profile's saved preferences, learned taste (with scores) and feedback count. Use when the user asks what Dizko remembers about them.",
+    description: "Use this when the user asks what Dizko remembers about them. Returns a profile's saved preferences, learned taste (with scores) and feedback count.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: profileSchema()
   },
   {
     name: "delete_event_preferences",
     title: "Delete Event Preferences",
-    description: "Delete a profile's saved preferences and feedback history. Only after the user confirms they want their Dizko connector data deleted; confirm_delete must be true. Scoped to Dizko only.",
+    description: "Use this only when the user confirms they want their Dizko connector data deleted. Deletes a profile's saved preferences and feedback history; confirm_delete must be true. Scoped to Dizko only.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -146,7 +146,7 @@ const rawTools = [
   {
     name: "record_event_feedback",
     title: "Record Event Feedback",
-    description: "Store post-event feedback (liked, 1-5 rating, notes) for a profile and update learned taste. A like promotes the event's genres, vibe and venue; a dislike marks the venue and promoter, and only penalizes genres when the notes blame the music. Call only after the user answers (get_event_feedback_prompt has the questions).",
+    description: "Use this only when the user has answered post-event questions (get_event_feedback_prompt has them). Stores liked, a 1-5 rating or notes for a profile and updates learned taste: a like promotes the event's genres, vibe and venue; a dislike marks the venue and promoter, and only penalizes genres when the notes blame the music.",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -195,7 +195,7 @@ const rawTools = [
   {
     name: "list_cities",
     title: "List Covered Cities",
-    description: "Live coverage: every city Dizko serves with status (live, unlocking, early), event count, timezone and freshness. Use when a user asks where Dizko works, whether a city is covered, or how fresh the data is. Unlocking and early cities are searchable but thin.",
+    description: "Use this when a user asks where Dizko works, whether a city is covered, or how fresh the data is. Returns every city with status (live, unlocking, early), event count, timezone and freshness. Unlocking and early cities are searchable but thin.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: "object", properties: {} }
   },
@@ -261,7 +261,7 @@ const rawTools = [
   {
     name: "search_events",
     title: "Search Events",
-    description: "Search live Dizko events in one city and timeframe. Use for any 'what's on' request that names a city, a venue, an artist, or a timeframe. Returns up to `limit` events with local times (`when`), venue and address, price, genres, vibe, lineup, set times and links; `count` is the total matching. Pass profile_id and profile_secret to rank by saved taste (saved taste ranks results, it never filters them). Filters you pass (genres, vibe, event_types, price_max, venue, featuring) are hard filters; `avoid` and `max_price` are ranking hints. When nothing matches, the result carries `no_results` with how many events exist without the filters and ordered `suggested_relaxations` you can retry directly.",
+    description: "Use this when a user asks what's on and names a city, a venue, an artist, or a timeframe. Returns up to `limit` live events with local times (`when`), venue and address, price, genres, vibe, lineup, set times and links; `count` is the total matching. Pass profile_id and profile_secret to rank by saved taste (saved taste ranks results, it never filters them). Filters you pass (genres, vibe, event_types, price_max, venue, featuring) are hard filters; `avoid` and `max_price` are ranking hints. When nothing matches, the result carries `no_results` with how many events exist without the filters and ordered `suggested_relaxations` you can retry directly.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -287,8 +287,8 @@ const rawTools = [
         sort_by: { type: "string", enum: SORT_OPTIONS, description: "soonest (chronological), popular (default for multi-day ranges), cost, event_type, or distance (needs origin_lat/origin_lng). Single-day requests default to soonest." },
         origin_lat: { type: "number", description: "Latitude for sort_by=distance ('near me'). Only pass coordinates the user gave you." },
         origin_lng: { type: "number", description: "Longitude for sort_by=distance." },
-        rank: { type: "string", enum: ["relevance", "taste"], description: "relevance (default) keeps the API order; taste ranks the page by genres, vibe, avoid and budget from this request and from the profile when given. Defaults to taste when a profile is given." },
-        profile_id: { type: "string", description: "Optional Dizko preference profile id; pass with profile_secret to rank by saved and learned taste." },
+        rank: { type: "string", enum: ["relevance", "taste"], description: "relevance (default) keeps the API order; taste ranks the page by the genres, vibe, avoid and budget in this request." },
+        profile_id: { type: "string", description: "Optional Dizko preference profile id; pass with profile_secret to rank by saved and learned taste as well. rank then defaults to taste." },
         profile_secret: { type: "string", description: "Private profile secret returned when the profile was created." },
         fields: { type: "array", items: { type: "string", enum: EVENT_FIELD_OPTIONS }, description: "Extra per-event fields: description (long form), coordinates, socials, promoters (full objects). Images and source are always included. Omit for the compact default." },
         limit: { type: "integer", minimum: 1, maximum: MAX_SEARCH_LIMIT, default: 12, description: `Events to return per page (1-${MAX_SEARCH_LIMIT}, default 12; rank: taste returns at most ${TASTE_RESULT_CAP}). count is the total available; page with next_cursor.` },
@@ -329,7 +329,7 @@ const rawTools = [
   {
     name: "plan_night",
     title: "Plan Night",
-    description: "Build a night plan for one city and date: a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Use when the user wants a plan with backups rather than a list. Accepts the same filters as search_events and an optional profile for saved taste. An empty plan carries the same `no_results` guidance as search.",
+    description: "Use this when the user wants a night plan with backups rather than a list. Returns, for one city and date, a primary event plus a nearby fallback (best taste fit within 6 km), a later-starting fallback, and alternates. Accepts the same filters as search_events and an optional profile for saved taste. An empty plan carries the same `no_results` guidance as search.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -363,7 +363,7 @@ const rawTools = [
   {
     name: "get_daily_roundup",
     title: "Get Daily Roundup",
-    description: "One-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. Use for 'what's happening today/tomorrow', morning briefings and scheduled check-ins. With a profile, saved, learned and per-weekday taste rank the picks. Pass compact=true for a short push-style digest.",
+    description: "Use this when a user asks what's happening today or tomorrow, or for a morning briefing or scheduled check-in. Returns a one-day digest for a city: top picks plus sections for parties, live music, art, comedy and theatre, talks, food, and more. With a profile, saved, learned and per-weekday taste rank the picks. Pass compact=true for a short push-style digest.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -393,7 +393,7 @@ const rawTools = [
   {
     name: "get_artist_events",
     title: "Get Artist Events",
-    description: "Upcoming shows grouped by artist for up to 8 named DJs, performers or comedians, deduplicated across sources and date-ordered, optionally scoped to a city. Use for 'when does X play next' or 'is X playing in Berlin this month'. With a profile and no artists named, tracks the profile's saved featuring list.",
+    description: "Use this when a user asks when a DJ, performer or comedian plays next, or whether they play in a city this month. Returns upcoming shows grouped by artist for up to 8 names, deduplicated across sources and date-ordered, optionally scoped to a city. With a profile and no artists named, tracks the profile's saved featuring list.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -420,7 +420,7 @@ const rawTools = [
   {
     name: "get_city_pulse",
     title: "Get City Pulse",
-    description: "Aggregate read of a city's scene over the coming days: busiest nights (city-local dates), top venues (attendance-weighted), genre mix, headline events and free-event count, every stat with evidence counts. Use for 'what's hot', 'how busy is Berlin this week', or trend questions. Public inventory only.",
+    description: "Use this when a user asks what's hot, how busy a city is this week, or about scene trends. Returns an aggregate read over the coming days: busiest nights (city-local dates), top venues (attendance-weighted), genre mix, headline events and free-event count, every stat with evidence counts. Public inventory only.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -436,7 +436,7 @@ const rawTools = [
   {
     name: "get_event",
     title: "Get Event",
-    description: "Full detail for one Dizko event id: local times, venue and address, price, lineup, set times, artist socials, image, coordinates and links. Only call it for an id the user gave you or for extra detail on an event not in the current results; search results already contain what the template needs.",
+    description: "Use this only when the user gives an event id, or wants extra detail on an event not in the current results; search results already contain what the template needs. Returns full detail for one event: local times, venue and address, price, lineup, set times, artist socials, image, coordinates and links.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -456,7 +456,7 @@ const rawTools = [
   {
     name: "get_ticket_offers",
     title: "Get Ticket Offers",
-    description: "Ticket options for one event: provider, checkout link, estimated price, whether entry is free, and whether autonomous purchase is supported (it is not on the hosted connector; third-party links are a checkout handoff). Includes the purchase policy. Call before quoting.",
+    description: "Use this when the user wants tickets for one event, before quoting. Returns ticket options: provider, checkout link, estimated price, whether entry is free, whether autonomous purchase is supported (it is not on the hosted connector; third-party links are a checkout handoff), and the purchase policy.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -469,7 +469,7 @@ const rawTools = [
   {
     name: "quote_ticket_order",
     title: "Quote Ticket Order",
-    description: "Create a signed, time-limited quote for an event: quantity, ticket type, max total, currency, refund terms, delivery email and stop conditions. Returns a quote_token to pass unchanged to purchase_ticket_order and the exact confirmation text to ask the user for.",
+    description: "Use this when the user has chosen a ticket offer, quantity and constraints. Creates a signed, time-limited quote (quantity, ticket type, max total, currency, refund terms, delivery email, stop conditions) and returns a quote_token to pass unchanged to purchase_ticket_order plus the exact confirmation text to ask the user for.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -490,7 +490,7 @@ const rawTools = [
   {
     name: "purchase_ticket_order",
     title: "Purchase Ticket Order",
-    description: "Execute a quoted ticket order after the user's explicit written confirmation (must say buy/purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
+    description: "Use this only when the user has confirmed a quote in writing (the confirmation must say buy or purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -539,7 +539,7 @@ const rawTools = [
   {
     name: "create_event_calendar_file",
     title: "Create Event Calendar File",
-    description: "Build an importable .ics calendar entry for one event (local time, venue address, lineup, set times, links). Use when the user wants the event in Apple Calendar, Google Calendar or Outlook as a file; the per-event calendar_url is the one-click alternative.",
+    description: "Use this when the user wants one event in Apple Calendar, Google Calendar or Outlook as a file. Builds an importable .ics entry (local time, venue address, lineup, set times, links); the per-event calendar_url is the one-click alternative.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",

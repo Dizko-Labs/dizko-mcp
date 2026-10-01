@@ -101,3 +101,15 @@ test("isoDate and resolveSingleDay follow the requested timezone", () => {
   assert.equal(resolveSingleDay({ date_from: "2026-09-11", date_to: "2026-09-11" }, LATE_UTC, "UTC"), "2026-09-11");
   assert.equal(resolveSingleDay({ when: "someday" }, LATE_UTC, "UTC"), null, "invalid presets do not throw here");
 });
+
+test("weekday names resolve to the next occurrence, counting today", () => {
+  // Main's cases (#36), pinned to UTC: a local-time Date made this test
+  // depend on the machine's timezone.
+  const thursday = new Date("2026-10-01T12:00:00Z");
+  assert.deepEqual(resolveDateRange("saturday", thursday, "UTC"), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("This Saturday", thursday, "UTC"), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("saturday night", thursday, "UTC"), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("thursday", thursday, "UTC"), { date_from: "2026-10-01", date_to: "2026-10-01" });
+  assert.deepEqual(resolveDateRange("wednesday", thursday, "UTC"), { date_from: "2026-10-07", date_to: "2026-10-07" });
+  assert.throws(() => resolveDateRange("someday", thursday, "UTC"), (error) => error.field === "when" && error.code === "invalid_argument");
+});

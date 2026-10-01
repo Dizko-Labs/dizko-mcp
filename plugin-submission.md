@@ -1,5 +1,7 @@
 # Dizko Events Plugin Submission Draft
 
+> Superseded by [OPENAI_PLUGIN_SUBMISSION.md](OPENAI_PLUGIN_SUBMISSION.md). OpenAI moved to a plugin ZIP flow in September 2026.
+
 Use this as the working copy for ChatGPT Apps Directory / Codex Plugin Directory submission fields.
 
 Machine-readable dashboard copy is also available in `submission-fields.json`. Validate it against the latest live evidence with:
