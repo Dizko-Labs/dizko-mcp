@@ -21,3 +21,13 @@ for (const [day, expectedStart] of [["2026-09-04", "2026-09-04"], ["2026-09-05",
     });
   });
 }
+
+test("weekday names resolve to the next occurrence, counting today", () => {
+  const thursday = new Date("2026-10-01T12:00:00");
+  assert.deepEqual(resolveDateRange("saturday", thursday), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("This Saturday", thursday), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("saturday night", thursday), { date_from: "2026-10-03", date_to: "2026-10-03" });
+  assert.deepEqual(resolveDateRange("thursday", thursday), { date_from: "2026-10-01", date_to: "2026-10-01" });
+  assert.deepEqual(resolveDateRange("wednesday", thursday), { date_from: "2026-10-07", date_to: "2026-10-07" });
+  assert.throws(() => resolveDateRange("someday", thursday), (error) => error.code === "unsupported_date_preset");
+});

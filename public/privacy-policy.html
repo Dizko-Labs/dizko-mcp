@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="date">Effective: June 9, 2026</p>
+  <p class="date">Effective: October 1, 2026</p>
 
   <p>Dizko Events is Dizko's connector for helping people find current events through ChatGPT, Claude, and other MCP-compatible assistants. This policy covers the Dizko Events connector and MCP service.</p>
 
@@ -25,7 +25,9 @@
     <li><strong>Preference profile data</strong> only when you agree to save it, including an opaque Dizko profile identifier, a hashed profile secret used to protect access, event types, genres, vibes, venues, neighborhoods, budget, avoidances, and other event preferences.</li>
     <li><strong>Post-event feedback</strong> only when you choose to provide it, including event IDs, liked/disliked signals, ratings, notes, timestamps, and derived taste signals such as learned genres, vibes, event types, venues, and avoid signals.</li>
     <li><strong>Personalization summaries</strong> returned to the assistant during personalized recommendations, including saved preferences, learned preferences, current request context, applied ranking hints, and feedback count so the assistant can explain why events were recommended or penalized.</li>
-    <li><strong>Technical and service data</strong>, such as request metadata, diagnostics, and logs needed to operate, secure, debug, and improve the connector.</li>
+    <li><strong>Account data, only if you connect a Dizko account</strong> through the connector's sign-in. Account-connected tools can read your learned Dizko taste profile and your saved and hidden events, and can save an event, hide an event, or add an event to your Dizko plan after you confirm each action.</li>
+    <li><strong>Usage facts</strong> for each tool call: the tool name, the city requested, response time, whether the call succeeded or which error code it returned, and the number of results. These facts carry no account, profile, IP address, or conversation identifier, and we use them in aggregate to measure reliability and coverage.</li>
+    <li><strong>Technical and service data</strong>, such as request metadata, diagnostics, and logs needed to operate, secure, debug, and improve the connector. Your IP address is used in memory to apply rate limits and may appear in our hosting provider's standard request logs.</li>
   </ul>
 
   <h2>How We Use Data</h2>
@@ -35,6 +37,9 @@
     <li>To learn from post-event feedback you choose to provide, including steering away from disliked genres, vibes, event types, or venues.</li>
     <li>To operate, secure, debug, and improve the connector.</li>
   </ul>
+
+  <h2>ChatGPT And Codex Plugin</h2>
+  <p>The Dizko Events plugin in the ChatGPT and Codex directory only reads event listings. It does not use preference profiles, post-event feedback, account sign-in, or ticket purchase tools. It processes the search inputs you give it, usage facts, and technical and service data as described above.</p>
 
   <h2>Consent And Control</h2>
   <p>The connector should ask what kinds of events you generally like and whether Dizko may save those preferences before creating or updating a preference profile. When a profile is created, the connector receives a profile identifier and private profile secret. The raw secret is returned once to the assistant and only a hash is stored by the MCP service. You can decline preference saving and still use live event search. You can ask the assistant to delete saved event preferences and feedback, which calls the deletion tool for your connector profile.</p>

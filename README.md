@@ -286,7 +286,7 @@ To become a ChatGPT app/plugin:
 Claude users can add the same public MCP URL as a custom connector where their plan/workspace supports remote MCP.
 
 See `plugin-submission.md` and `submission-fields.json` for the working submission copy.
-See `OPENAI_SUBMISSION_PACKET.md` for the final dashboard handoff packet.
+See `OPENAI_PLUGIN_SUBMISSION.md` for the ChatGPT and Codex plugin package, which uses the read-only `/openai/mcp` endpoint.
 See `SCREENSHOT_CHECKLIST.md` for exact ChatGPT Developer Mode screenshot prompts and filenames.
 See `SUBMISSION_AUDIT.md` for requirement-to-evidence mapping and remaining external review gates.
 See `USER_GUIDE.md` for normal-user prompts, preference-memory behavior, and support/privacy links.

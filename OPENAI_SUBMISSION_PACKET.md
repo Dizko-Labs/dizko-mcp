@@ -1,5 +1,7 @@
 # OpenAI Submission Packet
 
+> Superseded by [OPENAI_PLUGIN_SUBMISSION.md](OPENAI_PLUGIN_SUBMISSION.md). OpenAI moved to a plugin ZIP flow in September 2026.
+
 Use this file as the final handoff when submitting Dizko Events through the OpenAI dashboard.
 
 ## Submit These URLs

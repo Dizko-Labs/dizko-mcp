@@ -66,10 +66,21 @@ export function resolveDateRange(preset, now = new Date()) {
       const end = new Date(today.getTime() + 6 * ONE_DAY_MS);
       return { date_from: isoDate(today), date_to: isoDate(end) };
     }
-    default:
+    default: {
       if (/^\d{4}-\d{2}-\d{2}$/.test(preset)) {
         return { date_from: preset, date_to: preset };
       }
-      throw new Error(`Unsupported date preset: ${preset}`);
+      // "saturday", "this saturday", "saturday night": the next occurrence,
+      // counting today.
+      const weekday = String(preset).toLowerCase().trim().match(/^(?:this\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:\s+night)?$/);
+      if (weekday) {
+        const offset = (WEEKDAY_NAMES.indexOf(weekday[1]) - today.getUTCDay() + 7) % 7;
+        const day = isoDate(new Date(today.getTime() + offset * ONE_DAY_MS));
+        return { date_from: day, date_to: day };
+      }
+      const error = new Error(`Unsupported date preset: ${preset}`);
+      error.code = "unsupported_date_preset";
+      throw error;
+    }
   }
 }
