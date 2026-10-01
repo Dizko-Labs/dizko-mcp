@@ -1,5 +1,14 @@
 # ChatGPT and Codex Plugin Submission
 
+> **Status: on hold (October 1, 2026). Do not submit.** The guidelines reject
+> plugins that "scrape external websites or relay queries without
+> authorization." A week of events across eight major cities was 71% Resident
+> Advisor, which has no public API, and about 2% from sources with official
+> APIs. Submit only after enough coverage comes from licensed partners,
+> official APIs used within their terms, or first-party organizer and venue
+> listings. Until then, users can add the connector privately as a custom
+> connector. Everything below is ready for when sourcing is resolved.
+
 OpenAI replaced the ChatGPT apps dashboard flow with a shared ChatGPT and Codex
 plugin directory (DevDay, September 29, 2026). Submission is now a plugin ZIP
 plus a review form. This file is the handoff for that flow. It supersedes
@@ -111,6 +120,6 @@ alone do not affect the plugin.
 
 ## Known risks
 
-- Event data includes listings sourced from third-party sites such as Resident Advisor. The guidelines reject plugins that scrape sites without authorization, so be ready to explain how Dizko sources listings.
+- Source authorization is the blocker described at the top. When it is resolved, the plugin surface may need to filter results to authorized sources, and the reviewer notes should say how listings are sourced.
 - Inventory can include adult-themed events, such as figure-drawing sessions with nude models. The directory expects content suitable for ages 13 and up.
 - Cancelled events sometimes appear in results with a `[CANCELLED]` title prefix until backend ingestion filters them.

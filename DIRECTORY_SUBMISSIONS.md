@@ -66,5 +66,5 @@ Submitted as a plugin ZIP pointing at the read-only `/openai/mcp` surface. See
 | Smithery | not submitted | |
 | PulseMCP | not submitted | |
 | mcp.so | not submitted | |
-| Anthropic directory | not submitted | reuse OpenAI packet |
-| ChatGPT and Codex plugins | package ready, not submitted | see OPENAI_PLUGIN_SUBMISSION.md |
+| Anthropic directory | on hold | same source-authorization question as the ChatGPT plugin |
+| ChatGPT and Codex plugins | on hold | package ready; blocked on source authorization, see OPENAI_PLUGIN_SUBMISSION.md |
