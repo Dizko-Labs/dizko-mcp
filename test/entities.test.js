@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { clearEventCache } from "../src/api.js";
-import { findSceneEntities } from "../src/entities.js";
+import { findSceneEntities, venueNameMatches, venueQueryTerms } from "../src/entities.js";
 import { callTool } from "../src/tools.js";
 
 const OPTIONS = {
@@ -206,4 +206,74 @@ test("promoter lookup requires a city and exposes profile events", async () => {
   assert.equal(response.structuredContent.entity.name, "Mini-Mal Elektrokneipe");
   assert.equal(response.structuredContent.entity.dizko_url, "https://www.dizko.app/promoters/berlin/mini-mal-elektrokneipe");
   assert.equal(response.structuredContent.upcoming_events.length, 1);
+});
+
+test("venue name matching compares rooms, not raw strings", () => {
+  // The join has to survive different spellings of the same rooms...
+  assert.equal(venueNameMatches("Berghain / Panorama Bar", "Berghain | Panorama Bar | Säule"), true);
+  assert.equal(venueNameMatches("Berghain / Panorama Bar", "Berghain"), true);
+  assert.equal(venueNameMatches("Tresor", "Tresor / Globus"), true);
+  assert.equal(venueNameMatches("Tresor", "Tresor Berlin"), true);
+  // ...without collapsing venues that merely share a word.
+  assert.equal(venueNameMatches("Berghain", "Berghain Kantine"), false);
+  assert.equal(venueNameMatches("Berghain / Panorama Bar", "Kantine, Berghain"), false);
+  assert.equal(venueNameMatches("BASEMENT", "Pacha NYC Basement"), false);
+  assert.equal(venueNameMatches("The Bar", "Berghain | Panorama Bar | Säule"), false);
+});
+
+test("venue query terms fall back to the profile name's rooms", () => {
+  assert.deepEqual(
+    venueQueryTerms("Berghain / Panorama Bar"),
+    ["Berghain / Panorama Bar", "Berghain", "Panorama Bar"]
+  );
+  assert.deepEqual(venueQueryTerms("Nowadays"), ["Nowadays"]);
+  assert.deepEqual(venueQueryTerms(""), []);
+});
+
+test("venue profiles retry with a room name when the full name matches nothing", async () => {
+  const venueQueries = [];
+  const result = await findSceneEntities({ kind: "venue", id: "berghain", city: "berlin" }, {
+    ...OPTIONS,
+    fetch: async (url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === "/events") {
+        const venue = parsed.searchParams.get("venue");
+        venueQueries.push(venue);
+        // Mirrors the live API: `venue` is matched as a substring of
+        // venue_name, so the full profile name finds nothing.
+        if (venue !== "Berghain") return Response.json({ count: 0, events: [] });
+        return Response.json({
+          count: 2,
+          events: [
+            event("bh-1", "Klubnacht", "Berghain | Panorama Bar | Säule"),
+            event("bh-2", "Afterparty", "Berghain Kantine")
+          ]
+        });
+      }
+      return Response.json({
+        id: "berghain",
+        name: "Berghain / Panorama Bar",
+        cities: ["Berlin"]
+      });
+    }
+  });
+
+  assert.deepEqual(venueQueries, ["Berghain / Panorama Bar", "Berghain"]);
+  assert.equal(result.returned_event_count, 1);
+  assert.equal(result.venue_query, "Berghain");
+  assert.deepEqual(result.matched_venue_names, ["Berghain | Panorama Bar | Säule"]);
+});
+
+test("venue profiles with no indexed events say so instead of returning a bare zero", async () => {
+  const result = await findSceneEntities({ kind: "venue", id: "sisyphos", city: "berlin" }, {
+    ...OPTIONS,
+    fetch: async (url) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === "/events") return Response.json({ count: 0, events: [] });
+      return Response.json({ id: "sisyphos", name: "Sisyphos", cities: ["Berlin"] });
+    }
+  });
+
+  assert.equal(result.returned_event_count, 0);
+  assert.match(result.data_note, /no upcoming indexed events/);
 });
