@@ -102,3 +102,15 @@ test("get_artist_page is a listed, read-only contract tool", async () => {
   assert.equal(response.structuredContent.published, true);
   assert.equal(response.structuredContent.page_url, "https://www.dizko.app/AvalonEmerson?utm_source=dizko_mcp&utm_medium=ai_assistant");
 });
+
+test("get_artist_page passes page completeness through only when the backend sends it", async () => {
+  const completeness = { score: 80, max: 100, version: 1, missing: ["press_photo"] };
+  const withScore = await getArtistPage({ handle: "AvalonEmerson" }, { fetch: fetchReturning(Response.json({ ...PUBLISHED, completeness })) });
+  assert.deepEqual(withScore.completeness, completeness);
+
+  const without = await getArtistPage({ handle: "AvalonEmerson" }, { fetch: fetchReturning(Response.json(PUBLISHED)) });
+  assert.equal("completeness" in without, false);
+
+  const tool = await callTool("get_artist_page", { handle: "AvalonEmerson" }, { fetch: fetchReturning(Response.json({ ...PUBLISHED, completeness })) });
+  assert.deepEqual(JSON.parse(tool.content[0].text).completeness, completeness);
+});

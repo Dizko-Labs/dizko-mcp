@@ -32,10 +32,18 @@ export function withMcpAttribution(raw, webBaseUrl = DEFAULT_WEB_BASE_URL) {
   const host = url.hostname.toLowerCase();
   const isDizkoWeb = host === webHost || host === "dizko.app" || host.endsWith(".dizko.app");
   if (!isDizkoWeb || host === "mcp.dizko.app" || host === "api.dizko.app") return raw;
-  for (const [key, value] of Object.entries(MCP_ATTRIBUTION)) {
-    if (!url.searchParams.has(key)) url.searchParams.set(key, value);
-  }
-  return url.toString();
+  // Appended to the raw string rather than through searchParams.set, which
+  // re-serializes every existing parameter (%20 becomes +, and so on) and
+  // would break a signed or share-token link. Keys already present are left
+  // exactly as they are, so attribution is never added twice.
+  const missing = Object.entries(MCP_ATTRIBUTION).filter(([key]) => !url.searchParams.has(key));
+  if (!missing.length) return raw;
+  const hashIndex = raw.indexOf("#");
+  const base = hashIndex === -1 ? raw : raw.slice(0, hashIndex);
+  const fragment = hashIndex === -1 ? "" : raw.slice(hashIndex);
+  const addition = missing.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+  const separator = !base.includes("?") ? "?" : /[?&]$/.test(base) ? "" : "&";
+  return `${base}${separator}${addition}${fragment}`;
 }
 
 // Base for the short /e/<id>/cal|map|ics redirect links served by the

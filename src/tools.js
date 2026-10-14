@@ -108,7 +108,8 @@ const rawTools = [
     name: "save_event_preferences",
     title: "Save Event Preferences",
     description: "Use this when the user shares new taste for an existing profile: genres, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters). Adds to (mode merge) or replaces saved preferences. Needs profile_id, profile_secret and consent=true.",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    // destructive: mode "replace" overwrites the saved profile.
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       ...preferenceInputDefinitions(),
       type: "object",

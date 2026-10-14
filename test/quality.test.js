@@ -18,6 +18,7 @@ import {
 import { rankEvents } from "../src/rank.js";
 import { buildTicketOffers, quoteTicketOrder } from "../src/tickets.js";
 import { callTool, tools } from "../src/tools.js";
+import { surfaceTools } from "../src/surfaces.js";
 
 beforeEach(() => clearEventCache());
 
@@ -377,6 +378,112 @@ test("Dizko web links carry MCP attribution; other links stay clean", () => {
   assert.equal(withMcpAttribution("https://mcp.dizko.app/e/1/ics"), "https://mcp.dizko.app/e/1/ics");
   assert.equal(withMcpAttribution("https://events.selfhost.test/events/1", "https://events.selfhost.test"), "https://events.selfhost.test/events/1?utm_source=dizko_mcp&utm_medium=ai_assistant", "a self-hosted web base is attributed too");
   assert.equal(withMcpAttribution("not a url"), "not a url");
+});
+
+// ---------------------------------------------------------------------------
+// 8. Re-audit: backend fields, false positives, time zones, link encoding
+// ---------------------------------------------------------------------------
+
+test("the backend's currency_inferred is preferred over the connector's own guess", () => {
+  // Stated by the source: kept, even when it is not the city's currency.
+  const stated = summarizeEvent(goaEvent({ currency: "EUR", currency_inferred: false, price_min: 60, price_max: 60 }), { env: {} });
+  assert.equal(stated.price, "€60", "a Goa festival that really sells in EUR is not second-guessed");
+  assert.equal(stated.currency, "EUR");
+  assert.equal(stated.quality_flags, undefined);
+
+  // Inferred and matching the city: shown, labelled as inferred.
+  const inferred = summarizeEvent(goaEvent({ currency: "INR", currency_inferred: true }), { env: {} });
+  assert.equal(inferred.currency, "INR");
+  assert.equal(inferred.currency_status, "inferred");
+  assert.deepEqual(inferred.quality_flags, ["currency_inferred"]);
+
+  // Absent (an older backend): the connector's own check still runs.
+  const legacy = summarizeEvent(goaEvent({ currency: "EUR", price_min: 60, price_max: 60 }), { env: {} });
+  assert.equal(legacy.currency_status, "unverified");
+});
+
+test("dollar pricing in Mexico, Argentina, Colombia and Turkiye is not flagged; EUR still is", () => {
+  const cdmx = (overrides) => ({ id: "m", title: "Festival", start_time: "2026-11-20T03:00:00Z", venue_city: "mexico-city", source: "ra", price_min: 80, price_max: 80, ...overrides });
+  assert.deepEqual(assessCurrency(cdmx({ currency: "USD" })), { currency: "USD", status: null, flag: null });
+  assert.equal(assessCurrency(cdmx({ currency: "EUR" })).flag, "currency_unverified", "EUR is the old fallback's signature");
+  assert.equal(assessCurrency(cdmx({ currency: "MXN" })).flag, null);
+});
+
+test("a high price in the right currency is never flagged", () => {
+  const vip = summarizeEvent(goaEvent({ price_min: 25000, price_max: 150000 }), { env: {} });
+  assert.match(vip.price, /^INR 25000-INR 150000$/);
+  assert.equal(vip.quality_flags, undefined);
+});
+
+test("backend quality_flags replace the connector's own listing inference", () => {
+  // An aggregator with start equal to end: the backend calls it
+  // zero_duration_aggregator, so the connector does not add its own pair.
+  const flagged = goaEvent({ source: "allevents", end_time: "2026-10-09T14:30:00+00:00", quality_flags: ["zero_duration_aggregator"] });
+  assert.deepEqual(qualityFlags(flagged), ["zero_duration_aggregator"]);
+  assert.equal(summarizeEvent(flagged, { env: {} }).ends_at, undefined, "the fake end is still never printed");
+  const ranked = rankEvents([flagged, goaEvent({ id: "fine", quality_flags: [] })], {}, NOW);
+  assert.equal(ranked[0].id, "fine");
+  assert.ok(ranked[1].recommendation_reasons.includes("listing details unverified"));
+
+  // An empty backend list means the backend checked and found nothing.
+  assert.deepEqual(qualityFlags(goaEvent({ source: "allevents", quality_flags: [] })), []);
+  // Absent: the connector infers its own.
+  assert.deepEqual(qualityFlags(goaEvent({ source: "allevents" })), ["aggregator_only"]);
+  // A merge conflict is still the connector's to report.
+  assert.deepEqual(qualityFlags(goaEvent({ quality_flags: [], start_time_conflict: true })), ["start_time_conflict"]);
+});
+
+test("two venues that share only a generic word, or sit far apart, never merge", () => {
+  const base = { title: "Jazz Jam Session", start_time: "2026-10-14T19:00:00Z", venue_city: "lisbon", lineup: [] };
+  const cafe = { ...base, id: "a", source: "agendalx", venue_name: "Jazz Cafe" };
+  const bar = { ...base, id: "b", source: "ra", venue_name: "Jazz Bar", title: "Jazz Jam" };
+  assert.equal(isNearDuplicate(cafe, bar), false, "'jazz' names the kind of room, not the room");
+
+  const farA = { ...QILLA_A, lat: 15.6028, lng: 73.7356 };
+  const farB = { ...QILLA_B, venue_name: "Qilla", lat: 15.55, lng: 73.76 };
+  assert.equal(isNearDuplicate(farA, farB), false, "a same-named room 5 km away is another room");
+
+  assert.equal(isNearDuplicate(QILLA_A, { ...QILLA_B, venue_city: "lisbon", lat: null, lng: null }), false, "another city is another party");
+  assert.equal(isNearDuplicate(QILLA_A, QILLA_B), true, "the real duplicate still collapses");
+});
+
+test("times west of UTC, across midnight and across a DST change stay local", () => {
+  // New York, Sat 31 Oct 2026 23:00 EDT to Sun 1 Nov 05:00 EST (clocks go back at 02:00).
+  const nyc = summarizeEvent({ id: "n", title: "Halloween", start_time: "2026-11-01T03:00:00Z", end_time: "2026-11-01T10:00:00Z", venue_city: "new-york" }, { env: {} });
+  assert.equal(nyc.when, "Sat 31 Oct, 23:00");
+  assert.equal(nyc.starts_at_local, "2026-10-31T23:00:00-04:00");
+  assert.equal(nyc.ends_at_local, "2026-11-01T05:00:00-05:00");
+
+  // Los Angeles: 23:59 local (06:59 UTC next day) is a placeholder, 23:59 UTC (16:59 local) is a real end.
+  const placeholder = { id: "l", title: "Show", start_time: "2026-10-15T03:00:00Z", end_time: "2026-10-16T06:59:00Z", venue_city: "los-angeles" };
+  assert.equal(assessEndTime(placeholder).flag, "end_time_unknown");
+  const matinee = { id: "l2", title: "Matinee", start_time: "2026-10-15T20:00:00Z", end_time: "2026-10-15T23:59:00Z", venue_city: "los-angeles" };
+  assert.equal(assessEndTime(matinee).flag, null, "a UTC 23:59 is not a local placeholder");
+});
+
+test("attribution never re-encodes an existing query or drops a fragment", () => {
+  assert.equal(
+    withMcpAttribution("https://www.dizko.app/share?t=a%2Fb%20c&sig=Zx%2B1#top"),
+    "https://www.dizko.app/share?t=a%2Fb%20c&sig=Zx%2B1&utm_source=dizko_mcp&utm_medium=ai_assistant#top"
+  );
+  const once = withMcpAttribution("https://www.dizko.app/events/1");
+  assert.equal(withMcpAttribution(once), once, "never appended twice");
+  assert.equal(withMcpAttribution("https://www.dizko.app/x?"), "https://www.dizko.app/x?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.doesNotMatch(once, /[?&]ref=/, "ref holds referral codes and is never used for attribution");
+});
+
+test("annotations: the ChatGPT surface is 13 read-only tools; overwrites are destructive", () => {
+  const openai = surfaceTools("openai");
+  assert.equal(openai.length, 13);
+  for (const tool of openai) {
+    assert.equal(tool.annotations.readOnlyHint, true, tool.name);
+    assert.equal(tool.annotations.destructiveHint, false, tool.name);
+  }
+  const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool.annotations]));
+  assert.equal(byName.save_event_preferences.destructiveHint, true, "mode replace overwrites the saved profile");
+  assert.equal(byName.delete_event_preferences.destructiveHint, true);
+  assert.equal(byName.purchase_ticket_order.destructiveHint, true);
+  assert.equal(byName.purchase_ticket_order.readOnlyHint, false);
 });
 
 // ---------------------------------------------------------------------------

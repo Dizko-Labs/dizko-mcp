@@ -102,6 +102,7 @@ async function artistProfile(id, input, options) {
     getPublicArtistPage(handle, options).catch(() => null)
   ]);
   const pageProfile = directory?.dj || null;
+  const completeness = entity.completeness ?? artistCompleteness(directory?.completeness);
   const today = isoDate(options.now || new Date(), cityTimezone(input.city) || "UTC");
   const appearances = splitAppearances(pageProfile?.appearances, today);
   return {
@@ -110,7 +111,8 @@ async function artistProfile(id, input, options) {
     entity: {
       ...entity,
       ...directoryProfileFields(pageProfile),
-      ...appearances
+      ...appearances,
+      ...(completeness ? { completeness } : {})
     },
     page: publishedPage(page, handle),
     insights: {
@@ -704,8 +706,30 @@ export function sceneProfileSummary(profile, kind) {
     founded: profile.founded,
     dizko_url: withMcpAttribution(dizkoUrl),
     match_score: typeof profile.score === "number" ? Math.round(profile.score * 1000) / 1000 : undefined,
+    completeness: kind === "artist" ? artistCompleteness(profile.completeness) ?? undefined : undefined,
     links
   });
+}
+
+// How complete an artist's Dizko page is, as the scene API scores it
+// ({ score, max, version, missing }, heaviest missing signal first). Passed
+// through when the backend sends it and omitted otherwise; a malformed value
+// is dropped rather than repaired.
+export function artistCompleteness(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const score = Number(value.score);
+  const max = value.max == null ? 100 : Number(value.max);
+  if (!Number.isFinite(score) || !Number.isFinite(max) || max <= 0 || score < 0 || score > max) return null;
+  const version = Number(value.version);
+  const missing = Array.isArray(value.missing)
+    ? value.missing.filter((item) => typeof item === "string" && /^[a-z0-9_]{1,48}$/i.test(item)).slice(0, 16)
+    : [];
+  return {
+    score: Math.round(score),
+    max: Math.round(max),
+    ...(Number.isInteger(version) ? { version } : {}),
+    missing
+  };
 }
 
 function promoterSummary(profile, fallbackCity) {

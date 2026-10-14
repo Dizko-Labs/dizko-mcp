@@ -47,6 +47,24 @@ export function cityCurrency(value) {
   return city ? COUNTRY_CURRENCY[city.country] || null : null;
 }
 
+// Currencies a source in that country legitimately prices in besides the
+// local one: dollar pricing is common for festivals and tourist nights in
+// these markets. EUR is never on this list, because EUR was the backend's
+// old universal fallback and is the signature of a guessed code.
+export const ACCEPTED_SECONDARY_CURRENCIES = {
+  Argentina: ["USD"],
+  Colombia: ["USD"],
+  Mexico: ["USD"],
+  "Türkiye": ["USD"]
+};
+
+function acceptedCurrencies(value) {
+  const city = resolveCity(value);
+  if (!city) return null;
+  const local = COUNTRY_CURRENCY[city.country];
+  return local ? [local, ...(ACCEPTED_SECONDARY_CURRENCIES[city.country] || [])] : null;
+}
+
 // Sources that relist other sites' listings rather than publish their own.
 // A show known only from one of these is often stale (moved, cancelled, or a
 // recurring placeholder), so it is flagged and ranked lower, never hidden.
@@ -60,6 +78,7 @@ export function isAggregatorSource(source) {
 // The derived flags and what each means. A backend flag that is not one of
 // these is unknown to the connector and costs BACKEND_FLAG_PENALTY in ranking.
 export const QUALITY_FLAG_NOTES = {
+  zero_duration_aggregator: "A re-listing site gives the same start and end time, which usually means a stale or misdated listing.",
   currency_unverified: "The listed currency does not match the city, so the amount is shown without a currency.",
   currency_inferred: "The currency was inferred from the city, not stated by the source.",
   start_equals_end: "The source lists the same start and end time, which usually means an incomplete or stale listing.",
@@ -70,6 +89,7 @@ export const QUALITY_FLAG_NOTES = {
 // Flags that lower a listing's rank in recommend, plan and roundup flows.
 // An unknown end time alone is common and harmless, so it costs nothing.
 const RANK_PENALTIES = {
+  zero_duration_aggregator: 8,
   start_equals_end: 8,
   aggregator_only: 8,
   currency_unverified: 4,
@@ -111,16 +131,31 @@ export function assessEndTime(event) {
   return { end, flag: null, endDateLocal: null };
 }
 
-// The currency the summary may state. A code that disagrees with the city's
-// country is dropped, unless the backend says it inferred the code, in which
-// case the city's own currency is the better guess and is labeled as one.
+// The currency the summary may state.
+//
+// When the backend says whether it inferred the code (`currency_inferred`,
+// a boolean on every event once its ingest quality pass is deployed), that
+// is the answer: its ingest guard already relabels or drops a guessed code,
+// and a code the source stated is kept whatever it says, so a festival in Goa
+// that really sells in EUR is not second-guessed here. Only an inferred code
+// that still disagrees with the city falls back to the city's currency,
+// labelled as inferred.
+//
+// Without that field (older backends), a code that disagrees with the city's
+// country is dropped unless it is one of the country's accepted secondary
+// currencies.
 export function assessCurrency(event) {
   const listed = currencyCode(event?.currency);
   const expected = cityCurrency(event?.venue_city);
-  const inferred = backendInferredCurrency(event);
   if (!listed) return { currency: null, status: null, flag: null };
-  if (!expected || listed === expected) {
-    return inferred ? { currency: listed, status: "inferred", flag: "currency_inferred" } : { currency: listed, status: null, flag: null };
+  if (typeof event?.currency_inferred === "boolean") {
+    if (!event.currency_inferred) return { currency: listed, status: null, flag: null };
+    return { currency: expected && listed !== expected ? expected : listed, status: "inferred", flag: "currency_inferred" };
+  }
+  const inferred = backendInferredCurrency(event);
+  const accepted = acceptedCurrencies(event?.venue_city);
+  if (!expected || !accepted || accepted.includes(listed)) {
+    return inferred ? { currency: listed === expected || !expected ? listed : expected, status: "inferred", flag: "currency_inferred" } : { currency: listed, status: null, flag: null };
   }
   if (inferred) return { currency: expected, status: "inferred", flag: "currency_inferred" };
   // With no amount there is nothing to misprice: the code is dropped quietly.
@@ -129,6 +164,7 @@ export function assessCurrency(event) {
   return { currency: null, status: "unverified", flag: "currency_unverified" };
 }
 
+// Legacy provenance hints some payloads carry instead of the boolean.
 function backendInferredCurrency(event) {
   if (event?.currency_inferred === true) return true;
   const source = String(event?.currency_source || event?.currency_provenance || "").trim().toLowerCase();
@@ -141,11 +177,22 @@ function currencyCode(value) {
 }
 
 // Backend flags pass through by name. Strings and { code } objects are both
-// accepted, since the backend contract for them is still being settled.
+// accepted. `hasBackendFlags` is true whenever the backend sent the field at
+// all, even as an empty list: that is the backend saying it checked.
+function rawBackendFlags(event) {
+  if (Array.isArray(event?.quality_flags)) return event.quality_flags;
+  if (Array.isArray(event?.data_quality?.flags)) return event.data_quality.flags;
+  if (event?.quality_flags != null) return [event.quality_flags];
+  return null;
+}
+
+export function hasBackendFlags(event) {
+  return rawBackendFlags(event) !== null;
+}
+
 function backendFlags(event) {
-  const raw = event?.quality_flags ?? event?.data_quality?.flags ?? [];
-  const list = Array.isArray(raw) ? raw : [raw];
-  return list
+  const raw = rawBackendFlags(event) || [];
+  return raw
     .map((item) => typeof item === "string" ? item : item?.code || item?.flag || null)
     .filter((item) => typeof item === "string" && /^[a-z0-9_]{1,48}$/i.test(item))
     .map((item) => item.toLowerCase())
@@ -161,21 +208,33 @@ export function backendConfidence(event) {
   return ["low", "medium", "high"].includes(text) ? text : null;
 }
 
-// Every flag for one raw upstream event, backend flags first. The
+// Every flag for one raw upstream event, backend flags first.
+//
+// When the backend sent quality_flags it is the authority on listing-level
+// flags (its ingest pass sees every source and clears placeholder ends at
+// the root), so the connector's own start/end and aggregator inference is
+// skipped. Two kinds of flag are still added here because only the
+// connector can know them: the currency status of what it is about to show,
+// and start_time_conflict from merging two sources in one response.
+//
+// Without backend flags (older backends) the connector infers its own. The
 // near-duplicate pass may already have attached start_time_conflict and
 // also_listed_by; an event corroborated by a non-aggregator source is not
 // aggregator-only.
 export function qualityFlags(event) {
   const flags = new Set(backendFlags(event));
-  // An unknown end time is common and is handled by omitting it, so it is
-  // not a flag the assistant needs to talk about.
-  const end = assessEndTime(event);
-  if (end.flag && end.flag !== "end_time_unknown") flags.add(end.flag);
+  const fromBackend = hasBackendFlags(event);
+  if (!fromBackend) {
+    // An unknown end time is common and is handled by omitting it, so it is
+    // not a flag the assistant needs to talk about.
+    const end = assessEndTime(event);
+    if (end.flag && end.flag !== "end_time_unknown") flags.add(end.flag);
+    const sources = [event?.source, ...(event?.also_listed_by || [])].filter(Boolean);
+    if (sources.length && sources.every(isAggregatorSource)) flags.add("aggregator_only");
+  }
   const currency = assessCurrency(event);
   if (currency.flag) flags.add(currency.flag);
   if (event?.start_time_conflict) flags.add("start_time_conflict");
-  const sources = [event?.source, ...(event?.also_listed_by || [])].filter(Boolean);
-  if (sources.length && sources.every(isAggregatorSource)) flags.add("aggregator_only");
   return [...flags];
 }
 
@@ -243,18 +302,48 @@ export function isNearDuplicate(a, b) {
   return overlap.coefficient >= TITLE_OVERLAP && (overlap.shared >= 2 || overlap.jaccard >= 0.5);
 }
 
+// Words that name the kind of room, not the room: two venues that share only
+// one of these ("Jazz Cafe" and "Jazz Bar") are not the same venue.
+const GENERIC_VENUE_WORDS = new Set([
+  "club", "bar", "cafe", "café", "pub", "lounge", "room", "rooms", "hall", "house", "studio", "gallery",
+  "theatre", "theater", "arena", "stage", "garden", "terrace", "rooftop", "beach", "space", "venue",
+  "centre", "center", "museum", "kitchen", "restaurant", "hotel", "cinema", "jazz", "music", "live",
+  "nightclub", "disco", "warehouse", "basement", "loft", "shack", "academy"
+]);
+const FAR_VENUE_KM = 1;
+
 function sameVenue(a, b) {
+  const cityA = resolveCity(a.venue_city)?.slug;
+  const cityB = resolveCity(b.venue_city)?.slug;
+  if (cityA && cityB && cityA !== cityB) return false;
   const lat1 = Number(a.lat);
   const lng1 = Number(a.lng);
   const lat2 = Number(b.lat);
   const lng2 = Number(b.lng);
   const hasCoordinates = [a.lat, a.lng, b.lat, b.lng].every((value) => value !== null && value !== undefined && value !== "")
     && [lat1, lng1, lat2, lng2].every(Number.isFinite);
-  if (hasCoordinates && haversineKm(lat1, lng1, lat2, lng2) <= NEAR_VENUE_KM) return true;
-  const tokensA = nameTokens(a.venue_name);
-  const tokensB = nameTokens(b.venue_name);
-  if (!tokensA.size || !tokensB.size) return false;
+  if (hasCoordinates) {
+    const km = haversineKm(lat1, lng1, lat2, lng2);
+    if (km <= NEAR_VENUE_KM) return true;
+    // Coordinates a kilometre or more apart are two rooms, whatever the
+    // names share. In between, the names decide.
+    if (km >= FAR_VENUE_KM) return false;
+  }
+  const tokensA = venueTokens(a.venue_name);
+  const tokensB = venueTokens(b.venue_name);
+  if (!tokensA.size || !tokensB.size) {
+    // A name made only of generic words ("The Jazz Cafe") has to match in full.
+    const fullA = nameTokens(a.venue_name);
+    const fullB = nameTokens(b.venue_name);
+    return fullA.size > 0 && fullA.size === fullB.size && [...fullA].every((token) => fullB.has(token));
+  }
   return overlapCoefficient(tokensA, tokensB) >= 0.5;
+}
+
+// The distinctive words of a venue name: no generic room words and no city
+// names, so "Qilla Goa, Vagator" meets "Qilla" on "qilla" alone.
+function venueTokens(value) {
+  return new Set([...nameTokens(value)].filter((token) => !GENERIC_VENUE_WORDS.has(token) && resolveCity(token)?.slug !== token));
 }
 
 // Venue, city and lineup words are left out of the title comparison, so

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { clearEventCache } from "../src/api.js";
 import {
+  artistCompleteness,
   artistHandle,
   findArtist,
   findPromoter,
@@ -1045,4 +1046,42 @@ test("get_artist returns choices, not a guessed profile, when two artists answer
   assert.equal("resolved_from" in body, false);
   assert.match(body.assistant_instruction, /ask the user to choose/);
   assert.equal(paths(fetch).some((path) => path === "/scene/profiles/dj/dj-a" || path === "/scene/profiles/dj/dj-b"), false, "no profile is fetched on the user's behalf");
+});
+
+// ---------- artist page completeness ----------
+
+function completenessFetch({ profileCompleteness, directoryCompleteness } = {}) {
+  return fakeFetch((url) => {
+    switch (url.pathname) {
+      case "/scene/profiles/dj/nina-kraviz":
+        return { id: "nina-kraviz", name: "Nina Kraviz", cities: ["Berlin"], genres: ["techno"], ...(profileCompleteness !== undefined ? { completeness: profileCompleteness } : {}) };
+      case "/scene/profiles/dj/nina-kraviz/insights":
+        return {};
+      case "/scene/directory/djs/nina-kraviz":
+        return { kind: "dj", dj: { name: "Nina Kraviz" }, ...(directoryCompleteness !== undefined ? { completeness: directoryCompleteness } : {}) };
+      case "/artist-pages/public/for-artist/NinaKraviz":
+        return NOT_FOUND;
+      case "/events":
+        return { count: 0, events: [] };
+      default:
+        throw new Error(`Unexpected request: ${url.pathname}`);
+    }
+  });
+}
+
+test("get_artist passes the scene API's page completeness through when present", async () => {
+  const completeness = { score: 62, max: 100, version: 1, missing: ["upcoming_dates", "mixes"] };
+  const result = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ profileCompleteness: completeness }) });
+  assert.deepEqual(result.entity.completeness, completeness);
+
+  const fromDirectory = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ directoryCompleteness: { score: 40, version: 1, missing: ["photo"] } }) });
+  assert.deepEqual(fromDirectory.entity.completeness, { score: 40, max: 100, version: 1, missing: ["photo"] }, "the directory payload is the fallback");
+});
+
+test("get_artist omits completeness when the backend has none or sends junk", async () => {
+  const absent = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch() });
+  assert.equal("completeness" in absent.entity, false);
+  const junk = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ profileCompleteness: { score: 140, max: 100 } }) });
+  assert.equal("completeness" in junk.entity, false, "a score above max is not repaired into something plausible");
+  assert.equal(artistCompleteness({ score: 10, missing: ["ok", "not ok!", 3] }).missing.join(","), "ok");
 });

@@ -419,9 +419,28 @@ function normalizeMoney(value, field) {
 
 // Whole-word and whole-number matching: "buyer" is not "buy", "20" is not
 // "2", and "2400" is not "24".
+// A confirmation that names the quantity and total but refuses, hedges or
+// asks ("don't buy 2 for 80", "should I buy 2 for 80?") is not a yes, so it
+// never passes, whatever numbers it repeats.
+const CONFIRMATION_REFUSAL = /\b(?:no|not|don['\u2019]?t|do not|never|cancel|stop|wait|hold on|maybe|unless|if)\b|\?\s*$/;
+
 export function validatePurchaseConfirmation(quote, confirmationText) {
-  const text = String(confirmationText || "").toLowerCase();
+  const text = String(confirmationText || "").toLowerCase().trim();
   const missing = [];
+  // The sentence Dizko asks for carries its own stop conditions ("Stop if
+  // price ... change"), and an event title can hold any word ("No Fun Club"),
+  // so both are taken out before looking for a refusal.
+  const title = String(quote?.event?.title || "").toLowerCase().trim();
+  const unquoted = (title ? text.split(title).join(" ") : text)
+    .replace(/\bstop if\b[^.]*\bchanges?\b\.?/g, " ")
+    .trim();
+  if (CONFIRMATION_REFUSAL.test(unquoted)) {
+    return {
+      valid: false,
+      missing: ["an unconditional yes"],
+      error: "Written confirmation must be an unconditional yes: it cannot refuse, hedge, or ask a question."
+    };
+  }
   if (!/\b(buy|purchase|book|order)\b/.test(text)) missing.push("the word buy or purchase");
   if (!containsNumber(text, quote.quantity)) missing.push(`the quantity ${quote.quantity}`);
   if (quote.max_total != null && !containsNumber(text, quote.max_total)) missing.push(`the max total ${quote.max_total}`);
