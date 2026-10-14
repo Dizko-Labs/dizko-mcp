@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHttpMcpServer, safeJsonRpcError } from "../src/httpServer.js";
+import { TOOL_VERSION } from "../src/config.js";
 
 // 2026-07-28 is stateless: every request carries its revision, the client's
 // capabilities and (optionally) its identity in `_meta` instead of doing an
@@ -33,7 +34,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.deepEqual(await health.json(), {
       ok: true,
       name: "dizko",
-      version: "0.8.0",
+      version: TOOL_VERSION,
       contract_version: "2026-09-19",
       transport: "streamable-http",
       authentication: "none"
@@ -100,6 +101,8 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.equal(initialized.headers.get("mcp-protocol-version"), "2024-11-05");
     assert.equal(initializedBody.result.serverInfo.name, "dizko");
     assert.equal(typeof initializedBody.result.capabilities.tools, "object");
+    assert.equal(typeof initializedBody.result.capabilities.prompts, "object");
+    assert.match(initializedBody.result.instructions, /search_events/);
 
     const initializedNotification = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
@@ -124,6 +127,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
     assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
+    assert.equal(body.result.tools.length, 30, "the Muse contract surface: all 30 tools are listed");
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -199,6 +203,7 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.deepEqual(discoverBody.result.supportedVersions, ["2026-07-28"]);
     assert.equal(discoverBody.result.resultType, "complete");
     assert.equal(typeof discoverBody.result.capabilities.tools, "object");
+    assert.equal(typeof discoverBody.result.capabilities.prompts, "object");
     assert.equal(
       discoverBody.result._meta["io.modelcontextprotocol/serverInfo"].name,
       "dizko"
@@ -212,7 +217,9 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(listBody.result.ttlMs, 300_000);
     assert.equal(listBody.result.cacheScope, "public");
     assert.ok(listBody.result.tools.some((tool) => tool.name === "search_events"));
+    assert.equal(listBody.result.tools.some((tool) => tool.name === "get_ticket_purchase_policy"), true, "the conversational tools are listed again");
 
+    // A listed tool is callable through the routed Mcp-Name header.
     const call = await modern(3, "tools/call", {
       name: "get_ticket_purchase_policy",
       arguments: {}
@@ -221,6 +228,25 @@ test("HTTP MCP server serves the 2026-07-28 stateless protocol", async () => {
     assert.equal(call.status, 200);
     assert.equal(callBody.result.resultType, "complete");
     assert.ok(callBody.result.content.length > 0);
+    assert.ok(callBody.result.structuredContent.supported_modes.includes("dizko_checkout"));
+
+    // Prompts are served alongside tools with the same cache hints.
+    const promptList = await modern(4, "prompts/list", {});
+    const promptListBody = await readRpc(promptList);
+    assert.equal(promptList.status, 200);
+    assert.equal(promptListBody.result.ttlMs, 300_000);
+    assert.deepEqual(promptListBody.result.prompts.map((prompt) => prompt.name), [
+      "dizko_onboarding",
+      "dizko_search_followups",
+      "dizko_post_event_feedback",
+      "dizko_ticket_policy"
+    ]);
+
+    const prompt = await modern(5, "prompts/get", { name: "dizko_onboarding", arguments: {} }, { "Mcp-Name": "dizko_onboarding" });
+    const promptBody = await readRpc(prompt);
+    assert.equal(prompt.status, 200);
+    assert.equal(promptBody.result.messages[0].role, "user");
+    assert.match(promptBody.result.messages[0].content.text, /create_event_preference_profile with consent=true/);
 
     // No session is ever minted - the header is gone from the transport.
     assert.equal(call.headers.get("mcp-session-id"), null);
@@ -268,6 +294,28 @@ test("HTTP MCP server supports CORS preflight and optional bearer auth", async (
     });
     assert.equal(authorized.status, 200);
     assert.equal(authorized.headers.get("mcp-protocol-version"), "2024-11-05");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a rate-limit exemption matches the client address behind the proxy, not the proxy", async () => {
+  // Behind Railway the socket peer is always the edge proxy, so checking the
+  // exemption there never matched the assistant egress ranges it is for.
+  const server = createHttpMcpServer({ rateLimitMax: 1, rateLimitWindowMs: 60_000, rateLimitExempt: "203.0.113.", trustedProxies: 1 });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const call = (forwarded, id) => fetch(`http://127.0.0.1:${port}/mcp`, {
+    method: "POST",
+    headers: { Accept: "application/json, text/event-stream", "Content-Type": "application/json", "X-Forwarded-For": forwarded },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list" })
+  });
+  try {
+    for (const id of [1, 2, 3]) assert.equal((await call("203.0.113.42", id)).status, 200, `exempt call ${id}`);
+    // A caller cannot buy the exemption by prepending the prefix: the proxy's
+    // own hop is the one that counts.
+    assert.equal((await call("203.0.113.42, 198.51.100.9", 4)).status, 200);
+    assert.equal((await call("203.0.113.42, 198.51.100.9", 5)).status, 429);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -411,6 +459,29 @@ test("short links return 404 for missing events and missing data", async () => {
   }
 });
 
+test("short links reject malformed event ids without an upstream call", async () => {
+  let upstreamCalls = 0;
+  const server = createHttpMcpServer({
+    fetch: async () => {
+      upstreamCalls += 1;
+      throw new Error("must not fetch");
+    },
+    config: { apiBaseUrl: "https://api.example.test", userAgent: "t", apiCacheTtlMs: 0 }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  try {
+    // A truncated percent-escape is not decodable, so it cannot be an id.
+    const malformed = await fetch(`http://127.0.0.1:${port}/e/%E0%A4%A/cal`, { redirect: "manual" });
+    assert.equal(malformed.status, 400);
+    assert.deepEqual(await malformed.json(), { error: "Malformed event id in link." });
+    assert.equal(malformed.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    server.close();
+  }
+});
+
 test("mcpb download serves the bundle when built, 404 with hint otherwise", async () => {
   const server = createHttpMcpServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -478,15 +549,23 @@ test("security headers, CORS and rate-limit identity fail closed", async () => {
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" })
   });
   try {
-    const first = await request("198.51.100.1, 10.0.0.8");
+    // A disallowed browser origin is refused at the server, not merely left
+    // unreadable by CORS: DNS rebinding makes such a request same-origin to
+    // the browser, so only an Origin check stops it (MCP transport spec).
+    const blocked = await request("198.51.100.1, 10.0.0.8");
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.headers.get("access-control-allow-origin"), null);
+    assert.match(blocked.headers.get("strict-transport-security"), /max-age=31536000/);
+    assert.match(blocked.headers.get("permissions-policy"), /camera=\(\)/);
+
+    // The refusal costs nothing from the rate-limit budget.
+    const first = await request("198.51.100.1, 10.0.0.8", "https://chatgpt.com");
     assert.equal(first.status, 200);
-    assert.equal(first.headers.get("access-control-allow-origin"), null);
     assert.match(first.headers.get("strict-transport-security"), /max-age=31536000/);
-    assert.match(first.headers.get("permissions-policy"), /camera=\(\)/);
 
     // Changing the attacker-controlled leftmost value must not mint a new
     // bucket when the edge-appended rightmost hop is unchanged.
-    const second = await request("203.0.113.99, 10.0.0.8");
+    const second = await request("203.0.113.99, 10.0.0.8", "https://chatgpt.com");
     assert.equal(second.status, 429);
 
     const allowed = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: "https://chatgpt.com" } });

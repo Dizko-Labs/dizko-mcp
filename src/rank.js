@@ -18,8 +18,10 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
   const desiredVibes = normalizeList(preferences.vibe);
   const desiredTypes = normalizeList(preferences.event_types || preferences.event_type);
   const desiredVenues = normalizeList(preferences.venues || preferences.venue);
+  const desiredPromoters = normalizeList(preferences.promoters || preferences.promoter);
   const desiredArtists = normalizeList(preferences.featuring);
   const disliked = normalizeList(preferences.avoid);
+  const promoterNames = promoterNameList(event.promoters);
   const eventText = normalizeList([
     event.title,
     event.description,
@@ -27,13 +29,15 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
     ...(event.genres || []),
     ...(event.vibe || []),
     ...(event.event_types || []),
-    ...(event.lineup || [])
+    ...(event.lineup || []),
+    ...promoterNames
   ]).join(" ");
 
   total += addMatches(reasons, "genre match", desiredGenres, event.genres, 18);
   total += addMatches(reasons, "vibe match", desiredVibes, event.vibe, 14);
   total += addMatches(reasons, "event type match", desiredTypes, event.event_types, 12);
   total += addTextMatches(reasons, "venue match", desiredVenues, event.venue_name, 16);
+  total += addMatches(reasons, "promoter match", desiredPromoters, promoterNames, 14);
   total += addMatches(reasons, "artist match", desiredArtists, event.lineup, 20);
 
   const start = event.start_time ? new Date(event.start_time) : null;
@@ -95,7 +99,7 @@ function addTextMatches(reasons, label, desired, actual, points) {
 }
 
 function matchesAvoidance(term, event, eventText, preferences) {
-  if (eventText.includes(term)) return true;
+  if (wordMatch(eventText, term)) return true;
 
   const attendance = Number(event.attendance_count || 0);
   if (CROWD_AVOIDANCE_TERMS.has(term) && attendance >= 350) return true;
@@ -109,12 +113,50 @@ function matchesAvoidance(term, event, eventText, preferences) {
   return false;
 }
 
+// Whole-word avoidance so "rave" does not penalize "Brave New World".
+//
+// The regex is compiled once per distinct term and reused. Compiling inside
+// the loop meant one RegExp per (term x event) pair, so an `avoid` list and a
+// full page of events multiplied into tens of thousands of compilations on a
+// single call. Schema caps bound the term count; this bounds the work per
+// term. The cache is capped so a stream of distinct terms cannot grow it
+// without limit.
+const AVOID_PATTERN_CACHE = new Map();
+const AVOID_PATTERN_CACHE_MAX = 500;
+
+export function avoidPattern(term) {
+  const cached = AVOID_PATTERN_CACHE.get(term);
+  if (cached) {
+    // Re-insert so eviction is least-recently-USED. Insertion order alone
+    // would drop a term used on every call once 500 new ones passed through.
+    AVOID_PATTERN_CACHE.delete(term);
+    AVOID_PATTERN_CACHE.set(term, cached);
+    return cached;
+  }
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, (match) => `\\${match}`);
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "iu");
+  if (AVOID_PATTERN_CACHE.size >= AVOID_PATTERN_CACHE_MAX) {
+    AVOID_PATTERN_CACHE.delete(AVOID_PATTERN_CACHE.keys().next().value);
+  }
+  AVOID_PATTERN_CACHE.set(term, pattern);
+  return pattern;
+}
+
+function wordMatch(text, term) {
+  return avoidPattern(term).test(text);
+}
+
 function addMatches(reasons, label, desired, actual, points) {
   const actualSet = new Set(normalizeList(actual));
   const matches = desired.filter((item) => actualSet.has(item));
   if (!matches.length) return 0;
   reasons.push(`${label}: ${matches.join(", ")}`);
   return matches.length * points;
+}
+
+function promoterNameList(promoters) {
+  if (!Array.isArray(promoters)) return [];
+  return promoters.map((item) => typeof item === "string" ? item : item?.name).filter(Boolean);
 }
 
 function normalizeList(value) {

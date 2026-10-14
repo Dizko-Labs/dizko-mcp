@@ -98,3 +98,70 @@ test("get_artist_events falls back to the profile's saved featuring list", async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Local verification, dedupe and ordering (AUDIT_2026-09-08.md F12 / B15).
+// ---------------------------------------------------------------------------
+import { dedupeEvents, eventFeaturesArtist } from "../src/artistEvents.js";
+
+test("eventFeaturesArtist matches the lineup exactly or the title as a whole word", () => {
+  assert.equal(eventFeaturesArtist({ title: "Klubnacht", lineup: ["Ben Klock", "Marcel Dettmann"] }, "ben klock"), true);
+  assert.equal(eventFeaturesArtist({ title: "Klubnacht w/ Ben Klock", lineup: [] }, "Ben Klock"), true);
+  assert.equal(eventFeaturesArtist({ title: "Photon: Ben Klock all night", lineup: ["Someone Else"] }, "Ben Klock"), true);
+  assert.equal(eventFeaturesArtist({ title: "Klubnacht", lineup: ["Ben Klocker"] }, "Ben Klock"), false, "no partial lineup match");
+  assert.equal(eventFeaturesArtist({ title: "Klubnacht w/ Ben Klocker", lineup: [] }, "Ben Klock"), false, "no partial title match");
+  assert.equal(eventFeaturesArtist({
+    title: "Klockworks Inspired",
+    lineup: ["Someone Else"],
+    description: "A night inspired by Ben Klock and the Berghain sound."
+  }, "Ben Klock"), false, "a description mention is not an appearance");
+  assert.equal(eventFeaturesArtist({ title: "Klubnacht", lineup: ["Ben Klock"] }, ""), false);
+});
+
+test("dedupeEvents collapses same-day rows at the same venue and keeps the busier row", () => {
+  const rows = [
+    { id: "a", start_time: "2026-08-14T22:00:00Z", venue_name: "Anfiteatro De Pedra - Anfiteatro Professor", attendance_count: 40 },
+    { id: "b", start_time: "2026-08-14T23:00:00Z", venue_name: "Anfiteatro de Pedra", attendance_count: 120 },
+    { id: "c", start_time: "2026-08-15T22:00:00Z", venue_name: "Anfiteatro de Pedra", attendance_count: 5 },
+    { id: "d", start_time: "2026-08-14T22:00:00Z", venue_name: "Basement", attendance_count: 10 }
+  ];
+  const kept = dedupeEvents(rows).map((event) => event.id).sort();
+  assert.deepEqual(kept, ["b", "c", "d"]);
+});
+
+test("dedupeEvents prefers rows with tickets and an end time when attendance ties", () => {
+  const rows = [
+    { id: "plain", start_time: "2026-08-14T22:00:00Z", venue_name: "Basement", attendance_count: 10 },
+    { id: "rich", start_time: "2026-08-14T22:00:00Z", venue_name: "Basement Club", attendance_count: 10, ticket_url: "https://ra.co/events/1", end_time: "2026-08-15T06:00:00Z" }
+  ];
+  assert.deepEqual(dedupeEvents(rows).map((event) => event.id), ["rich"]);
+});
+
+test("getArtistEvents asks upstream for soonest and returns each artist's dates in start order", async () => {
+  const requested = [];
+  const row = (id, start, venue) => ({ ...show(id, "Klubnacht", "Ben Klock"), start_time: start, venue_name: venue });
+  const result = await getArtistEvents({ artists: ["Ben Klock"], city: "berlin" }, {
+    now: NOW,
+    fetch: async (url) => {
+      requested.push(new URL(url));
+      return Response.json({
+        count: 3,
+        events: [
+          row("late", "2026-08-28T22:00:00Z", "Berghain"),
+          row("soon", "2026-08-08T22:00:00Z", "Tresor"),
+          row("mid", "2026-08-15T22:00:00Z", "Basement")
+        ]
+      });
+    }
+  });
+
+  assert.equal(requested.length, 1);
+  assert.equal(requested[0].searchParams.get("sort_by"), "soonest");
+  assert.equal(requested[0].searchParams.get("q"), "Ben Klock");
+  assert.equal(requested[0].searchParams.get("date_from"), "2026-08-07");
+  assert.deepEqual(result.artists[0].events.map((event) => event.id), ["soon", "mid", "late"]);
+  assert.deepEqual(result.artists[0].events.map((event) => event.starts_at), [
+    "2026-08-08T22:00:00Z", "2026-08-15T22:00:00Z", "2026-08-28T22:00:00Z"
+  ]);
+  assert.equal(result.artists[0].count, 3);
+});

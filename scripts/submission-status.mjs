@@ -21,7 +21,10 @@ async function main() {
   const latestEvidenceOk = evidence.ok === true && evidence.body?.ok === true;
   const monitorOk = monitor.ok === true && monitor.body?.ok === true;
   const fieldValidationOk = fieldValidation.ok === true && fieldValidation.body?.ok === true;
-  const submitEndpoint = evidence.body?.endpoint || process.env.DIZKO_MCP_URL || process.env.EVENTCHAT_MCP_URL || "https://mcp.dizko.app/mcp";
+  // There is one hosted endpoint. Evidence must have been generated against
+  // it, and the branded domain must answer health, metadata and tools/list.
+  const submitEndpoint = "https://mcp.dizko.app/mcp";
+  const evidenceEndpoint = evidence.body?.endpoint || process.env.DIZKO_MCP_URL || process.env.EVENTCHAT_MCP_URL || submitEndpoint;
   const brandedDomainReady = domain.ok === true && domain.body?.ok === true;
 
   const readyForOpenAiSubmission =
@@ -29,14 +32,14 @@ async function main() {
     monitorOk &&
     fieldValidationOk &&
     brandedDomainReady &&
-    submitEndpoint === "https://mcp.dizko.app/mcp";
+    evidenceEndpoint === submitEndpoint;
 
   const result = {
     ok: readyForOpenAiSubmission,
     checked_at: new Date().toISOString(),
     ready_for_openai_dashboard_submission: readyForOpenAiSubmission,
     submit_endpoint: submitEndpoint,
-    do_not_submit_endpoint: brandedDomainReady ? null : domain.body?.endpoint || "https://mcp.dizko.app/mcp",
+    evidence_endpoint: evidenceEndpoint,
     code_readiness: {
       latest_evidence: statusFrom(latestEvidenceOk, evidence),
       live_monitor: statusFrom(monitorOk, monitor),
@@ -44,8 +47,8 @@ async function main() {
       branded_domain: {
         ok: brandedDomainReady,
         note: brandedDomainReady
-          ? "The Dizko custom domain is ready for review traffic."
-          : "The Dizko custom domain is not ready; keep review traffic paused.",
+          ? "mcp.dizko.app answers health, metadata and tools/list with the full tool count."
+          : "mcp.dizko.app failed the domain check; fix DNS or the deployment before submitting.",
         details: domain.body || domain.error
       }
     },
@@ -53,7 +56,9 @@ async function main() {
     external_gates_remaining: requiredExternalGates,
     next_step: readyForOpenAiSubmission
       ? "Use OPENAI_SUBMISSION_PACKET.md and submit the Dizko endpoint after completing the external gates."
-      : "Run npm run preflight:submission, fix failed checks, then rerun npm run submission:status."
+      : evidenceEndpoint !== submitEndpoint
+        ? `Latest evidence was generated against ${evidenceEndpoint}; rerun npm run preflight:submission against ${submitEndpoint}.`
+        : "Run npm run preflight:submission, fix failed checks, then rerun npm run submission:status."
   };
 
   console.log(JSON.stringify(result, null, 2));

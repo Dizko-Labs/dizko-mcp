@@ -5,10 +5,10 @@ const args = parseArgs(process.argv.slice(2));
 async function main() {
   const profileId = args.profile_id || process.env.EVENTCHAT_PROFILE_ID;
   const profileSecret = args.profile_secret || process.env.EVENTCHAT_PROFILE_SECRET;
-  const preferencesPath = args.preferences_path || process.env.EVENTCHAT_PREFERENCES_PATH;
+  const preferencesPath = args.preferences_path || process.env.DIZKO_PREFERENCES_PATH || process.env.EVENTCHAT_PREFERENCES_PATH;
 
   if (!profileId || !profileSecret) {
-    throw new Error("Usage: npm run preferences:delete -- --profile-id upg_... --profile-secret ups_... [--preferences-path /data/preferences.json]");
+    throw new Error("Usage: npm run preferences:delete -- --profile-id dzk_... --profile-secret dzs_... [--preferences-path /data/preferences.json]");
   }
 
   const store = new FilePreferenceStore(preferencesPath);
