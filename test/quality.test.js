@@ -475,6 +475,35 @@ test("attribution never re-encodes an existing query or drops a fragment", () =>
   assert.doesNotMatch(once, /[?&]ref=/, "ref holds referral codes and is never used for attribution");
 });
 
+test("start_time_assumed: the date is shown, the made-up 12:00 is not", () => {
+  // AgendaLX publishes dates only; the backend stores 12:00 Lisbon and flags it.
+  const event = { id: "agx", title: "Exposicao", start_time: "2026-10-17T11:00:00Z", venue_city: "lisbon", source: "agendalx", quality_flags: ["start_time_assumed"] };
+  const summary = summarizeEvent(event, { env: {} });
+  assert.equal(summary.when, "Sat 17 Oct");
+  assert.equal(summary.starts_on_local, "2026-10-17");
+  assert.equal(summary.starts_at_local, undefined, "no local clock time is asserted");
+  assert.deepEqual(summary.quality_flags, ["start_time_assumed"]);
+  const ranked = rankEvents([{ ...event, id: "assumed" }, { ...event, id: "timed", quality_flags: [] }], {}, NOW);
+  assert.equal(ranked[0].id, "timed");
+  assert.equal(ranked[0].recommendation_score - ranked[1].recommendation_score, 2, "a small cost: the event is real, only its hour is unknown");
+  assert.equal(summarizeEvent({ ...event, quality_flags: [] }, { env: {} }).when, "Sat 17 Oct, 12:00");
+});
+
+test("an unknown future backend flag costs no more than a known one", () => {
+  const ranked = rankEvents([
+    goaEvent({ id: "unknown", quality_flags: ["some_future_flag"] }),
+    goaEvent({ id: "known", quality_flags: ["start_time_conflict"] }),
+    goaEvent({ id: "clean", quality_flags: [] })
+  ], {}, NOW);
+  const score = Object.fromEntries(ranked.map((event) => [event.id, event.recommendation_score]));
+  assert.equal(score.clean - score.unknown, 2);
+  assert.ok(score.clean - score.unknown <= score.clean - score.known);
+  // zero_duration_aggregator keeps its full weight.
+  const stale = rankEvents([goaEvent({ id: "stale", quality_flags: ["zero_duration_aggregator"] }), goaEvent({ id: "clean", quality_flags: [] })], {}, NOW);
+  assert.equal(stale[1].id, "stale");
+  assert.equal(stale[0].recommendation_score - stale[1].recommendation_score, 8);
+});
+
 test("annotations: the ChatGPT surface is 13 read-only tools; overwrites are destructive", () => {
   const openai = surfaceTools("openai");
   assert.equal(openai.length, 13);

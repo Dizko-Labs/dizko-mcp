@@ -75,10 +75,12 @@ export function isAggregatorSource(source) {
   return AGGREGATOR_SOURCES.has(String(source || "").trim().toLowerCase().replace(/[\s.-]+/g, "_"));
 }
 
-// The derived flags and what each means. A backend flag that is not one of
-// these is unknown to the connector and costs BACKEND_FLAG_PENALTY in ranking.
+// The known flags and what each means. A backend flag that is not one of
+// these is unknown to the connector and costs UNKNOWN_FLAG_PENALTY in
+// ranking, which is never more than a known flag costs.
 export const QUALITY_FLAG_NOTES = {
   zero_duration_aggregator: "A re-listing site gives the same start and end time, which usually means a stale or misdated listing.",
+  start_time_assumed: "The source gives only the date; the start time is not confirmed, so only the date is shown.",
   currency_unverified: "The listed currency does not match the city, so the amount is shown without a currency.",
   currency_inferred: "The currency was inferred from the city, not stated by the source.",
   start_equals_end: "The source lists the same start and end time, which usually means an incomplete or stale listing.",
@@ -93,9 +95,12 @@ const RANK_PENALTIES = {
   start_equals_end: 8,
   aggregator_only: 8,
   currency_unverified: 4,
-  start_time_conflict: 3
+  start_time_conflict: 3,
+  // A dated listing with a made-up clock time (AgendaLX's 12:00) is a real
+  // event; only its hour is unknown.
+  start_time_assumed: 2
 };
-const BACKEND_FLAG_PENALTY = 5;
+const UNKNOWN_FLAG_PENALTY = 2;
 const LOW_CONFIDENCE_PENALTY = 10;
 const MAX_PENALTY = 25;
 
@@ -238,10 +243,14 @@ export function qualityFlags(event) {
   return [...flags];
 }
 
+export function startTimeAssumed(event) {
+  return qualityFlags(event).includes("start_time_assumed");
+}
+
 export function qualityPenalty(event) {
   let penalty = 0;
   for (const flag of qualityFlags(event)) {
-    penalty += RANK_PENALTIES[flag] ?? (QUALITY_FLAG_NOTES[flag] ? 0 : BACKEND_FLAG_PENALTY);
+    penalty += RANK_PENALTIES[flag] ?? (QUALITY_FLAG_NOTES[flag] ? 0 : UNKNOWN_FLAG_PENALTY);
   }
   const confidence = backendConfidence(event);
   if (confidence === "low" || (typeof confidence === "number" && confidence < 0.5)) penalty += LOW_CONFIDENCE_PENALTY;
@@ -250,7 +259,7 @@ export function qualityPenalty(event) {
 
 // Appended to assistant_instruction only when a returned event carries a
 // flag, so clean results keep the short instruction.
-export const QUALITY_INSTRUCTION = "Some events carry quality_flags: mention the uncertainty in a few words (currency unconfirmed, start times disagree, listing may be stale or aggregator-only) and never fill in a missing end time or currency.";
+export const QUALITY_INSTRUCTION = "Some events carry quality_flags: mention the uncertainty in a few words (currency unconfirmed, start time not confirmed or disputed, listing may be stale) and never fill in a missing time or currency.";
 
 export function withQualityNote(instruction, events = []) {
   const flagged = events.some((event) => Array.isArray(event?.quality_flags) && event.quality_flags.length);

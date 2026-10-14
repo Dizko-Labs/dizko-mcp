@@ -82,9 +82,12 @@ export function summarizeEvent(event, options = {}) {
   // start is not an end time, so none of them is shown as one.
   const endCheck = assessEndTime(event);
   const endTime = endCheck.end ? event.end_time : null;
-  const local = localTimes({ ...event, end_time: endTime }, timezone, { endDateLocal: endCheck.endDateLocal });
-  const currencyCheck = assessCurrency(event);
   const flags = qualityFlags(event);
+  // A start the source never gave (start_time_assumed) is shown as a date,
+  // not as the placeholder clock time.
+  const dateOnly = flags.includes("start_time_assumed");
+  const local = localTimes({ ...event, end_time: endTime }, timezone, { endDateLocal: endCheck.endDateLocal, dateOnly });
+  const currencyCheck = assessCurrency(event);
   const confidence = backendConfidence(event);
   const lineup = Array.isArray(event.lineup) ? event.lineup.filter(Boolean) : [];
   const description = pickDescription(event, { detail, wantDescription: fields.has("description") });
@@ -100,9 +103,10 @@ export function summarizeEvent(event, options = {}) {
     title: event.title_en && options.preferEnglish ? event.title_en : event.title,
     when: local.when,
     starts_at: event.start_time || null,
+    starts_on_local: dateOnly && local.starts_at_local ? local.starts_at_local.slice(0, 10) : null,
     ends_at: endTime,
     ends_on_local: endCheck.endDateLocal,
-    starts_at_local: local.starts_at_local,
+    starts_at_local: dateOnly ? null : local.starts_at_local,
     ends_at_local: local.ends_at_local,
     timezone: local.timezone,
     venue: event.venue_name || null,
@@ -193,7 +197,7 @@ export function localTimes(event, timezone, options = {}) {
   const endLocal = end ? zonedIso(end, zone) : null;
   let when = null;
   if (start) {
-    when = formatWhen(start, zone);
+    when = options.dateOnly ? formatLocalDate(startLocal.slice(0, 10)) : formatWhen(start, zone);
     if (end && endLocal.slice(0, 10) !== startLocal.slice(0, 10) && end.getTime() - start.getTime() > 24 * 3600e3) {
       when += ` → ${formatWhen(end, zone)}`;
     } else if (!end && options.endDateLocal) {
