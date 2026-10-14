@@ -3,6 +3,7 @@ import test from "node:test";
 import { DEFAULT_MCP_URL } from "../src/config.js";
 import {
   EVENT_FIELD_OPTIONS,
+  splitSentences,
   directionsUrl,
   eventTimezone,
   formatEventList,
@@ -377,4 +378,36 @@ test("boilerplate descriptions are dropped by default and reduced when requested
     summarizeEvent({ ...EVENT, description: mixed }, { env: {}, detail: true }).description,
     "Expect strobe lights and a late-night rooftop set."
   );
+});
+
+test("boilerplate descriptions never leave a dangling title fragment (Glam Night ft.)", () => {
+  const description = "Glam Night ft. TrapperX | Savara Goa takes place at Savara Goa in Goa on Saturday 17 October. It is listed under party.\n\nTickets: INR 2000.";
+  const event = { id: "glam", title: "Glam Night ft. TrapperX | Savara Goa", venue_name: "Savara Goa", venue_city: "goa", start_time: "2026-10-17T15:30:00Z", description };
+  assert.deepEqual(splitSentences(description), [
+    "Glam Night ft. TrapperX | Savara Goa takes place at Savara Goa in Goa on Saturday 17 October.",
+    "It is listed under party.",
+    "Tickets: INR 2000."
+  ]);
+  for (const options of [{ detail: true }, { fields: ["description"] }, {}]) {
+    const summary = summarizeEvent(event, { env: {}, ...options });
+    assert.equal(summary.description, undefined, JSON.stringify(options));
+  }
+  const withExtra = summarizeEvent({ ...event, description: description.replace(" It is listed", " Expect glitter and heels. It is listed") }, { env: {}, detail: true });
+  assert.equal(withExtra.description, "Expect glitter and heels.");
+});
+
+test("sentence splitting is abbreviation-aware", () => {
+  assert.deepEqual(
+    splitSentences("Dr. Rubinstein vs. Mr. Scruff w/ MC. Kofi at St. Georg, No. 5 Ave. Rd. approx. 200 people. Doors 10 p.m. sharp. U.S. tour, e.g. Detroit, i.e. soon. Joyce C. Smith pres. vol. 2 for 2.5 hours! Is it on? Yes."),
+    [
+      "Dr. Rubinstein vs. Mr. Scruff w/ MC. Kofi at St. Georg, No. 5 Ave. Rd. approx. 200 people.",
+      "Doors 10 p.m. sharp.",
+      "U.S. tour, e.g. Detroit, i.e. soon.",
+      "Joyce C. Smith pres. vol. 2 for 2.5 hours!",
+      "Is it on?",
+      "Yes."
+    ]
+  );
+  assert.deepEqual(splitSentences("Line one.\n\nline two"), ["Line one.", "line two"], "a paragraph break always ends a sentence");
+  assert.deepEqual(splitSentences("Ends here. Next one."), ["Ends here.", "Next one."]);
 });

@@ -280,16 +280,76 @@ export function isBoilerplateDescription(text) {
   return opener && (filler || value.length < 400);
 }
 
+// Words whose trailing period does not end a sentence. Lowercased, without
+// the period. Single letters and dotted initialisms (U.S., a.m., e.g.) are
+// handled by shape, and decimals never have whitespace after the point.
+const NON_TERMINAL_ABBREVIATIONS = new Set([
+  "ft", "feat", "vs", "v", "dj", "mc", "pres", "st", "dr", "no", "mr", "mrs", "ms", "prof",
+  "jr", "sr", "mt", "ave", "rd", "vol", "approx", "inc", "ltd", "ca", "nr", "nos", "op",
+  "pt", "co", "corp", "dept", "est", "etc", "fig", "min", "max", "incl", "excl"
+]);
+
+// Splits prose into sentences without breaking after "ft.", "Dr.", "No.",
+// an initial or an initialism. A paragraph break always ends a sentence.
+export function splitSentences(text) {
+  const value = String(text || "");
+  const sentences = [];
+  let start = 0;
+  const boundary = /([.!?]+)(["'\u2019\u201d)\]]*)(\s+)/g;
+  let match;
+  while ((match = boundary.exec(value))) {
+    const end = match.index + match[1].length + match[2].length;
+    const paragraph = /\n\s*\n/.test(match[3]);
+    if (!paragraph && match[1] === "." && !isSentenceEnd(value, match.index, end + match[3].length)) continue;
+    sentences.push(value.slice(start, end).trim());
+    start = end + match[3].length;
+  }
+  sentences.push(value.slice(start).trim());
+  return sentences.filter(Boolean);
+}
+
+function isSentenceEnd(text, periodIndex, nextIndex) {
+  const before = text.slice(0, periodIndex);
+  const word = before.slice(before.search(/\S+$/)).replace(/^[("'\u201c\u2018[]+/, "");
+  const bare = word.toLowerCase();
+  if (NON_TERMINAL_ABBREVIATIONS.has(bare)) return false;
+  // A single letter ("Joyce C. Smith") or an initialism ("U.S", "e.g", "a.m").
+  if (/^\p{L}$/u.test(word) || /^(?:\p{L}\.)+\p{L}$/u.test(word)) return false;
+  // The next sentence would start with a lowercase letter or a digit run
+  // that continues the phrase ("approx. 200 people").
+  const next = text.slice(nextIndex, nextIndex + 1);
+  if (next && /\p{Ll}/u.test(next)) return false;
+  return true;
+}
+
+// Sentences the listing generator writes from structured fields the
+// summary already carries.
+const BOILERPLATE_SENTENCE = /(takes place at|lands at|happens at|is happening at|on the lineup|The listed genres?\b|is listed under|Entry is free|^Tickets:)/;
+
 function pickDescription(event, { detail, wantDescription }) {
   const raw = typeof event.description === "string" ? event.description : null;
   if (!raw) return null;
   if (isBoilerplateDescription(raw) && !(wantDescription || detail)) return null;
   if (isBoilerplateDescription(raw)) {
     // Keep only sentences that add something beyond the structured fields.
-    const extra = raw.split(/(?<=[.!?])\s+/).filter((sentence) => !/(takes place at|lands at|on the lineup|The listed genre|Entry is free|^Tickets:)/.test(sentence)).join(" ").trim();
+    // A kept piece that is only part of the title or venue name is a
+    // fragment of a dropped sentence, never something to show on its own.
+    const known = normalizedWords(`${event.title || ""} ${event.venue_name || ""}`);
+    const extra = splitSentences(raw)
+      .filter((sentence) => !BOILERPLATE_SENTENCE.test(sentence))
+      .filter((sentence) => {
+        const words = normalizedWords(sentence);
+        return words.length > 0 && !words.every((word) => known.includes(word));
+      })
+      .join(" ")
+      .trim();
     return shortDescription(extra, detail ? DETAIL_DESCRIPTION : SHORT_DESCRIPTION);
   }
   return shortDescription(raw, detail ? DETAIL_DESCRIPTION : SHORT_DESCRIPTION);
+}
+
+function normalizedWords(value) {
+  return String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 }
 
 // Full redirect targets for the /e/<id>/cal|map short links.
