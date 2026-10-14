@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
+import { CITY_TABLE } from "../src/cities.js";
 import { prompts as registryPrompts, tools as registryTools } from "../src/tools.js";
 
 const execFileAsync = promisify(execFile);
@@ -229,11 +230,11 @@ async function checkLegacyInitialize() {
 function assertInstructions(instructions) {
   assert(typeof instructions === "string" && instructions.length > 0, "server returned no instructions");
   for (const phrase of [
-    "47 cities",
-    "ONE search_events call",
+    `${Object.keys(CITY_TABLE).length} cities`,
+    "ONE search_events or recommend_events call",
     "nearest_covered_city",
     "get_artist",
-    "dizko_onboarding",
+    "get_preference_onboarding",
     "consent",
     "profile_id and profile_secret",
     "record_event_feedback",
