@@ -390,16 +390,19 @@ test("the backend's currency_inferred is preferred over the connector's own gues
   assert.equal(stated.price, "€60", "a Goa festival that really sells in EUR is not second-guessed");
   assert.equal(stated.currency, "EUR");
   assert.equal(stated.quality_flags, undefined);
+  assert.equal(stated.currency_inferred, false, "downstream agents can tell a stated code from an unchecked one");
 
   // Inferred and matching the city: shown, labelled as inferred.
   const inferred = summarizeEvent(goaEvent({ currency: "INR", currency_inferred: true }), { env: {} });
   assert.equal(inferred.currency, "INR");
   assert.equal(inferred.currency_status, "inferred");
   assert.deepEqual(inferred.quality_flags, ["currency_inferred"]);
+  assert.equal(inferred.currency_inferred, true);
 
   // Absent (an older backend): the connector's own check still runs.
   const legacy = summarizeEvent(goaEvent({ currency: "EUR", price_min: 60, price_max: 60 }), { env: {} });
   assert.equal(legacy.currency_status, "unverified");
+  assert.equal("currency_inferred" in legacy, false, "unknown provenance is not reported as stated");
 });
 
 test("dollar pricing in Mexico, Argentina, Colombia and Turkiye is not flagged; EUR still is", () => {

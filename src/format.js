@@ -113,6 +113,10 @@ export function summarizeEvent(event, options = {}) {
     price: price && price !== "free" && currencyCheck.status === "unverified" ? `${price} (currency unconfirmed)` : price,
     currency: currencyCheck.currency,
     currency_status: currencyCheck.status,
+    // Whether the shown currency was inferred rather than stated by the
+    // source, when that is known (the backend's currency_inferred, or the
+    // connector's own inference). Omitted when nobody knows.
+    currency_inferred: currencyCheck.status === "inferred" ? true : typeof event.currency_inferred === "boolean" && currencyCheck.currency ? false : undefined,
     genres: event.genres || [],
     vibe: event.vibe || [],
     event_types: event.event_types || [],
