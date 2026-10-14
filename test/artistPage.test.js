@@ -58,8 +58,9 @@ test("get_artist_page tool emits deep-link instructions for a published page", a
   assert.equal(result.isError, false);
   const body = JSON.parse(result.content[0].text);
   assert.equal(body.published, true);
-  assert.equal(body.page_url, "https://www.dizko.app/AvalonEmerson");
-  assert.match(body.assistant_instruction, /\?mix=/);
+  assert.equal(body.page_url, "https://www.dizko.app/AvalonEmerson?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.match(body.assistant_instruction, /deep_link/);
+  assert.equal(body.embeds[0].deep_link, `https://www.dizko.app/AvalonEmerson?mix=${encodeURIComponent(body.embeds[0].id)}&utm_source=dizko_mcp&utm_medium=ai_assistant`, "deep links keep the mix id and add MCP attribution");
   assert.equal(body.embeds.length, 2);
 });
 
@@ -99,5 +100,5 @@ test("get_artist_page is a listed, read-only contract tool", async () => {
   }, { fetch: fetchReturning(Response.json(PUBLISHED)) });
   assert.equal(response.isError, false);
   assert.equal(response.structuredContent.published, true);
-  assert.equal(response.structuredContent.page_url, "https://www.dizko.app/AvalonEmerson");
+  assert.equal(response.structuredContent.page_url, "https://www.dizko.app/AvalonEmerson?utm_source=dizko_mcp&utm_medium=ai_assistant");
 });

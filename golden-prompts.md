@@ -70,4 +70,5 @@ Routing rules the prompts test (from the server instructions): a request that na
 - Preference saving always asks for consent first, and saved taste never hides results.
 - Personalized calls use both `profile_id` and `profile_secret`.
 - Deletion is treated as destructive and scoped to Dizko connector preferences.
-- Ticket purchase is treated as destructive/open-world, requires a signed quote and explicit written confirmation, and never claims third-party checkout handoff is an autonomous purchase.
+- Ticket purchase is treated as destructive/open-world, requires a signed quote and explicit written confirmation, and never claims third-party checkout handoff is an autonomous purchase. Without an integrated provider the assistant says it will hand off to checkout, not that it will buy.
+- Events with `quality_flags` are presented with a short note (currency unconfirmed, start times disagree, possibly stale listing); the assistant never fills in a missing end time or currency.

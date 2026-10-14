@@ -1,9 +1,41 @@
 import { DEFAULT_MCP_URL, DEFAULT_WEB_BASE_URL } from "./config.js";
 import { cityDisplayName, cityTimezone } from "./cities.js";
 import { zonedParts } from "./dateRange.js";
+import { assessCurrency, assessEndTime, backendConfidence, qualityFlags } from "./quality.js";
 
 export function eventUrl(event, webBaseUrl = DEFAULT_WEB_BASE_URL) {
   return `${webBaseUrl.replace(/\/+$/, "")}/events/${encodeURIComponent(event.id)}`;
+}
+
+// Attribution for Dizko web links an assistant shows the user (dizko_url,
+// artist and entity pages), so those pages can count visits that came from
+// AI assistants. It uses the web app's existing UTM capture; `ref` is not
+// used because the web app reads it as a referral code. Only Dizko web
+// hosts are touched, and canonical ids such as event_url stay clean.
+export const MCP_ATTRIBUTION = Object.freeze({ utm_source: "dizko_mcp", utm_medium: "ai_assistant" });
+
+export function withMcpAttribution(raw, webBaseUrl = DEFAULT_WEB_BASE_URL) {
+  if (!raw || typeof raw !== "string") return raw;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return raw;
+  let webHost = null;
+  try {
+    webHost = new URL(webBaseUrl).hostname;
+  } catch {
+    webHost = null;
+  }
+  const host = url.hostname.toLowerCase();
+  const isDizkoWeb = host === webHost || host === "dizko.app" || host.endsWith(".dizko.app");
+  if (!isDizkoWeb || host === "mcp.dizko.app" || host === "api.dizko.app") return raw;
+  for (const [key, value] of Object.entries(MCP_ATTRIBUTION)) {
+    if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+  }
+  return url.toString();
 }
 
 // Base for the short /e/<id>/cal|map|ics redirect links served by the
@@ -38,7 +70,14 @@ export function summarizeEvent(event, options = {}) {
   const detail = Boolean(options.detail);
   const fields = new Set(detail ? EVENT_FIELD_OPTIONS : normalizeFields(options.fields));
   const timezone = eventTimezone(event);
-  const local = localTimes(event, timezone);
+  // A placeholder 23:59, an end equal to the start, or an end before the
+  // start is not an end time, so none of them is shown as one.
+  const endCheck = assessEndTime(event);
+  const endTime = endCheck.end ? event.end_time : null;
+  const local = localTimes({ ...event, end_time: endTime }, timezone, { endDateLocal: endCheck.endDateLocal });
+  const currencyCheck = assessCurrency(event);
+  const flags = qualityFlags(event);
+  const confidence = backendConfidence(event);
   const lineup = Array.isArray(event.lineup) ? event.lineup.filter(Boolean) : [];
   const description = pickDescription(event, { detail, wantDescription: fields.has("description") });
   const retrievedAt = options.retrievedAt || (options.now ? new Date(options.now) : new Date()).toISOString();
@@ -46,13 +85,15 @@ export function summarizeEvent(event, options = {}) {
   const sourceUrl = event.source_url || event.ticket_url || null;
   const lastUpdatedAt = event.updated_at || event.modified_at || event.last_seen_at || null;
   const shownLineup = detail ? lineup : lineup.slice(0, LINEUP_CAP);
+  const price = formatPrice({ ...event, currency: currencyCheck.currency });
 
   const summary = {
     id: event.id,
     title: event.title_en && options.preferEnglish ? event.title_en : event.title,
     when: local.when,
     starts_at: event.start_time || null,
-    ends_at: event.end_time || null,
+    ends_at: endTime,
+    ends_on_local: endCheck.endDateLocal,
     starts_at_local: local.starts_at_local,
     ends_at_local: local.ends_at_local,
     timezone: local.timezone,
@@ -61,8 +102,9 @@ export function summarizeEvent(event, options = {}) {
     address: event.venue_address || null,
     city: cityDisplayName(event.venue_city) || null,
     city_slug: event.venue_city || null,
-    price: formatPrice(event),
-    currency: event.currency || null,
+    price: price && price !== "free" && currencyCheck.status === "unverified" ? `${price} (currency unconfirmed)` : price,
+    currency: currencyCheck.currency,
+    currency_status: currencyCheck.status,
     genres: event.genres || [],
     vibe: event.vibe || [],
     event_types: event.event_types || [],
@@ -83,6 +125,12 @@ export function summarizeEvent(event, options = {}) {
     source: sourceName,
     source_url: sourceUrl,
     source_provenance: sourceName ? { provider: sourceName, url: sourceUrl, last_updated_at: lastUpdatedAt, retrieved_at: retrievedAt } : null,
+    also_listed_by: Array.isArray(event.also_listed_by) ? event.also_listed_by : [],
+    alternate_starts_local: Array.isArray(event.alternate_start_times)
+      ? event.alternate_start_times.map((value) => localTimes({ start_time: value }, timezone).starts_at_local).filter(Boolean)
+      : [],
+    quality_flags: flags,
+    listing_confidence: confidence,
     last_updated_at: lastUpdatedAt,
     retrieved_at: retrievedAt,
     availability: {
@@ -100,7 +148,7 @@ export function summarizeEvent(event, options = {}) {
       : { checked_at: null, status: "unverified", note: "Price may have changed; verify on the ticket page before acting." },
     description,
     ticket_url: event.ticket_url || null,
-    dizko_url: eventUrl(event, webBaseUrl),
+    dizko_url: withMcpAttribution(eventUrl(event, webBaseUrl), webBaseUrl),
     event_url: eventUrl(event, webBaseUrl)
   };
   const targets = eventLinkTargets(event, options);
@@ -125,7 +173,7 @@ const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 // Local wall-clock rendering. When the city is unknown the times stay UTC
 // and `timezone` says so, so the model can at least label them honestly.
-export function localTimes(event, timezone) {
+export function localTimes(event, timezone, options = {}) {
   const zone = timezone || "UTC";
   const start = parseDate(event?.start_time);
   const end = parseDate(event?.end_time);
@@ -136,6 +184,9 @@ export function localTimes(event, timezone) {
     when = formatWhen(start, zone);
     if (end && endLocal.slice(0, 10) !== startLocal.slice(0, 10) && end.getTime() - start.getTime() > 24 * 3600e3) {
       when += ` → ${formatWhen(end, zone)}`;
+    } else if (!end && options.endDateLocal) {
+      // The closing hour was a placeholder; the closing date still counts.
+      when += ` → ${formatLocalDate(options.endDateLocal)}`;
     }
   }
   return {
@@ -149,6 +200,12 @@ export function localTimes(event, timezone) {
 export function formatWhen(date, timezone = "UTC") {
   const parts = zonedParts(date, timezone);
   return `${WEEKDAY_SHORT[parts.weekday]} ${parts.day} ${MONTH_SHORT[parts.month - 1]}, ${pad(parts.hour)}:${pad(parts.minute)}`;
+}
+
+function formatLocalDate(isoDay) {
+  const [year, month, day] = String(isoDay).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return `${WEEKDAY_SHORT[date.getUTCDay()]} ${day} ${MONTH_SHORT[month - 1]}`;
 }
 
 function zonedIso(date, timezone) {
@@ -225,7 +282,7 @@ export function eventLinkTargets(event, options = {}) {
   const fields = {
     title: event.title,
     starts_at: event.start_time || null,
-    ends_at: event.end_time || null,
+    ends_at: assessEndTime(event).end ? event.end_time : null,
     venue: event.venue_name || null,
     venue_name: event.venue_name || null,
     address: event.venue_address || null,

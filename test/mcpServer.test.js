@@ -617,7 +617,7 @@ test("MCP search_events returns local times, contract fields and opt-in extras",
   assert.equal(event.calendar_url, "https://mcp.dizko.app/e/1/ics");
   assert.equal(event.directions_url, "https://mcp.dizko.app/e/1/map");
   // Muse contract fields (2026-09-19) are always present.
-  assert.equal(event.dizko_url, event.event_url);
+  assert.equal(event.dizko_url, `${event.event_url}?utm_source=dizko_mcp&utm_medium=ai_assistant`);
   assert.equal(event.venue_name, "Berghain");
   assert.equal(event.source, "resident_advisor");
   assert.equal(event.currency, "EUR");
@@ -1070,7 +1070,7 @@ test("MCP search_events carries the Muse card fields", async () => {
   assert.equal(event.price_trend, "selling_fast");
   assert.deepEqual(event.promoters, ["Example Collective"]);
   assert.equal(event.image_url, "https://images.example.test/night-one.jpg");
-  assert.equal(event.dizko_url, event.event_url);
+  assert.equal(event.dizko_url, `${event.event_url}?utm_source=dizko_mcp&utm_medium=ai_assistant`);
   assert.equal(event.venue_name, "Else");
   assert.deepEqual(event.lineup_artists, ["DJ One", "DJ Two"]);
   assert.equal(event.going_count, 829);
@@ -1208,7 +1208,7 @@ test("MCP search_events returns tool content", async () => {
   assert.deepEqual(response.structuredContent.events[0].promoters, ["Example Collective"]);
   assert.equal(response.structuredContent.events[0].image_url, "https://images.example.test/night-one.jpg");
   assert.equal("lat" in response.structuredContent.events[0], false);
-  assert.equal(response.structuredContent.events[0].dizko_url, response.structuredContent.events[0].event_url);
+  assert.equal(response.structuredContent.events[0].dizko_url, `${response.structuredContent.events[0].event_url}?utm_source=dizko_mcp&utm_medium=ai_assistant`);
   assert.equal(response.structuredContent.events[0].venue_name, "Else");
   assert.deepEqual(response.structuredContent.events[0].lineup_artists, ["DJ One", "DJ Two"]);
   assert.equal(response.structuredContent.events[0].going_count, 829);

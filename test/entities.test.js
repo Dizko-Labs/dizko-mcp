@@ -114,7 +114,7 @@ test("artist search exposes canonical DJs with scores, handles and a best match"
   assert.equal(result.total_indexed, 2400);
   assert.deepEqual(result.entities.map((entity) => entity.name), ["Nina Kraviz", "Nina Kraviz b2b Helena Hauff"], "semantic filler rows are dropped when names match the query");
   assert.equal(result.entities[0].kind, "artist");
-  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(result.entities[0].match_score, 0.988, "upstream score is rounded to 3 decimals");
   assert.deepEqual(result.entities[0].links, { instagram: "https://instagram.com/ninakraviz" });
   assert.deepEqual(result.best_match, {
@@ -227,7 +227,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
   assert.equal(result.kind, "artist");
   assert.equal(result.entity.name, "Nina Kraviz");
   assert.equal(result.entity.kind, "artist");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.deepEqual(result.entity.links, { soundcloud: "https://soundcloud.com/ninakraviz" });
   assert.equal(result.entity.experience_level, "headliner");
   assert.deepEqual(result.entity.event_types, ["club night", "festival"]);
@@ -248,7 +248,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
   assert.deepEqual(result.page, {
     published: true,
     handle: "NinaKraviz",
-    page_url: "https://www.dizko.app/NinaKraviz",
+    page_url: "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant",
     slug: "ninakraviz",
     published_at: "2026-08-01T00:00:00Z",
     embeds: [{
@@ -256,7 +256,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
       title: "Live at Nitsa",
       provider: "soundcloud",
       url: "https://soundcloud.com/nina/live-at-nitsa",
-      deep_link: "https://www.dizko.app/NinaKraviz?mix=blk-1"
+      deep_link: "https://www.dizko.app/NinaKraviz?mix=blk-1&utm_source=dizko_mcp&utm_medium=ai_assistant"
     }]
   });
 
@@ -504,7 +504,7 @@ test("promoter search without a city searches collectives only and says so", asy
     name: "Gegen",
     cities: ["Berlin"],
     genres: ["techno"],
-    dizko_url: "https://www.dizko.app/collectives/gegen",
+    dizko_url: "https://www.dizko.app/collectives/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant",
     // Promoter and venue rows carry their own evidence, so the score costs no
     // extra request and is always present.
     prominence: 2
@@ -560,7 +560,7 @@ test("promoter profiles by id need a city and expose the promoter's events", asy
   assert.equal(body.entity.kind, "promoter");
   assert.equal(body.entity.id, "mini-mal-elektrokneipe");
   assert.equal(body.entity.name, "Mini-Mal Elektrokneipe");
-  assert.equal(body.entity.dizko_url, "https://www.dizko.app/promoters/berlin/mini-mal-elektrokneipe");
+  assert.equal(body.entity.dizko_url, "https://www.dizko.app/promoters/berlin/mini-mal-elektrokneipe?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(body.entity.past_count, 12);
   assert.deepEqual(body.entity.venues, ["://about blank"]);
   assert.equal(body.entity.external_url, "https://minimal.example");
@@ -592,8 +592,8 @@ test("promoter profiles merge a promoter record with its collective profile", as
   assert.equal(result.entity.bio, "Queer techno institution.");
   assert.equal(result.entity.founded, 2011);
   assert.equal(result.entity.claimed, true);
-  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/gegen");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/promoters/berlin/gegen");
+  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/promoters/berlin/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(result.upcoming_events.length, 1);
   assert.equal(result.data_note, undefined);
 });
@@ -610,8 +610,8 @@ test("collective-only profiles return catalog data without fabricated event link
   assert.equal(result.entity.kind, "collective");
   assert.equal(result.entity.name, "Fraktvred");
   assert.equal(result.entity.bio, "Berlin collective.");
-  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/fraktvred");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/collectives/fraktvred");
+  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/fraktvred?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/collectives/fraktvred?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.deepEqual(result.upcoming_events, []);
   assert.match(result.data_note, /no verified collective-to-event links/i);
 
@@ -641,7 +641,7 @@ test("findSceneEntities routes legacy kinds to the new finders", async () => {
 
   const artist = await findSceneEntities({ kind: "dj", query: "Nina Kraviz" }, { ...OPTIONS, fetch });
   assert.equal(artist.kind, "artist");
-  assert.equal(artist.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(artist.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(artist.best_match.confident, true);
 
   const venue = await findSceneEntities({ kind: "venue", query: "Berghain" }, { ...OPTIONS, fetch });

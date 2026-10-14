@@ -1,3 +1,5 @@
+import { qualityPenalty } from "./quality.js";
+
 const NIGHTLIFE_TYPES = new Set(["party", "club", "rave", "dj", "nightlife"]);
 const CROWD_AVOIDANCE_TERMS = new Set(["crowded", "huge crowd", "huge crowds", "packed"]);
 const MAINSTREAM_AVOIDANCE_TERMS = new Set(["mainstream", "commercial", "mainstream clubs"]);
@@ -85,6 +87,15 @@ export function scoreEvent(event, preferences = {}, now = new Date()) {
       total -= 25;
       reasons.push(`penalized: ${term}`);
     }
+  }
+
+  // Listings Dizko cannot stand behind (start equal to end, aggregator-only,
+  // an unconfirmed currency, backend low confidence) rank lower. They are
+  // never hidden.
+  const penalty = qualityPenalty(event);
+  if (penalty) {
+    total -= penalty;
+    reasons.push("listing details unverified");
   }
 
   return { total: Math.round(total * 10) / 10, reasons };
