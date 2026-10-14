@@ -1,6 +1,6 @@
 import { getConfig } from "./config.js";
 import { searchEvents } from "./api.js";
-import { dedupeSameShow } from "./artistEvents.js";
+import { dedupeListings } from "./artistEvents.js";
 import { summarizeEvent } from "./format.js";
 import { rankEvents } from "./rank.js";
 
@@ -16,7 +16,7 @@ export async function recommendEvents(input = {}, options = {}) {
   const hints = input.preferences || rankingHintsFromRequest(input);
   // Two sources listing one show would otherwise both survive ranking and
   // appear as separate recommendations.
-  const ranked = rankEvents(dedupeSameShow(response.events || []), hints, options.now);
+  const ranked = rankEvents(dedupeListings(response.events || []), hints, options.now);
   const summaryOptions = { ...options, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl, fields: input.fields };
   return {
     count: response.count ?? ranked.length,
@@ -52,7 +52,7 @@ export async function planNight(input = {}, options = {}) {
   const hints = input.preferences || rankingHintsFromRequest(input);
   // Without this the same party can be both the primary option and its own
   // "alternate", because two sources list it under slightly different venues.
-  const ranked = rankEvents(dedupeSameShow(response.events || []), hints, options.now);
+  const ranked = rankEvents(dedupeListings(response.events || []), hints, options.now);
   const plan = buildPlan(ranked, input);
   const summaryOptions = { ...options, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl, fields: input.fields };
 

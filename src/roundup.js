@@ -4,6 +4,8 @@ import { cityDisplayName, cityTimezone } from "./cities.js";
 import { assertIsoDate, isoDate, resolveDateRange, weekdayName, zonedParts } from "./dateRange.js";
 import { ToolInputError } from "./errors.js";
 import { summarizeEvent } from "./format.js";
+import { dedupeListings } from "./artistEvents.js";
+import { qualityPenalty } from "./quality.js";
 import { rankEvents } from "./rank.js";
 
 // Display grouping over the canonical event_types vocabulary. Order is
@@ -56,7 +58,7 @@ export async function dailyRoundup(input = {}, options = {}) {
 
   const personalized = hasTaste(input.preferences);
   const hints = input.preferences || {};
-  const ranked = rankEvents(response.events || [], hints, options.now)
+  const ranked = rankEvents(dedupeListings(response.events || []), hints, options.now)
     .map((event) => personalized ? event : withDefaultDayScore(event, timezone))
     .sort((a, b) => b.recommendation_score - a.recommendation_score || String(a.start_time || "").localeCompare(String(b.start_time || "")));
 
@@ -128,6 +130,8 @@ export function withDefaultDayScore(event, timezone) {
   }
   if (event.ticket_url) total += 1;
   if (/\b(guided tour|walking tour|sightseeing|cruise|hop-on)\b/i.test(String(event.title || ""))) { total -= 8; reasons.push("tour, not a night out"); }
+  const penalty = qualityPenalty(event);
+  if (penalty) { total -= penalty; if (!reasons.includes("listing details unverified")) reasons.push("listing details unverified"); }
   return { ...event, recommendation_score: Math.round(total * 10) / 10, recommendation_reasons: [...new Set(reasons)] };
 }
 
@@ -154,6 +158,7 @@ function toRankedSummary(event, options, compact) {
       venue: summary.venue,
       price: summary.price,
       event_url: summary.event_url,
+      ...(summary.quality_flags ? { quality_flags: summary.quality_flags } : {}),
       recommendation_reasons: event.recommendation_reasons
     };
   }

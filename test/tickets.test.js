@@ -144,6 +144,29 @@ test("confirmation does not accept 10 for 1 or 2400 for 24", () => {
   assert.deepEqual(twentyFour.missing, ["the max total 24"]);
 });
 
+test("a refusal, a hedge or a question that repeats the numbers is not a confirmation", () => {
+  const quote = { quantity: 2, max_total: 120, event: { title: "Klubnacht" } };
+  for (const text of [
+    "Don't buy 2 tickets max total 120",
+    "do not buy 2 tickets for 120",
+    "No, buy 2 tickets max total 120 later",
+    "maybe buy 2 tickets max total 120",
+    "buy 2 tickets max total 120 if it is still on",
+    "should I buy 2 tickets max total 120?",
+    "wait, buy 2 tickets max total 120"
+  ]) {
+    const result = validatePurchaseConfirmation(quote, text);
+    assert.equal(result.valid, false, text);
+    assert.deepEqual(result.missing, ["an unconditional yes"], text);
+  }
+});
+
+test("the exact sentence Dizko asks for passes, stop clause and title included", () => {
+  const quote = { quantity: 2, max_total: 120, currency: "EUR", event: { title: "No Fun Club: Stop Making Sense?" } };
+  const sentence = "Yes, buy 2 ticket(s) for No Fun Club: Stop Making Sense?, max total EUR120. Stop if price, date, venue, ticket type, quantity, or refund terms change.";
+  assert.deepEqual(validatePurchaseConfirmation(quote, sentence), { valid: true, missing: [] });
+});
+
 test("confirmation without a max_total only needs the verb and quantity", () => {
   assert.deepEqual(validatePurchaseConfirmation({ quantity: 3, max_total: null }, "order 3 please"), { valid: true, missing: [] });
 });

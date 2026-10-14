@@ -12,8 +12,8 @@ import { getConfig } from "./config.js";
 import { cityTimezone } from "./cities.js";
 import { isoDate } from "./dateRange.js";
 import { ToolInputError } from "./errors.js";
-import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
-import { summarizeEvent } from "./format.js";
+import { dedupeListings, getArtistEvents } from "./artistEvents.js";
+import { summarizeEvent, withMcpAttribution } from "./format.js";
 import { artistProminence, decisivelyAhead, promoterProminence, venueProminence } from "./prominence.js";
 
 const SCENE_KIND = {
@@ -102,6 +102,7 @@ async function artistProfile(id, input, options) {
     getPublicArtistPage(handle, options).catch(() => null)
   ]);
   const pageProfile = directory?.dj || null;
+  const completeness = entity.completeness ?? artistCompleteness(directory?.completeness);
   const today = isoDate(options.now || new Date(), cityTimezone(input.city) || "UTC");
   const appearances = splitAppearances(pageProfile?.appearances, today);
   return {
@@ -110,7 +111,8 @@ async function artistProfile(id, input, options) {
     entity: {
       ...entity,
       ...directoryProfileFields(pageProfile),
-      ...appearances
+      ...appearances,
+      ...(completeness ? { completeness } : {})
     },
     page: publishedPage(page, handle),
     insights: {
@@ -138,12 +140,12 @@ function publishedPage(page, handle) {
       title: String(block.payload?.title || ""),
       provider: String(block.payload?.provider || ""),
       url: String(block.payload?.url || ""),
-      deep_link: `${pageUrl}?mix=${encodeURIComponent(block.id)}`
+      deep_link: withMcpAttribution(`${pageUrl}?mix=${encodeURIComponent(block.id)}`)
     }));
   return {
     published: true,
     handle,
-    page_url: pageUrl,
+    page_url: withMcpAttribution(pageUrl),
     slug: typeof page.slug === "string" ? page.slug : null,
     published_at: typeof page.published_at === "string" ? page.published_at : null,
     embeds
@@ -276,7 +278,7 @@ async function venueEvents(profileName, filters, options) {
 }
 
 function venueRows(events, profileName, options) {
-  const matches = dedupeSameShow(events.filter((event) => venueMatches(profileName, event.venue_name, options)));
+  const matches = dedupeListings(events.filter((event) => venueMatches(profileName, event.venue_name, options)));
   return matches.sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || "")));
 }
 
@@ -400,7 +402,7 @@ async function promoterProfile(id, input, options) {
       claimed: Boolean(promoter.claimed)
     } : {}),
     kind: promoter && collective ? "promoter" : promoter ? "promoter" : "collective",
-    collective_url: collective ? `https://www.dizko.app/collectives/${encodeURIComponent(collective.id)}` : null
+    collective_url: collective ? withMcpAttribution(`https://www.dizko.app/collectives/${encodeURIComponent(collective.id)}`) : null
   });
   return {
     mode: "profile",
@@ -702,10 +704,32 @@ export function sceneProfileSummary(profile, kind) {
     bio: profile.bio,
     typical_capacity: profile.typical_capacity,
     founded: profile.founded,
-    dizko_url: dizkoUrl,
+    dizko_url: withMcpAttribution(dizkoUrl),
     match_score: typeof profile.score === "number" ? Math.round(profile.score * 1000) / 1000 : undefined,
+    completeness: kind === "artist" ? artistCompleteness(profile.completeness) ?? undefined : undefined,
     links
   });
+}
+
+// How complete an artist's Dizko page is, as the scene API scores it
+// ({ score, max, version, missing }, heaviest missing signal first). Passed
+// through when the backend sends it and omitted otherwise; a malformed value
+// is dropped rather than repaired.
+export function artistCompleteness(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const score = Number(value.score);
+  const max = value.max == null ? 100 : Number(value.max);
+  if (!Number.isFinite(score) || !Number.isFinite(max) || max <= 0 || score < 0 || score > max) return null;
+  const version = Number(value.version);
+  const missing = Array.isArray(value.missing)
+    ? value.missing.filter((item) => typeof item === "string" && /^[a-z0-9_]{1,48}$/i.test(item)).slice(0, 16)
+    : [];
+  return {
+    score: Math.round(score),
+    max: Math.round(max),
+    ...(Number.isInteger(version) ? { version } : {}),
+    missing
+  };
 }
 
 function promoterSummary(profile, fallbackCity) {
@@ -720,7 +744,7 @@ function promoterSummary(profile, fallbackCity) {
     upcoming_count: profile.upcoming_count ?? 0,
     next_event_at: profile.next_event_at,
     dizko_url: citySlug && profile.slug
-      ? `https://www.dizko.app/promoters/${encodeURIComponent(citySlug)}/${encodeURIComponent(profile.slug)}`
+      ? withMcpAttribution(`https://www.dizko.app/promoters/${encodeURIComponent(citySlug)}/${encodeURIComponent(profile.slug)}`)
       : null
   });
 }

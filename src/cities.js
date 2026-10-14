@@ -22,6 +22,7 @@ export const CITY_TABLE = [
   ["detroit", "Detroit", "United States", "America/Detroit", 42.3314, -83.0458],
   ["dublin", "Dublin", "Ireland", "Europe/Dublin", 53.3498, -6.2603],
   ["dubai", "Dubai", "United Arab Emirates", "Asia/Dubai", 25.2048, 55.2708],
+  ["goa", "Goa", "India", "Asia/Kolkata", 15.4909, 73.8278],
   ["hong-kong", "Hong Kong", "Hong Kong", "Asia/Hong_Kong", 22.3193, 114.1694],
   ["ibiza", "Ibiza", "Spain", "Europe/Madrid", 38.9067, 1.4206],
   ["istanbul", "Istanbul", "Türkiye", "Europe/Istanbul", 41.0082, 28.9784],
@@ -66,6 +67,7 @@ const CITY_ALIASES = {
   "warszawa": "warsaw", "praha": "prague", "roma": "rome", "milano": "milan",
   "lisboa": "lisbon", "münchen": null, "köln": null, "eivissa": "ibiza",
   "istanbul": "istanbul", "i̇stanbul": "istanbul", "bkk": "bangkok", "yyc": "calgary",
+  "panaji": "goa", "panjim": "goa", "north goa": "goa", "south goa": "goa",
   "nola": "new-orleans", "atl": "atlanta", "chi": "chicago", "mia": "miami", yvr: "vancouver"
 };
 

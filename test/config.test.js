@@ -111,6 +111,7 @@ test("SUPPORTED_CITIES includes the live Dizko city catalog", () => {
     "detroit",
     "dublin",
     "dubai",
+    "goa",
     "hong kong",
     "ibiza",
     "istanbul",

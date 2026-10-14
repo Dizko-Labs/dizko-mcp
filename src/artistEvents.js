@@ -3,6 +3,7 @@ import { getConfig } from "./config.js";
 import { cityTimezone } from "./cities.js";
 import { isoDate } from "./dateRange.js";
 import { summarizeEvent } from "./format.js";
+import { collapseNearDuplicates } from "./quality.js";
 
 // Bounded fan-out: one exact-name query per artist. Every returned row is
 // verified locally against the lineup or title, deduplicated across
@@ -78,6 +79,13 @@ export function dedupeSameShow(events) {
     if (!existing || score(event) > score(existing)) seen.set(key, event);
   }
   return [...seen.values()];
+}
+
+// The full listing guard for search, plan, roundup and venue pages: exact
+// same-show rows first, then near duplicates across sources (one party, two
+// sources, start times up to 90 minutes apart).
+export function dedupeListings(events) {
+  return collapseNearDuplicates(dedupeSameShow(events));
 }
 
 function venueKey(name) {

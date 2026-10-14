@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.dizko/events",
   "title": "Dizko",
-  "description": "Live events, DJs, venues and promoters across 48 cities, with local times and links.",
+  "description": "Live events, DJs, venues and promoters across 49 cities, with local times and links.",
   "repository": {
     "url": "https://github.com/Dizko-Labs/dizko-mcp",
     "source": "github"

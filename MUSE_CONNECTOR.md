@@ -1,50 +1,78 @@
-# Muse connector readiness
+# Dizko connector contract (Muse and other MCP clients)
 
-Dizko's connector endpoint is `https://mcp.dizko.app/mcp`. It uses stateless
-Streamable HTTP and strict JSON-RPC tool results. `/health` publishes the server,
-contract and transport versions.
+This is a short summary of what the hosted Dizko connector serves to Muse and
+any other MCP client today. The full tool reference is in
+[README.md](README.md); hosting, environment and domain setup are in
+[DEPLOYMENT.md](DEPLOYMENT.md); runbooks are in [OPERATIONS.md](OPERATIONS.md).
+
+## Endpoint
+
+- `https://mcp.dizko.app/mcp`: Streamable HTTP, stateless, JSON-RPC tool
+  results as `structuredContent` plus a JSON text block. No tool serves an
+  `outputSchema`. This path carries the full catalog of 30 tools.
+- `https://mcp.dizko.app/openai/mcp`: the reviewed ChatGPT and Codex subset,
+  13 read-only discovery tools with no sign-in, profile or ticket tools
+  (`src/surfaces.js`).
+- `https://mcp.dizko.app/health` reports `version`, `contract_version`
+  (currently `2026-09-19`, `src/connectorV1.js`), `transport` and whether a
+  static bearer gate is on.
 
 ## Stable V1 read tools
 
-- `search_events`: current event search with opaque cursor pagination.
+- `search_events`: current events with opaque cursor pagination.
 - `get_event`: one canonical event.
-- `get_artist`: exact artist profile, graph context and upcoming events. An
-  ambiguous name returns choices rather than guessing.
-- `get_venue`: exact venue profile, graph context and upcoming events. An
-  ambiguous name returns choices rather than guessing.
-- `recommend_events`: explainable live ranking. Every recommendation carries
-  reasons; it must not be presented as current if the underlying search fails.
+- `get_artist`, `get_venue`: one canonical profile with upcoming events when
+  the name resolves confidently, choices when it does not. `get_artist` also
+  returns the scene API's page `completeness` (`{ score, max, version,
+  missing }`) when the backend sends it.
+- `recommend_events`: explainable ranking; every recommendation carries
+  `recommendation_reasons`.
 
-Event results use contract version `2026-09-19`. They include a canonical id,
-timezone-aware ISO start/end values when known, venue and city, source provider
-and URL, retrieval and upstream freshness timestamps, ticket URL, explicit
-price/currency fields, price freshness, and availability status/confidence.
-`unverified` and `unknown` are intentional values, not missing guarantees.
+Event results carry a canonical id, `when` and `starts_at_local` in the
+city's own time zone, UTC `starts_at`, venue and city, source provenance,
+retrieval and upstream freshness timestamps, ticket URL, price and currency
+fields, price freshness and availability. `unverified` and `unknown` are
+intentional values. Data-honesty fields (`quality_flags`, `currency_status`,
+`ends_on_local`, `also_listed_by`, `alternate_starts_local`,
+`listing_confidence`) are described under "Data honesty" in the README.
 
-## Authentication status
+## Authentication
 
-Production is currently anonymous for read tools. The server can require one
-static Bearer token through `EVENTCHAT_MCP_BEARER_TOKEN`, but that is only a
-transport gate and is not per-user authorization. It must not be described as
-OAuth or used to authorize saved-event writes.
+- Discovery tools need no sign-in.
+- Signed-in Dizko accounts use OAuth 2.1 against `api.dizko.app` (PKCE,
+  dynamic client registration). The connector publishes
+  `/.well-known/oauth-protected-resource` with scopes `events:read`,
+  `saved:read` and `saved:write`, and verifies each bearer token by
+  introspection (`src/connectorAuth.js`, `src/authContext.js`). A request
+  with an invalid or expired token gets `401` with a `WWW-Authenticate`
+  header pointing at that metadata; a request with no token is served as
+  anonymous discovery.
+- The optional static `EVENTCHAT_MCP_BEARER_TOKEN` is a transport gate only.
+  It grants `events:read` and never `saved:read` or `saved:write`.
 
-The planned user authorization model is OAuth with least-privilege scopes:
+## Account tools
 
-- `events:read`
-- `saved:read`
-- `saved:write`
+- `get_taste_profile` (`saved:read`): the account's learned taste plus saved
+  and binned events.
+- `save_event`, `add_to_dizko_plan`, `bin_event` (`saved:write`): each needs
+  `confirmed: true` after the user agrees and an `idempotency_key` of 16 to
+  128 characters, forwarded to the backend so a retried call acts once.
+  Without the scope they return `authentication_required` or
+  `insufficient_scope` before any argument is read.
 
-`save_event` / `add_to_dizko_plan` must remain unavailable until the MCP server
-can validate a user-bound token, receive scopes in request context, and call a
-user-bound backend endpoint with idempotency and explicit confirmation. A shared
-key is not a substitute.
+## Side effects and tickets
 
-## Side effects
-
-Read tools are marked read-only, non-destructive and idempotent. Existing write
-tools retain write annotations. Any future saved-event write must require an
-idempotency key and explicit confirmation in its schema and must default-deny
-without `saved:write`.
+- Read tools are `readOnlyHint: true`, `destructiveHint: false`.
+  `save_event_preferences` (its `replace` mode overwrites the profile),
+  `delete_event_preferences` and `bin_event` are destructive.
+  `purchase_ticket_order` is destructive and open-world.
+- Tickets: `get_ticket_offers`, then a signed, 10-minute `quote_ticket_order`,
+  then `purchase_ticket_order` only with the user's written confirmation
+  naming the quantity and max total; a refusal, hedge or question is
+  rejected server side. The hosted connector has no purchase provider, so the
+  last step is a hand off to checkout (`status: requires_external_checkout`
+  with `checkout_url`). Dizko never claims a ticket was bought unless
+  `status` is `purchased`.
 
 ## Review links
 

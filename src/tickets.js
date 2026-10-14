@@ -40,7 +40,7 @@ export const TICKET_PURCHASE_POLICY = {
     "Stop and ask again if event, date, venue, quantity, ticket type, fees, refund terms, or total price changes.",
     "Respect user max_total, quantity, age restriction, accessibility, refund constraints, ticket delivery email, and calendar preference."
   ],
-  current_default_behavior: "If an event only has a third-party ticket URL, return a checkout handoff URL instead of claiming the agent purchased the ticket."
+  current_default_behavior: "Without an integrated purchase provider, ticketing is a hand off to checkout: the user pays on the provider's own site through the returned checkout URL, and the agent never says it bought or reserved the ticket."
 };
 
 export function buildTicketOffers(event, options = {}) {
@@ -62,11 +62,14 @@ export function buildTicketOffers(event, options = {}) {
     provider,
     purchase_mode: purchaseMode,
     autonomous_purchase_supported: autonomousSupported,
+    next_step: nextStep(purchaseMode, freeEntry),
     availability_status: hasCheckout || autonomousSupported ? (freeEntry ? "free_entry" : "checkout_available") : "unknown",
     free_entry: freeEntry,
     ticket_url: summary.ticket_url,
     estimated_price: summary.price,
-    currency: event.currency || inferCurrency(summary.price),
+    // The summary's currency has already been checked against the city; a
+    // code it dropped as unverified must not come back through the offer.
+    currency: summary.currency || (summary.currency_status ? null : inferCurrency(summary.price)),
     price_guaranteed: false,
     fees_included: false,
     notes: offerNotes({ hasCheckout, autonomousSupported, provider, freeEntry })
@@ -81,7 +84,9 @@ export function buildTicketOffers(event, options = {}) {
       ? "Tell the user ticket inventory is not available through Dizko for this event yet."
       : freeEntry
         ? "This event is free entry. Share the link for RSVP or guest list; no quote or purchase is needed unless the link sells add-ons."
-        : "Show ticket options, explain whether autonomous purchase is supported, and call quote_ticket_order only after the user chooses quantity and constraints."
+        : autonomousSupported
+          ? "Show ticket options and call quote_ticket_order only after the user chooses quantity and constraints. Purchase still needs the user's written confirmation."
+          : "Dizko cannot buy this ticket: the next step is a hand off to checkout on the provider's site (ticket_url), where the user pays. Say that plainly and never offer to buy it for them. Quote only if the user wants the locked confirmation step."
   };
 }
 
@@ -111,6 +116,8 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
     provider: offer.provider,
     purchase_mode: offer.purchase_mode,
     autonomous_purchase_supported: offer.autonomous_purchase_supported,
+    next_step: offer.next_step,
+    handoff_only: offer.purchase_mode === "external_checkout",
     availability_status: offer.availability_status,
     free_entry: offer.free_entry,
     checkout_url: offer.ticket_url,
@@ -134,7 +141,9 @@ export function quoteTicketOrder(event, input = {}, options = {}) {
     quote_token: encodeQuoteToken(quote, quoteSigningSecret(options)),
     confirmation_required: true,
     confirmation_prompt: confirmationPrompt(quote),
-    assistant_instruction: "Ask the user for explicit written confirmation matching this quote before calling purchase_ticket_order. If purchase_mode is external_checkout, the next call returns a checkout handoff rather than an autonomous purchase."
+    assistant_instruction: quote.purchase_mode === "external_checkout"
+      ? "This quote only prepares a hand off to checkout: Dizko will not buy the ticket. Ask for the written confirmation, then purchase_ticket_order returns the checkout_url where the user pays on the provider's site. Say hand off to checkout, never that you will buy it."
+      : "Ask the user for explicit written confirmation matching this quote before calling purchase_ticket_order."
   };
 }
 
@@ -229,12 +238,13 @@ export async function purchaseTicketOrder(input = {}, options = {}) {
     return {
       purchased: false,
       status: "requires_external_checkout",
+      next_step: "hand_off_to_checkout",
       quote,
       checkout_url: quote.checkout_url,
       delivery_email: quote.delivery_email,
       ticket_delivery_status: quote.delivery_email ? "enter_email_at_external_checkout" : "external_checkout_controls_delivery",
       calendar_event: quote.add_to_calendar ? buildCalendarEvent(quote.event, { alreadySummarized: true, status: "TENTATIVE" }) : null,
-      assistant_instruction: "Tell the user the event currently uses third-party checkout. Open or share the checkout_url so they can complete payment directly; do not claim the agent bought the ticket."
+      assistant_instruction: "Nothing was bought. Hand off to checkout: share the checkout_url so the user can pay on the provider's site; do not claim the agent bought the ticket or that it is reserved."
     };
   }
 
@@ -409,9 +419,28 @@ function normalizeMoney(value, field) {
 
 // Whole-word and whole-number matching: "buyer" is not "buy", "20" is not
 // "2", and "2400" is not "24".
+// A confirmation that names the quantity and total but refuses, hedges or
+// asks ("don't buy 2 for 80", "should I buy 2 for 80?") is not a yes, so it
+// never passes, whatever numbers it repeats.
+const CONFIRMATION_REFUSAL = /\b(?:no|not|don['\u2019]?t|do not|never|cancel|stop|wait|hold on|maybe|unless|if)\b|\?\s*$/;
+
 export function validatePurchaseConfirmation(quote, confirmationText) {
-  const text = String(confirmationText || "").toLowerCase();
+  const text = String(confirmationText || "").toLowerCase().trim();
   const missing = [];
+  // The sentence Dizko asks for carries its own stop conditions ("Stop if
+  // price ... change"), and an event title can hold any word ("No Fun Club"),
+  // so both are taken out before looking for a refusal.
+  const title = String(quote?.event?.title || "").toLowerCase().trim();
+  const unquoted = (title ? text.split(title).join(" ") : text)
+    .replace(/\bstop if\b[^.]*\bchanges?\b\.?/g, " ")
+    .trim();
+  if (CONFIRMATION_REFUSAL.test(unquoted)) {
+    return {
+      valid: false,
+      missing: ["an unconditional yes"],
+      error: "Written confirmation must be an unconditional yes: it cannot refuse, hedge, or ask a question."
+    };
+  }
   if (!/\b(buy|purchase|book|order)\b/.test(text)) missing.push("the word buy or purchase");
   if (!containsNumber(text, quote.quantity)) missing.push(`the quantity ${quote.quantity}`);
   if (quote.max_total != null && !containsNumber(text, quote.max_total)) missing.push(`the max total ${quote.max_total}`);
@@ -479,6 +508,12 @@ function normalizeProvider(source, ticketUrl) {
   return source || "unknown";
 }
 
+function nextStep(purchaseMode, freeEntry) {
+  if (purchaseMode === "partner_api_purchase") return "quote_then_confirmed_purchase";
+  if (purchaseMode === "external_checkout") return freeEntry ? "open_rsvp_link" : "hand_off_to_checkout";
+  return "none";
+}
+
 function offerNotes({ hasCheckout, autonomousSupported, provider, freeEntry }) {
   if (autonomousSupported) {
     return [`${provider} can support bounded autonomous purchase through an integrated provider.`];
@@ -488,7 +523,7 @@ function offerNotes({ hasCheckout, autonomousSupported, provider, freeEntry }) {
   }
   if (hasCheckout) {
     return [
-      "Third-party checkout link is available.",
+      "Hand off to checkout: the user pays on the provider's site through this link.",
       "Autonomous purchase is not enabled unless Hermes, OpenClaw, Dizko Checkout, or another provider supplies an integrated purchase adapter."
     ];
   }

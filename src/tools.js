@@ -6,12 +6,12 @@ import { buildCalendarEvent } from "./calendar.js";
 import { cityDisplayName, cityTimezone, nearestCoveredCity, resolveCity } from "./cities.js";
 import { assertIsoDate, isoDate, resolveSingleDay, WHEN_PRESETS, weekdayName, zonedParts } from "./dateRange.js";
 import { isToolInputError, ToolInputError } from "./errors.js";
-import { EVENT_FIELD_OPTIONS, summarizeEvent } from "./format.js";
+import { EVENT_FIELD_OPTIONS, summarizeEvent, withMcpAttribution } from "./format.js";
 import { describeNetworkError, isRetryableStatus } from "./netError.js";
 import { planNight, rankingHintsFromRequest, recommendEvents } from "./planner.js";
 import { baselineSearchInput, buildNoResults, hasNarrowingFilters } from "./relaxations.js";
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
-import { dedupeSameShow, getArtistEvents } from "./artistEvents.js";
+import { dedupeListings, getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
 import { cityPulse } from "./cityPulse.js";
 import { findArtist, findSceneEntities, findVenue } from "./entities.js";
@@ -28,15 +28,16 @@ import {
   purchaseTicketOrder,
   quoteTicketOrder
 } from "./tickets.js";
+import { withQualityNote } from "./quality.js";
 import { applySchemaLimits, assertBoundedInput } from "./schemaLimits.js";
 import { firstErrorPayload, validateInput } from "./validate.js";
 
 export const EVENT_LINKS_INSTRUCTION = [
   "Render each event as three compact, scannable lines plus one action row:",
   "[<title>](<dizko_url>)",
-  "<venue_name> · <when>",
-  "<lineup_artists> · <genre/vibe tags> · <going_count> going · <price>",
-  "[Tickets](<ticket_url>) · [Calendar](<calendar_url>) · [Directions](<directions_url>)",
+  "<venue_name> | <when>",
+  "<lineup_artists> | <genre/vibe tags> | <going_count> going | <price>",
+  "[Tickets](<ticket_url>) | [Calendar](<calendar_url>) | [Directions](<directions_url>)",
   "`when` is already in the city's local time: render it verbatim and never convert starts_at (UTC) yourself. Use only fields present in the tool result; omit missing facts and missing actions rather than inventing them. The title must link to dizko_url, never ticket_url. calendar_url is a downloadable .ics link. Keep events in date order when they span several days, and keep one event visually separate from the next."
 ].join("\n");
 
@@ -107,7 +108,8 @@ const rawTools = [
     name: "save_event_preferences",
     title: "Save Event Preferences",
     description: "Use this when the user shares new taste for an existing profile: genres, favorite artists to track (featuring), venues, budget, or per-weekday rules (day_filters). Adds to (mode merge) or replaces saved preferences. Needs profile_id, profile_secret and consent=true.",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    // destructive: mode "replace" overwrites the saved profile.
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       ...preferenceInputDefinitions(),
       type: "object",
@@ -449,14 +451,14 @@ const rawTools = [
   {
     name: "get_ticket_purchase_policy",
     title: "Get Ticket Purchase Policy",
-    description: "Use this when a user asks how Dizko agents can buy tickets.",
+    description: "Use this when a user asks how Dizko agents can buy tickets: signed quote, written confirmation, then a hand off to checkout unless a provider is integrated.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: "object", properties: {} }
   },
   {
     name: "get_ticket_offers",
     title: "Get Ticket Offers",
-    description: "Use this when the user wants tickets for one event, before quoting. Returns ticket options: provider, checkout link, estimated price, whether entry is free, whether autonomous purchase is supported (it is not on the hosted connector; third-party links are a checkout handoff), and the purchase policy.",
+    description: "Use this when the user wants tickets for one event, before quoting. Returns ticket options: provider, checkout link, estimated price, whether entry is free, whether autonomous purchase is supported, next_step, and the purchase policy. On the hosted connector Dizko does not buy tickets: next_step is hand_off_to_checkout.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -469,7 +471,7 @@ const rawTools = [
   {
     name: "quote_ticket_order",
     title: "Quote Ticket Order",
-    description: "Use this when the user has chosen a ticket offer, quantity and constraints. Creates a signed, time-limited quote (quantity, ticket type, max total, currency, refund terms, delivery email, stop conditions) and returns a quote_token to pass unchanged to purchase_ticket_order plus the exact confirmation text to ask the user for.",
+    description: "Use this when the user has chosen a ticket offer, quantity and constraints. Creates a signed, time-limited quote (quantity, ticket type, max total, currency, refund terms, delivery email, stop conditions) and returns a quote_token to pass unchanged to purchase_ticket_order plus the exact confirmation text to ask the user for. Without an integrated provider it only prepares a hand off to checkout.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: "object",
@@ -490,7 +492,7 @@ const rawTools = [
   {
     name: "purchase_ticket_order",
     title: "Purchase Ticket Order",
-    description: "Use this only when the user has confirmed a quote in writing (the confirmation must say buy or purchase and repeat the quantity and max total). With a third-party link this returns status requires_external_checkout and the checkout_url for the user to pay directly; never claim a purchase unless status is purchased. Only an integrated purchase provider can buy autonomously. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
+    description: "Use this only when the user has confirmed a quote in writing (the confirmation must say buy or purchase and repeat the quantity and max total; the server rejects it otherwise). Without an integrated purchase provider this buys nothing: it hands off to checkout, returning status requires_external_checkout and the checkout_url where the user pays on the provider's site. Never claim a purchase unless status is purchased. Each quote_token can be submitted once: a repeat returns status quote_already_used and must never be retried.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       type: "object",
@@ -579,7 +581,7 @@ const TOOL_STATUS = {
   get_ticket_purchase_policy: ["Loading ticket policy", "Ticket policy ready"],
   get_ticket_offers: ["Checking ticket options", "Ticket options ready"],
   quote_ticket_order: ["Preparing ticket quote", "Ticket quote ready"],
-  purchase_ticket_order: ["Processing ticket order", "Ticket order processed"],
+  purchase_ticket_order: ["Checking confirmed ticket order", "Ticket order step complete"],
   get_taste_profile: ["Reading your taste", "Taste ready"],
   bin_event: ["Hiding event", "Event hidden"],
   save_event: ["Saving event", "Event saved"],
@@ -831,7 +833,7 @@ const handlers = {
             : `Taste ranking scores one candidate window; raise limit (up to ${TASTE_RESULT_CAP}) rather than paging.`,
         ...(emptyTaste ? { no_results: emptyTaste } : {}),
         app_download_url: config.appDownloadUrl,
-        assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : EVENT_LINKS_INSTRUCTION
+        assistant_instruction: emptyTaste ? emptyTaste.assistant_instruction : withQualityNote(EVENT_LINKS_INSTRUCTION, response.events)
       };
     }
 
@@ -862,8 +864,8 @@ const handlers = {
     // they skip exactly that many events that are still on. Positions here
     // move only when the upstream data moves.
     const ordered = sameDay
-      ? dedupeSameShow(upstreamRows).sort(compareStartTime)
-      : dedupeSameShow(upstreamRows).sort(sortBy === "soonest" ? compareStartTime : () => 0);
+      ? dedupeListings(upstreamRows).sort(compareStartTime)
+      : dedupeListings(upstreamRows).sort(sortBy === "soonest" ? compareStartTime : () => 0);
     const stillOn = sameDay ? new Set(dropEndedEvents(ordered, now, day, timezone)) : null;
     const positioned = sameDay
       ? ordered.map((event, index) => ({ event, index })).filter((row) => stillOn.has(row.event))
@@ -913,7 +915,7 @@ const handlers = {
       events,
       ...(empty ? { no_results: empty } : {}),
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: empty ? empty.assistant_instruction : EVENT_LINKS_INSTRUCTION
+      assistant_instruction: empty ? empty.assistant_instruction : withQualityNote(EVENT_LINKS_INSTRUCTION, events)
     };
   },
 
@@ -939,7 +941,7 @@ const handlers = {
       ...plan,
       ...(emptyPlan ? { no_results: emptyPlan } : {}),
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: emptyPlan ? emptyPlan.assistant_instruction : EVENT_LINKS_INSTRUCTION
+      assistant_instruction: emptyPlan ? emptyPlan.assistant_instruction : withQualityNote(EVENT_LINKS_INSTRUCTION, plan.events)
     };
   },
 
@@ -952,13 +954,14 @@ const handlers = {
     const profile = profileAccess.profile;
     const hints = profile ? buildPreferenceHints(profile, rankingHintsFromRequest(input), { weekday: weekdayName(day) }) : undefined;
     const roundup = await dailyRoundup({ ...input, date: day, preferences: hints }, { ...options, config });
+    const roundupEvents = [...(roundup.top_picks || []), ...(roundup.sections || []).flatMap((section) => section.events || [])];
     return {
       ...(profile ? { profile: publicProfile(profile), personalization: personalizationSummary(profile, input, hints) } : {}),
       ...roundup,
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: input.compact
+      assistant_instruction: withQualityNote(input.compact
         ? "Render a short digest: the intro line, then each pick and section as one line per event with when, venue and a link."
-        : ROUNDUP_INSTRUCTION
+        : ROUNDUP_INSTRUCTION, roundupEvents)
     };
   },
 
@@ -974,10 +977,11 @@ const handlers = {
   async get_event(input, context) {
     const { config, options } = context;
     const event = await getEvent(input.id, { ...options, config });
+    const summary = summarizeEvent(event, { ...options, config, detail: true, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl });
     return {
-      ...summarizeEvent(event, { ...options, config, detail: true, webBaseUrl: config.webBaseUrl, linkBaseUrl: config.mcpUrl }),
+      ...summary,
       app_download_url: config.appDownloadUrl,
-      assistant_instruction: EVENT_LINKS_INSTRUCTION
+      assistant_instruction: withQualityNote(EVENT_LINKS_INSTRUCTION, [summary])
     };
   },
 
@@ -1005,7 +1009,7 @@ const handlers = {
     return {
       ...(profile ? { profile: publicProfile(profile) } : {}),
       ...result,
-      assistant_instruction: ARTIST_EVENTS_INSTRUCTION
+      assistant_instruction: withQualityNote(ARTIST_EVENTS_INSTRUCTION, (result.artists || []).flatMap((row) => row.events || []))
     };
   },
 
@@ -1201,10 +1205,12 @@ const handlers = {
         assistant_instruction: "The artist has no published Dizko page (or the handle is invalid). Answer from get_artist instead and fall back to SoundCloud or Resident Advisor links. Do not present a Dizko page link."
       });
     }
+    const pageUrl = `https://www.dizko.app/${encodeURIComponent(result.handle)}`;
     return toolJson({
       ...result,
-      page_url: `https://www.dizko.app/${result.handle}`,
-      assistant_instruction: "Link the artist's Dizko page (page_url). For a specific mix, deep-link page_url + '?mix=' + encodeURIComponent(embed.id)."
+      embeds: (result.embeds || []).map((embed) => ({ ...embed, deep_link: withMcpAttribution(`${pageUrl}?mix=${encodeURIComponent(embed.id)}`) })),
+      page_url: withMcpAttribution(pageUrl),
+      assistant_instruction: "Link the artist's Dizko page (page_url). For a specific mix, link that embed's deep_link exactly as given."
     });
   },
   async find_scene_entities(input, context) {
@@ -1335,7 +1341,11 @@ function dropEndedEvents(events, now, day, timezone) {
   return events.filter((event) => {
     const start = Date.parse(event.start_time || "");
     if (!Number.isFinite(start)) return true;
-    const end = Date.parse(event.end_time || "");
+    // An end at or before the start is ignored, or a show that has not
+    // happened yet would count as over. A 23:59 placeholder is not shown to
+    // the user, but it still bounds "still on" for an all-day listing.
+    const rawEnd = Date.parse(event.end_time || "");
+    const end = Number.isFinite(rawEnd) && rawEnd > start ? rawEnd : NaN;
     const stillOn = Number.isFinite(end) ? end > nowMs : start > nowMs - 3 * 3600e3;
     if (!stillOn) return false;
     if (eveningOnly) {

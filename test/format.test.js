@@ -3,6 +3,7 @@ import test from "node:test";
 import { DEFAULT_MCP_URL } from "../src/config.js";
 import {
   EVENT_FIELD_OPTIONS,
+  splitSentences,
   directionsUrl,
   eventTimezone,
   formatEventList,
@@ -40,7 +41,7 @@ test("summarizeEvent emits short calendar and directions links plus the event ca
   assert.match(summary.event_url, /\/events\/evt-1$/);
   assert.equal(summary.calendar_url, `${SHORT_BASE}/e/evt-1/ics`);
   assert.equal(summary.directions_url, `${SHORT_BASE}/e/evt-1/map`);
-  assert.equal(summary.dizko_url, summary.event_url);
+  assert.equal(summary.dizko_url, `${summary.event_url}?utm_source=dizko_mcp&utm_medium=ai_assistant`, "the link an assistant shows carries MCP attribution; event_url stays canonical");
   assert.equal(summary.venue_name, "Knockdown Center");
   assert.equal(summary.lineup_artists, undefined);
 });
@@ -81,7 +82,11 @@ test("summarizeEvent strips null and empty fields but keeps id/title/event_url/p
 
 test("summarizeEvent spells out both ends of a multi-day event", () => {
   const festival = summarizeEvent({ id: "f", title: "Weekender", start_time: "2026-09-11T10:00:00Z", end_time: "2026-09-13T21:59:00Z", venue_city: "berlin" }, { env: {} });
-  assert.equal(festival.when, "Fri 11 Sep, 12:00 → Sun 13 Sep, 23:59");
+  assert.equal(festival.when, "Fri 11 Sep, 12:00 → Sun 13 Sep", "a 23:59 placeholder keeps the closing date, not the fake hour");
+  assert.equal(festival.ends_at, undefined);
+  assert.equal(festival.ends_on_local, "2026-09-13");
+  const realEnd = summarizeEvent({ id: "f2", title: "Weekender", start_time: "2026-09-11T10:00:00Z", end_time: "2026-09-13T20:00:00Z", venue_city: "berlin" }, { env: {} });
+  assert.equal(realEnd.when, "Fri 11 Sep, 12:00 → Sun 13 Sep, 22:00");
   const longSameDay = summarizeEvent({ id: "d", title: "Day rave", start_time: "2026-09-12T00:00:00Z", end_time: "2026-09-12T20:00:00Z", venue_city: "london" }, { env: {} });
   assert.equal(longSameDay.when, "Sat 12 Sep, 01:00", ">12h but ending the same local date stays a single stamp");
 });
@@ -142,11 +147,11 @@ test("formatPrice renders currency symbols, ranges and free entry", () => {
 });
 
 test("event summaries carry a price string and, per the Muse contract, the raw currency", () => {
-  const paid = summarizeEvent({ ...EVENT, price_min: 30, currency: "BRL" }, { env: {} });
+  const paid = summarizeEvent({ ...EVENT, venue_city: "sao-paulo", price_min: 30, currency: "BRL" }, { env: {} });
   assert.equal(paid.price, "R$30");
   assert.equal(paid.currency, "BRL", "the contract promises explicit price and currency fields");
   assert.equal(paid.price_min, 30);
-  const euro = summarizeEvent({ ...EVENT, price_min: 20, currency: "EUR" }, { env: {} });
+  const euro = summarizeEvent({ ...EVENT, venue_city: "berlin", price_min: 20, currency: "EUR" }, { env: {} });
   assert.equal(euro.price, "€20");
   const free = summarizeEvent({ ...EVENT, price_min: 0, currency: "USD" }, { env: {} });
   assert.equal(free.price, "free");
@@ -373,4 +378,36 @@ test("boilerplate descriptions are dropped by default and reduced when requested
     summarizeEvent({ ...EVENT, description: mixed }, { env: {}, detail: true }).description,
     "Expect strobe lights and a late-night rooftop set."
   );
+});
+
+test("boilerplate descriptions never leave a dangling title fragment (Glam Night ft.)", () => {
+  const description = "Glam Night ft. TrapperX | Savara Goa takes place at Savara Goa in Goa on Saturday 17 October. It is listed under party.\n\nTickets: INR 2000.";
+  const event = { id: "glam", title: "Glam Night ft. TrapperX | Savara Goa", venue_name: "Savara Goa", venue_city: "goa", start_time: "2026-10-17T15:30:00Z", description };
+  assert.deepEqual(splitSentences(description), [
+    "Glam Night ft. TrapperX | Savara Goa takes place at Savara Goa in Goa on Saturday 17 October.",
+    "It is listed under party.",
+    "Tickets: INR 2000."
+  ]);
+  for (const options of [{ detail: true }, { fields: ["description"] }, {}]) {
+    const summary = summarizeEvent(event, { env: {}, ...options });
+    assert.equal(summary.description, undefined, JSON.stringify(options));
+  }
+  const withExtra = summarizeEvent({ ...event, description: description.replace(" It is listed", " Expect glitter and heels. It is listed") }, { env: {}, detail: true });
+  assert.equal(withExtra.description, "Expect glitter and heels.");
+});
+
+test("sentence splitting is abbreviation-aware", () => {
+  assert.deepEqual(
+    splitSentences("Dr. Rubinstein vs. Mr. Scruff w/ MC. Kofi at St. Georg, No. 5 Ave. Rd. approx. 200 people. Doors 10 p.m. sharp. U.S. tour, e.g. Detroit, i.e. soon. Joyce C. Smith pres. vol. 2 for 2.5 hours! Is it on? Yes."),
+    [
+      "Dr. Rubinstein vs. Mr. Scruff w/ MC. Kofi at St. Georg, No. 5 Ave. Rd. approx. 200 people.",
+      "Doors 10 p.m. sharp.",
+      "U.S. tour, e.g. Detroit, i.e. soon.",
+      "Joyce C. Smith pres. vol. 2 for 2.5 hours!",
+      "Is it on?",
+      "Yes."
+    ]
+  );
+  assert.deepEqual(splitSentences("Line one.\n\nline two"), ["Line one.", "line two"], "a paragraph break always ends a sentence");
+  assert.deepEqual(splitSentences("Ends here. Next one."), ["Ends here.", "Next one."]);
 });

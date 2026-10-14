@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { clearEventCache } from "../src/api.js";
 import {
+  artistCompleteness,
   artistHandle,
   findArtist,
   findPromoter,
@@ -114,7 +115,7 @@ test("artist search exposes canonical DJs with scores, handles and a best match"
   assert.equal(result.total_indexed, 2400);
   assert.deepEqual(result.entities.map((entity) => entity.name), ["Nina Kraviz", "Nina Kraviz b2b Helena Hauff"], "semantic filler rows are dropped when names match the query");
   assert.equal(result.entities[0].kind, "artist");
-  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(result.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(result.entities[0].match_score, 0.988, "upstream score is rounded to 3 decimals");
   assert.deepEqual(result.entities[0].links, { instagram: "https://instagram.com/ninakraviz" });
   assert.deepEqual(result.best_match, {
@@ -227,7 +228,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
   assert.equal(result.kind, "artist");
   assert.equal(result.entity.name, "Nina Kraviz");
   assert.equal(result.entity.kind, "artist");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.deepEqual(result.entity.links, { soundcloud: "https://soundcloud.com/ninakraviz" });
   assert.equal(result.entity.experience_level, "headliner");
   assert.deepEqual(result.entity.event_types, ["club night", "festival"]);
@@ -248,7 +249,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
   assert.deepEqual(result.page, {
     published: true,
     handle: "NinaKraviz",
-    page_url: "https://www.dizko.app/NinaKraviz",
+    page_url: "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant",
     slug: "ninakraviz",
     published_at: "2026-08-01T00:00:00Z",
     embeds: [{
@@ -256,7 +257,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
       title: "Live at Nitsa",
       provider: "soundcloud",
       url: "https://soundcloud.com/nina/live-at-nitsa",
-      deep_link: "https://www.dizko.app/NinaKraviz?mix=blk-1"
+      deep_link: "https://www.dizko.app/NinaKraviz?mix=blk-1&utm_source=dizko_mcp&utm_medium=ai_assistant"
     }]
   });
 
@@ -504,7 +505,7 @@ test("promoter search without a city searches collectives only and says so", asy
     name: "Gegen",
     cities: ["Berlin"],
     genres: ["techno"],
-    dizko_url: "https://www.dizko.app/collectives/gegen",
+    dizko_url: "https://www.dizko.app/collectives/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant",
     // Promoter and venue rows carry their own evidence, so the score costs no
     // extra request and is always present.
     prominence: 2
@@ -560,7 +561,7 @@ test("promoter profiles by id need a city and expose the promoter's events", asy
   assert.equal(body.entity.kind, "promoter");
   assert.equal(body.entity.id, "mini-mal-elektrokneipe");
   assert.equal(body.entity.name, "Mini-Mal Elektrokneipe");
-  assert.equal(body.entity.dizko_url, "https://www.dizko.app/promoters/berlin/mini-mal-elektrokneipe");
+  assert.equal(body.entity.dizko_url, "https://www.dizko.app/promoters/berlin/mini-mal-elektrokneipe?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(body.entity.past_count, 12);
   assert.deepEqual(body.entity.venues, ["://about blank"]);
   assert.equal(body.entity.external_url, "https://minimal.example");
@@ -592,8 +593,8 @@ test("promoter profiles merge a promoter record with its collective profile", as
   assert.equal(result.entity.bio, "Queer techno institution.");
   assert.equal(result.entity.founded, 2011);
   assert.equal(result.entity.claimed, true);
-  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/gegen");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/promoters/berlin/gegen");
+  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/promoters/berlin/gegen?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(result.upcoming_events.length, 1);
   assert.equal(result.data_note, undefined);
 });
@@ -610,8 +611,8 @@ test("collective-only profiles return catalog data without fabricated event link
   assert.equal(result.entity.kind, "collective");
   assert.equal(result.entity.name, "Fraktvred");
   assert.equal(result.entity.bio, "Berlin collective.");
-  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/fraktvred");
-  assert.equal(result.entity.dizko_url, "https://www.dizko.app/collectives/fraktvred");
+  assert.equal(result.entity.collective_url, "https://www.dizko.app/collectives/fraktvred?utm_source=dizko_mcp&utm_medium=ai_assistant");
+  assert.equal(result.entity.dizko_url, "https://www.dizko.app/collectives/fraktvred?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.deepEqual(result.upcoming_events, []);
   assert.match(result.data_note, /no verified collective-to-event links/i);
 
@@ -641,7 +642,7 @@ test("findSceneEntities routes legacy kinds to the new finders", async () => {
 
   const artist = await findSceneEntities({ kind: "dj", query: "Nina Kraviz" }, { ...OPTIONS, fetch });
   assert.equal(artist.kind, "artist");
-  assert.equal(artist.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz");
+  assert.equal(artist.entities[0].dizko_url, "https://www.dizko.app/NinaKraviz?utm_source=dizko_mcp&utm_medium=ai_assistant");
   assert.equal(artist.best_match.confident, true);
 
   const venue = await findSceneEntities({ kind: "venue", query: "Berghain" }, { ...OPTIONS, fetch });
@@ -1045,4 +1046,42 @@ test("get_artist returns choices, not a guessed profile, when two artists answer
   assert.equal("resolved_from" in body, false);
   assert.match(body.assistant_instruction, /ask the user to choose/);
   assert.equal(paths(fetch).some((path) => path === "/scene/profiles/dj/dj-a" || path === "/scene/profiles/dj/dj-b"), false, "no profile is fetched on the user's behalf");
+});
+
+// ---------- artist page completeness ----------
+
+function completenessFetch({ profileCompleteness, directoryCompleteness } = {}) {
+  return fakeFetch((url) => {
+    switch (url.pathname) {
+      case "/scene/profiles/dj/nina-kraviz":
+        return { id: "nina-kraviz", name: "Nina Kraviz", cities: ["Berlin"], genres: ["techno"], ...(profileCompleteness !== undefined ? { completeness: profileCompleteness } : {}) };
+      case "/scene/profiles/dj/nina-kraviz/insights":
+        return {};
+      case "/scene/directory/djs/nina-kraviz":
+        return { kind: "dj", dj: { name: "Nina Kraviz" }, ...(directoryCompleteness !== undefined ? { completeness: directoryCompleteness } : {}) };
+      case "/artist-pages/public/for-artist/NinaKraviz":
+        return NOT_FOUND;
+      case "/events":
+        return { count: 0, events: [] };
+      default:
+        throw new Error(`Unexpected request: ${url.pathname}`);
+    }
+  });
+}
+
+test("get_artist passes the scene API's page completeness through when present", async () => {
+  const completeness = { score: 62, max: 100, version: 1, missing: ["upcoming_dates", "mixes"] };
+  const result = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ profileCompleteness: completeness }) });
+  assert.deepEqual(result.entity.completeness, completeness);
+
+  const fromDirectory = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ directoryCompleteness: { score: 40, version: 1, missing: ["photo"] } }) });
+  assert.deepEqual(fromDirectory.entity.completeness, { score: 40, max: 100, version: 1, missing: ["photo"] }, "the directory payload is the fallback");
+});
+
+test("get_artist omits completeness when the backend has none or sends junk", async () => {
+  const absent = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch() });
+  assert.equal("completeness" in absent.entity, false);
+  const junk = await findArtist({ id: "nina-kraviz" }, { ...OPTIONS, fetch: completenessFetch({ profileCompleteness: { score: 140, max: 100 } }) });
+  assert.equal("completeness" in junk.entity, false, "a score above max is not repaired into something plausible");
+  assert.equal(artistCompleteness({ score: 10, missing: ["ok", "not ok!", 3] }).missing.join(","), "ok");
 });

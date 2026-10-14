@@ -1,9 +1,49 @@
 import { DEFAULT_MCP_URL, DEFAULT_WEB_BASE_URL } from "./config.js";
 import { cityDisplayName, cityTimezone } from "./cities.js";
 import { zonedParts } from "./dateRange.js";
+import { assessCurrency, assessEndTime, backendConfidence, qualityFlags } from "./quality.js";
 
 export function eventUrl(event, webBaseUrl = DEFAULT_WEB_BASE_URL) {
   return `${webBaseUrl.replace(/\/+$/, "")}/events/${encodeURIComponent(event.id)}`;
+}
+
+// Attribution for Dizko web links an assistant shows the user (dizko_url,
+// artist and entity pages), so those pages can count visits that came from
+// AI assistants. It uses the web app's existing UTM capture; `ref` is not
+// used because the web app reads it as a referral code. Only Dizko web
+// hosts are touched, and canonical ids such as event_url stay clean.
+export const MCP_ATTRIBUTION = Object.freeze({ utm_source: "dizko_mcp", utm_medium: "ai_assistant" });
+
+export function withMcpAttribution(raw, webBaseUrl = DEFAULT_WEB_BASE_URL) {
+  if (!raw || typeof raw !== "string") return raw;
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return raw;
+  let webHost = null;
+  try {
+    webHost = new URL(webBaseUrl).hostname;
+  } catch {
+    webHost = null;
+  }
+  const host = url.hostname.toLowerCase();
+  const isDizkoWeb = host === webHost || host === "dizko.app" || host.endsWith(".dizko.app");
+  if (!isDizkoWeb || host === "mcp.dizko.app" || host === "api.dizko.app") return raw;
+  // Appended to the raw string rather than through searchParams.set, which
+  // re-serializes every existing parameter (%20 becomes +, and so on) and
+  // would break a signed or share-token link. Keys already present are left
+  // exactly as they are, so attribution is never added twice.
+  const missing = Object.entries(MCP_ATTRIBUTION).filter(([key]) => !url.searchParams.has(key));
+  if (!missing.length) return raw;
+  const hashIndex = raw.indexOf("#");
+  const base = hashIndex === -1 ? raw : raw.slice(0, hashIndex);
+  const fragment = hashIndex === -1 ? "" : raw.slice(hashIndex);
+  const addition = missing.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&");
+  const separator = !base.includes("?") ? "?" : /[?&]$/.test(base) ? "" : "&";
+  return `${base}${separator}${addition}${fragment}`;
 }
 
 // Base for the short /e/<id>/cal|map|ics redirect links served by the
@@ -38,7 +78,17 @@ export function summarizeEvent(event, options = {}) {
   const detail = Boolean(options.detail);
   const fields = new Set(detail ? EVENT_FIELD_OPTIONS : normalizeFields(options.fields));
   const timezone = eventTimezone(event);
-  const local = localTimes(event, timezone);
+  // A placeholder 23:59, an end equal to the start, or an end before the
+  // start is not an end time, so none of them is shown as one.
+  const endCheck = assessEndTime(event);
+  const endTime = endCheck.end ? event.end_time : null;
+  const flags = qualityFlags(event);
+  // A start the source never gave (start_time_assumed) is shown as a date,
+  // not as the placeholder clock time.
+  const dateOnly = flags.includes("start_time_assumed");
+  const local = localTimes({ ...event, end_time: endTime }, timezone, { endDateLocal: endCheck.endDateLocal, dateOnly });
+  const currencyCheck = assessCurrency(event);
+  const confidence = backendConfidence(event);
   const lineup = Array.isArray(event.lineup) ? event.lineup.filter(Boolean) : [];
   const description = pickDescription(event, { detail, wantDescription: fields.has("description") });
   const retrievedAt = options.retrievedAt || (options.now ? new Date(options.now) : new Date()).toISOString();
@@ -46,14 +96,17 @@ export function summarizeEvent(event, options = {}) {
   const sourceUrl = event.source_url || event.ticket_url || null;
   const lastUpdatedAt = event.updated_at || event.modified_at || event.last_seen_at || null;
   const shownLineup = detail ? lineup : lineup.slice(0, LINEUP_CAP);
+  const price = formatPrice({ ...event, currency: currencyCheck.currency });
 
   const summary = {
     id: event.id,
     title: event.title_en && options.preferEnglish ? event.title_en : event.title,
     when: local.when,
     starts_at: event.start_time || null,
-    ends_at: event.end_time || null,
-    starts_at_local: local.starts_at_local,
+    starts_on_local: dateOnly && local.starts_at_local ? local.starts_at_local.slice(0, 10) : null,
+    ends_at: endTime,
+    ends_on_local: endCheck.endDateLocal,
+    starts_at_local: dateOnly ? null : local.starts_at_local,
     ends_at_local: local.ends_at_local,
     timezone: local.timezone,
     venue: event.venue_name || null,
@@ -61,8 +114,13 @@ export function summarizeEvent(event, options = {}) {
     address: event.venue_address || null,
     city: cityDisplayName(event.venue_city) || null,
     city_slug: event.venue_city || null,
-    price: formatPrice(event),
-    currency: event.currency || null,
+    price: price && price !== "free" && currencyCheck.status === "unverified" ? `${price} (currency unconfirmed)` : price,
+    currency: currencyCheck.currency,
+    currency_status: currencyCheck.status,
+    // Whether the shown currency was inferred rather than stated by the
+    // source, when that is known (the backend's currency_inferred, or the
+    // connector's own inference). Omitted when nobody knows.
+    currency_inferred: currencyCheck.status === "inferred" ? true : typeof event.currency_inferred === "boolean" && currencyCheck.currency ? false : undefined,
     genres: event.genres || [],
     vibe: event.vibe || [],
     event_types: event.event_types || [],
@@ -83,6 +141,12 @@ export function summarizeEvent(event, options = {}) {
     source: sourceName,
     source_url: sourceUrl,
     source_provenance: sourceName ? { provider: sourceName, url: sourceUrl, last_updated_at: lastUpdatedAt, retrieved_at: retrievedAt } : null,
+    also_listed_by: Array.isArray(event.also_listed_by) ? event.also_listed_by : [],
+    alternate_starts_local: Array.isArray(event.alternate_start_times)
+      ? event.alternate_start_times.map((value) => localTimes({ start_time: value }, timezone).starts_at_local).filter(Boolean)
+      : [],
+    quality_flags: flags,
+    listing_confidence: confidence,
     last_updated_at: lastUpdatedAt,
     retrieved_at: retrievedAt,
     availability: {
@@ -100,7 +164,7 @@ export function summarizeEvent(event, options = {}) {
       : { checked_at: null, status: "unverified", note: "Price may have changed; verify on the ticket page before acting." },
     description,
     ticket_url: event.ticket_url || null,
-    dizko_url: eventUrl(event, webBaseUrl),
+    dizko_url: withMcpAttribution(eventUrl(event, webBaseUrl), webBaseUrl),
     event_url: eventUrl(event, webBaseUrl)
   };
   const targets = eventLinkTargets(event, options);
@@ -125,7 +189,7 @@ const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 // Local wall-clock rendering. When the city is unknown the times stay UTC
 // and `timezone` says so, so the model can at least label them honestly.
-export function localTimes(event, timezone) {
+export function localTimes(event, timezone, options = {}) {
   const zone = timezone || "UTC";
   const start = parseDate(event?.start_time);
   const end = parseDate(event?.end_time);
@@ -133,9 +197,12 @@ export function localTimes(event, timezone) {
   const endLocal = end ? zonedIso(end, zone) : null;
   let when = null;
   if (start) {
-    when = formatWhen(start, zone);
+    when = options.dateOnly ? formatLocalDate(startLocal.slice(0, 10)) : formatWhen(start, zone);
     if (end && endLocal.slice(0, 10) !== startLocal.slice(0, 10) && end.getTime() - start.getTime() > 24 * 3600e3) {
       when += ` → ${formatWhen(end, zone)}`;
+    } else if (!end && options.endDateLocal) {
+      // The closing hour was a placeholder; the closing date still counts.
+      when += ` → ${formatLocalDate(options.endDateLocal)}`;
     }
   }
   return {
@@ -149,6 +216,12 @@ export function localTimes(event, timezone) {
 export function formatWhen(date, timezone = "UTC") {
   const parts = zonedParts(date, timezone);
   return `${WEEKDAY_SHORT[parts.weekday]} ${parts.day} ${MONTH_SHORT[parts.month - 1]}, ${pad(parts.hour)}:${pad(parts.minute)}`;
+}
+
+function formatLocalDate(isoDay) {
+  const [year, month, day] = String(isoDay).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return `${WEEKDAY_SHORT[date.getUTCDay()]} ${day} ${MONTH_SHORT[month - 1]}`;
 }
 
 function zonedIso(date, timezone) {
@@ -207,16 +280,76 @@ export function isBoilerplateDescription(text) {
   return opener && (filler || value.length < 400);
 }
 
+// Words whose trailing period does not end a sentence. Lowercased, without
+// the period. Single letters and dotted initialisms (U.S., a.m., e.g.) are
+// handled by shape, and decimals never have whitespace after the point.
+const NON_TERMINAL_ABBREVIATIONS = new Set([
+  "ft", "feat", "vs", "v", "dj", "mc", "pres", "st", "dr", "no", "mr", "mrs", "ms", "prof",
+  "jr", "sr", "mt", "ave", "rd", "vol", "approx", "inc", "ltd", "ca", "nr", "nos", "op",
+  "pt", "co", "corp", "dept", "est", "etc", "fig", "min", "max", "incl", "excl"
+]);
+
+// Splits prose into sentences without breaking after "ft.", "Dr.", "No.",
+// an initial or an initialism. A paragraph break always ends a sentence.
+export function splitSentences(text) {
+  const value = String(text || "");
+  const sentences = [];
+  let start = 0;
+  const boundary = /([.!?]+)(["'\u2019\u201d)\]]*)(\s+)/g;
+  let match;
+  while ((match = boundary.exec(value))) {
+    const end = match.index + match[1].length + match[2].length;
+    const paragraph = /\n\s*\n/.test(match[3]);
+    if (!paragraph && match[1] === "." && !isSentenceEnd(value, match.index, end + match[3].length)) continue;
+    sentences.push(value.slice(start, end).trim());
+    start = end + match[3].length;
+  }
+  sentences.push(value.slice(start).trim());
+  return sentences.filter(Boolean);
+}
+
+function isSentenceEnd(text, periodIndex, nextIndex) {
+  const before = text.slice(0, periodIndex);
+  const word = before.slice(before.search(/\S+$/)).replace(/^[("'\u201c\u2018[]+/, "");
+  const bare = word.toLowerCase();
+  if (NON_TERMINAL_ABBREVIATIONS.has(bare)) return false;
+  // A single letter ("Joyce C. Smith") or an initialism ("U.S", "e.g", "a.m").
+  if (/^\p{L}$/u.test(word) || /^(?:\p{L}\.)+\p{L}$/u.test(word)) return false;
+  // The next sentence would start with a lowercase letter or a digit run
+  // that continues the phrase ("approx. 200 people").
+  const next = text.slice(nextIndex, nextIndex + 1);
+  if (next && /\p{Ll}/u.test(next)) return false;
+  return true;
+}
+
+// Sentences the listing generator writes from structured fields the
+// summary already carries.
+const BOILERPLATE_SENTENCE = /(takes place at|lands at|happens at|is happening at|on the lineup|The listed genres?\b|is listed under|Entry is free|^Tickets:)/;
+
 function pickDescription(event, { detail, wantDescription }) {
   const raw = typeof event.description === "string" ? event.description : null;
   if (!raw) return null;
   if (isBoilerplateDescription(raw) && !(wantDescription || detail)) return null;
   if (isBoilerplateDescription(raw)) {
     // Keep only sentences that add something beyond the structured fields.
-    const extra = raw.split(/(?<=[.!?])\s+/).filter((sentence) => !/(takes place at|lands at|on the lineup|The listed genre|Entry is free|^Tickets:)/.test(sentence)).join(" ").trim();
+    // A kept piece that is only part of the title or venue name is a
+    // fragment of a dropped sentence, never something to show on its own.
+    const known = normalizedWords(`${event.title || ""} ${event.venue_name || ""}`);
+    const extra = splitSentences(raw)
+      .filter((sentence) => !BOILERPLATE_SENTENCE.test(sentence))
+      .filter((sentence) => {
+        const words = normalizedWords(sentence);
+        return words.length > 0 && !words.every((word) => known.includes(word));
+      })
+      .join(" ")
+      .trim();
     return shortDescription(extra, detail ? DETAIL_DESCRIPTION : SHORT_DESCRIPTION);
   }
   return shortDescription(raw, detail ? DETAIL_DESCRIPTION : SHORT_DESCRIPTION);
+}
+
+function normalizedWords(value) {
+  return String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 }
 
 // Full redirect targets for the /e/<id>/cal|map short links.
@@ -225,7 +358,7 @@ export function eventLinkTargets(event, options = {}) {
   const fields = {
     title: event.title,
     starts_at: event.start_time || null,
-    ends_at: event.end_time || null,
+    ends_at: assessEndTime(event).end ? event.end_time : null,
     venue: event.venue_name || null,
     venue_name: event.venue_name || null,
     address: event.venue_address || null,

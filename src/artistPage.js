@@ -1,4 +1,5 @@
 import { getPublicArtistPage } from "./api.js";
+import { artistCompleteness } from "./entities.js";
 
 // Slim projection of a published artist microsite: only the embed blocks a
 // caller can deep-link, never drafts or private builder state. The endpoint
@@ -31,11 +32,13 @@ export async function getArtistPage(input = {}, options = {}) {
       url: String(block.payload?.url || "")
     }));
 
+  const completeness = artistCompleteness(page.completeness);
   return {
     published: true,
     handle,
     slug: typeof page.slug === "string" ? page.slug : null,
     published_at: typeof page.published_at === "string" ? page.published_at : null,
-    embeds
+    embeds,
+    ...(completeness ? { completeness } : {})
   };
 }
