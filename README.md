@@ -220,7 +220,7 @@ Example MCP client config using npm:
 
 ## Tools
 
-The server lists 30 tools (the count comes from `tools.length` in `src/tools.js`; scripts and monitors read it from there rather than hard-coding it). Every parameter carries a description and defaults are served in the schema. The names are the published connector surface, so they do not change between releases.
+The server lists 31 tools (the count comes from `tools.length` in `src/tools.js`; scripts and monitors read it from there rather than hard-coding it). Every parameter carries a description and defaults are served in the schema. The names are the published connector surface, so they do not change between releases.
 
 Discovery:
 
