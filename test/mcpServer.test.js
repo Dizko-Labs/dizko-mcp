@@ -13,9 +13,10 @@ const MODERN_META = {
   "io.modelcontextprotocol/clientInfo": { name: "test", version: "0" }
 };
 
-// The 30 public tools in the exact order tools/list serves them. This is the
+// The 31 public tools in the exact order tools/list serves them. This is the
 // Muse connector contract surface: names and order match main.
 const PUBLIC_TOOL_NAMES = [
+  "get_dizko_onboarding",
   "get_preference_onboarding",
   "create_event_preference_profile",
   "save_event_preferences",
@@ -216,10 +217,10 @@ test("MCP tool list stays compact while preserving input contracts", async () =>
   // main budgets the list at 26 KB by stripping every parameter description
   // and default. This branch keeps them (the audit found models misusing
   // `when`, hard vs soft price filters and paging without them), so the
-  // 30-tool list is about 47 KB. That budget is an open decision for the
+  // 31-tool list is about 49 KB. That budget is an open decision for the
   // Muse review surface, not a settled one; this guard only stops it growing
   // further unnoticed.
-  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 48_000);
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) < 50_000);
 
   const search = tools.search_events.inputSchema;
   for (const [name, property] of Object.entries(search.properties)) {
@@ -278,12 +279,12 @@ test("MCP lists and serves prompts", async () => {
 
   const onboarding = await handleMcpRequest({ method: "prompts/get", params: { name: "dizko_onboarding" } });
   assert.equal(onboarding.resultType, "complete");
-  assert.match(onboarding.description, /create_event_preference_profile with consent=true/);
+  assert.match(onboarding.description, /get_dizko_onboarding/);
   assert.equal(onboarding.messages.length, 1);
   assert.equal(onboarding.messages[0].role, "user");
   assert.equal(onboarding.messages[0].content.type, "text");
   assert.match(onboarding.messages[0].content.text, /1\. /);
-  assert.match(onboarding.messages[0].content.text, /profile_id and profile_secret/);
+  assert.match(onboarding.messages[0].content.text, /get_preference_onboarding/);
 
   const policy = await handleMcpRequest({ method: "prompts/get", params: { name: "dizko_ticket_policy" } });
   assert.match(policy.messages[0].content.text, /Autonomous purchase available on this server: no/);
@@ -940,7 +941,7 @@ test("MCP stdio serves newline-delimited JSON-RPC on the 2026-07-28 revision", a
   const list = await nextMessage(lines);
   assert.equal(list.result.resultType, "complete");
   assert.ok(list.result.tools.some((tool) => tool.name === "search_events"));
-  assert.equal(list.result.tools.length, 30);
+  assert.equal(list.result.tools.length, 31);
 
   input.write(`${JSON.stringify({
     jsonrpc: "2.0",

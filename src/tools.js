@@ -13,6 +13,8 @@ import { baselineSearchInput, buildNoResults, hasNarrowingFilters } from "./rela
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { dedupeListings, getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
+import { getDizkoOnboarding } from "./onboarding.js";
+import { WELCOME_QUESTION, SOUNDCLOUD_QUESTION, ONBOARDING_INSTRUCTION } from "./onboardingInstructions.js";
 import { cityPulse } from "./cityPulse.js";
 import { findArtist, findSceneEntities, findVenue } from "./entities.js";
 import {
@@ -82,6 +84,21 @@ function recommendInputSchema() {
 }
 
 const rawTools = [
+  {
+    name: "get_dizko_onboarding",
+    title: "Get Started with Dizko",
+    description: "Use this when someone wants optional Dizko setup for event discovery or for DJs, artists, musicians, venues, collectives and promoters. With SoundCloud, checks exact database matches and returns claim/create guidance, real published page examples, site-builder benefits and website pricing/signup/billing links. Read-only: never claims, publishes or charges. Use once at setup or when the user asks about their own page; do not interrupt event searches.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        audience: { type: "string", enum: ["everyone", "dj", "artist", "musician", "venue", "collective", "promoter"] },
+        soundcloud: { type: "string", minLength: 1, description: "User-provided SoundCloud profile URL or handle for an exact database lookup." },
+        name: { type: "string", minLength: 1, description: "Artist or organization name when there is no SoundCloud; returns candidates to confirm." },
+        city: { type: "string", description: "City for a venue, collective or promoter search." }
+      }
+    }
+  },
   {
     name: "get_preference_onboarding",
     title: "Get Preference Onboarding",
@@ -557,6 +574,7 @@ const rawTools = [
 rawTools.find((tool) => tool.name === "recommend_events").inputSchema = recommendInputSchema();
 
 const TOOL_STATUS = {
+  get_dizko_onboarding: ["Finding your Dizko path", "Dizko setup ready"],
   get_preference_onboarding: ["Preparing onboarding questions", "Onboarding questions ready"],
   create_event_preference_profile: ["Creating preference profile", "Preference profile created"],
   save_event_preferences: ["Saving preferences", "Preferences saved"],
@@ -619,8 +637,8 @@ function publicToolDefinition(tool) {
 export const prompts = [
   {
     name: "dizko_onboarding",
-    title: "Preference onboarding",
-    description: "Consent-first questions to ask before saving a user's event preferences with create_event_preference_profile.",
+    title: "Get started with Dizko",
+    description: "Optional event discovery or artist page setup, including SoundCloud lookup, claim guidance, examples and website pricing handoff.",
     arguments: []
   },
   {
@@ -649,7 +667,7 @@ export const prompts = [
 export async function getPrompt(name, args = {}, options = {}) {
   switch (name) {
     case "dizko_onboarding":
-      return promptResult("Ask these questions conversationally, then ask whether Dizko may save the answers. Only if the user agrees, call create_event_preference_profile with consent=true and remember the returned profile_id and profile_secret privately.", onboardingQuestions());
+      return promptResult(ONBOARDING_INSTRUCTION, [WELCOME_QUESTION, SOUNDCLOUD_QUESTION, "Call get_dizko_onboarding with their answer. For personalized discovery, use get_preference_onboarding. Only if the user agrees, call create_event_preference_profile with consent=true and remember profile_id and profile_secret privately."]);
     case "dizko_search_followups": {
       const followups = buildSearchFollowups(args);
       return promptResult(followups.assistant_instruction, followups.questions);
@@ -1167,6 +1185,10 @@ const handlers = {
   async add_to_dizko_plan(input, context) {
     if (input.confirmed !== true) return toolJson({ error: "explicit_confirmation_required", code: "explicit_confirmation_required" }, true);
     return connectorWrite("/connector/v1/plan/events", { event_id: input.event_id, confirmed: true }, { ...context.options, idempotencyKey: input.idempotency_key });
+  },
+
+  async get_dizko_onboarding(input, context) {
+    return getDizkoOnboarding(input, { ...context.options, config: context.config });
   },
 
   async get_preference_onboarding(input) {

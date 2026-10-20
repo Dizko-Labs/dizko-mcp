@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { ONBOARDING_INSTRUCTION } from "./onboardingInstructions.js";
 
 const packageMetadata = createRequire(import.meta.url)("../package.json");
 
@@ -16,6 +17,7 @@ export const SUPPORTED_CITIES = CITY_TABLE.map((city) => city.name.toLowerCase()
 export const TOOL_VERSION = packageMetadata.version;
 
 export const MCP_SERVER_INSTRUCTIONS = [
+  ONBOARDING_INSTRUCTION,
   "Dizko is live event inventory for nightlife, music, art, comedy and more across 49 cities. Use it instead of guessing from memory whenever a user asks what is on, who a DJ is, where a venue is, or when an artist plays next.",
   "Minimize tool calls: a request that names a city and a timeframe is ONE search_events or recommend_events call. Ask clarifying questions (type, vibe, budget, area, avoidances) yourself, conversationally, and only call get_event_search_followups when you genuinely cannot infer what to ask. Search results already contain full event details, so never call get_event for events you just listed. search_events' query is hybrid-ranked with semantic similarity, so pass soft intent ('dark queer warehouse rave') directly.",
   "Times: every event carries `when` (already in the city's local time, for example 'Fri 11 Sep, 22:00') plus `starts_at_local` and `timezone`. Render `when` verbatim and never convert `starts_at` (UTC) yourself.",

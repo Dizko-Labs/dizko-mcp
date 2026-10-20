@@ -27,10 +27,10 @@ const requiredAnnotations = Object.fromEntries(registryTools.map((tool) => [
 ]));
 const requiredSecurity = Object.fromEntries(registryTools.map((tool) => [tool.name, JSON.stringify(tool.securitySchemes)]));
 
-// tools/list carries 30 tools with full parameter descriptions (about 47 KB).
+// tools/list carries 31 tools with full parameter descriptions (about 49 KB).
 // main budgets 26 KB by stripping them; which budget the Muse review surface
 // should hold is an open decision, so this only stops unnoticed growth.
-const TOOLS_LIST_BYTE_BUDGET = 48_000;
+const TOOLS_LIST_BYTE_BUDGET = 50_000;
 
 async function main() {
   const evidence = {

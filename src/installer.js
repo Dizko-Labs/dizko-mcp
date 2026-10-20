@@ -66,7 +66,7 @@ export async function installIntoJsonConfig(path, serverEntry, { fs = { readFile
 
 export async function runInstall(target, options = {}) {
   const config = options.config || getConfig(options.env);
-  const write = options.write || (() => {});
+  const write = (message) => options.write?.(`${message}\n\nAfter connecting, ask: "Help me get started with Dizko." Choose event discovery or artist setup. DJs can share SoundCloud to find a profile and get claim, site-builder and pricing guidance. Setup is optional.`);
 
   switch ((target || "").toLowerCase()) {
     case "claude-desktop": {

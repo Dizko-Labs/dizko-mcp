@@ -164,7 +164,7 @@ export async function getDjDirectoryProfile(id, options = {}) {
 
 export async function getPublicArtistPage(handle, options = {}) {
   const config = { ...getConfig(options.env), ...(options.config || {}) };
-  const url = new URL(`/artist-pages/public/for-artist/${encodeURIComponent(handle)}`, config.apiBaseUrl);
+  const url = new URL(`/artist-pages/public/${encodeURIComponent(handle)}`, config.apiBaseUrl);
   const response = await fetchApi(url, config, options, "Public artist page");
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -174,6 +174,16 @@ export async function getPublicArtistPage(handle, options = {}) {
       url: String(url)
     });
   }
+  return response.json();
+}
+
+export async function getArtistOnboarding(soundcloud, options = {}) {
+  const config = { ...getConfig(options.env), ...(options.config || {}) };
+  const url = new URL("/scene/artist-onboarding", config.apiBaseUrl);
+  if (soundcloud) url.searchParams.set("soundcloud", soundcloud);
+  // Ownership and published examples should not fall back to stale cached data.
+  const response = await fetchApi(url, config, options, "Artist onboarding");
+  if (!response.ok) throw new DizkoAPIError(`Artist onboarding failed with HTTP ${response.status}`, { status: response.status, url: String(url) });
   return response.json();
 }
 

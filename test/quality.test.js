@@ -504,9 +504,9 @@ test("an unknown future backend flag costs no more than a known one", () => {
   assert.equal(stale[0].recommendation_score - stale[1].recommendation_score, 8);
 });
 
-test("annotations: the ChatGPT surface is 13 read-only tools; overwrites are destructive", () => {
+test("annotations: the ChatGPT surface is 14 read-only tools; overwrites are destructive", () => {
   const openai = surfaceTools("openai");
-  assert.equal(openai.length, 13);
+  assert.equal(openai.length, 14);
   for (const tool of openai) {
     assert.equal(tool.annotations.readOnlyHint, true, tool.name);
     assert.equal(tool.annotations.destructiveHint, false, tool.name);
@@ -522,13 +522,13 @@ test("annotations: the ChatGPT surface is 13 read-only tools; overwrites are des
 // 7. Tool count
 // ---------------------------------------------------------------------------
 
-test("the connector exposes exactly 30 tools", () => {
-  assert.equal(tools.length, 30);
-  assert.equal(new Set(tools.map((tool) => tool.name)).size, 30);
+test("the connector exposes exactly 31 tools", () => {
+  assert.equal(tools.length, 31);
+  assert.equal(new Set(tools.map((tool) => tool.name)).size, 31);
 });
 
 test("the honesty wording keeps tools/list inside the submission byte budget", () => {
-  // scripts/verify-submission.mjs holds tools/list under 48,000 bytes.
+  // scripts/verify-submission.mjs holds tools/list under 50,000 bytes.
   const bytes = Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools } }), "utf8");
-  assert.ok(bytes < 48_000, `${bytes} bytes`);
+  assert.ok(bytes < 50_000, `${bytes} bytes`);
 });

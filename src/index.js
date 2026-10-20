@@ -63,6 +63,7 @@ export {
 export { recommendEvents, planNight } from "./planner.js";
 export { dailyRoundup } from "./roundup.js";
 export { getArtistEvents } from "./artistEvents.js";
+export { getDizkoOnboarding } from "./onboarding.js";
 export { getArtistPage } from "./artistPage.js";
 export { findArtist, findVenue, findPromoter, findSceneEntities } from "./entities.js";
 export { cityPulse } from "./cityPulse.js";

@@ -1,5 +1,17 @@
 # Dizko Events CLI and MCP
 
+## Event discovery and artist setup
+
+The same `/mcp` connection now offers two optional paths:
+
+- **For everyone:** discover events, artists and venues. A paid artist membership is not required.
+- **For DJs, artists and musicians:** share a SoundCloud profile with `get_dizko_onboarding` for an exact database match, review published examples, then continue on the website to claim an existing identity or create a page. Venues, collectives and promoters can start with their name and city.
+
+Ask your agent “Help me get started with Dizko”, or select the `dizko_onboarding` prompt. Setup is optional and does not interrupt specific event searches. It can explain discovery connections, artist pages, EPKs and release tools, and return marketing, signup, builder and billing links. Ownership verification and all payments remain on the website. The advertised offer is dated and labelled; checkout determines the current price and terms. Press distribution is a separate charge.
+
+Requires the API's `GET /scene/artist-onboarding` endpoint. Deploy that backend change before this MCP release. If lookup is unavailable, the tool says so and offers the marketing page without claiming the artist is absent. Only public profile information and published page addresses are returned. No drafts or private EPK details are read. The `/openai/mcp` directory surface also includes this read-only guide; it still exposes no account mutation or payment tools.
+
+
 ## Quick Start
 
 **Recommended: add the hosted connector. It runs on our servers, so it never
@@ -319,7 +331,7 @@ PORT=8787 node ./bin/dizko-http.js
 Endpoints:
 
 - `POST /mcp`: JSON-RPC MCP endpoint (rate-limited, optional bearer token).
-- `POST /openai/mcp`: the reviewed ChatGPT and Codex plugin surface (`src/surfaces.js`): 13 read-only discovery tools, no profile inputs, no prompts, no ticket flow, and no app promotion in results.
+- `POST /openai/mcp`: the ChatGPT and Codex plugin surface (`src/surfaces.js`): 14 read-only discovery and onboarding tools, no stored preference inputs, no prompts, and no ticket purchase or payment execution. Artist setup returns website signup and billing links.
 - `GET /.well-known/openai-apps-challenge`: the OpenAI domain-verification token from `DIZKO_OPENAI_APPS_CHALLENGE` (404 when unset).
 - `GET /health`: deployment health check.
 - `GET /`: basic service metadata.
