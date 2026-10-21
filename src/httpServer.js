@@ -568,14 +568,25 @@ export function originAllowed(request, settings) {
   // An empty list is an operator clearing the variable to lock the server
   // down. Reading that as "no restriction" would hand them the opposite of
   // what they asked for, so it denies every browser origin instead.
-  return allowed.includes(origin);
+  if (!allowed.length) return false;
+  return allowed.includes(origin) || isExtensionOrigin(origin);
+}
+
+// Browser extensions (the Mix to Cart side panel, for one) call the read tools
+// from their own origin. The allowlist exists to stop DNS rebinding, where a
+// web page becomes the target origin; an extension origin cannot be reached
+// that way, and only an installed extension can send it. Each install of an
+// unpacked extension has its own id, so the scheme is matched, not the id.
+const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension|safari-web-extension):\/\/[a-z0-9-]+$/i;
+export function isExtensionOrigin(origin) {
+  return typeof origin === "string" && EXTENSION_ORIGIN.test(origin);
 }
 
 function corsHeaders(request, settings) {
   const origin = request.headers.origin;
   const allowOrigin = settings.allowedOrigins.includes("*")
     ? "*"
-    : settings.allowedOrigins.includes(origin)
+    : settings.allowedOrigins.includes(origin) || (settings.allowedOrigins.length && isExtensionOrigin(origin))
       ? origin
       // A disallowed origin gets no header at all; echoing the first
       // allowlisted origin instead disclosed the allowlist (#33).
