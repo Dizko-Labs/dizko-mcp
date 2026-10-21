@@ -1,12 +1,14 @@
 import { tools } from "./tools.js";
+import { ONBOARDING_INSTRUCTION } from "./onboardingInstructions.js";
 
 // A surface is a reviewed subset of the tool catalog served at its own
 // endpoint. /mcp keeps the full catalog for Claude, Muse, and stdio clients.
 // /openai/mcp serves the ChatGPT and Codex plugin directory listing: read-only
-// public discovery with no sign-in, no profile secrets, no ticket purchase
-// flow, and no app promotion, so review needs no test credentials.
+// public discovery and artist setup guidance with no sign-in, no profile
+// secrets, and no payment execution, so review needs no test credentials.
 
 const OPENAI_TOOL_DESCRIPTIONS = {
+  get_dizko_onboarding: "Use this when a user wants optional Dizko setup for discovering events or creating or claiming their own artist, venue or collective page. Checks SoundCloud against public profiles and returns real page examples, EPK and site-builder benefits, pricing information, and website signup and billing links. Ownership verification and payment stay on the website.",
   list_cities: "Use this when a user asks which cities Dizko covers or how fresh a city's listings are. Returns covered city slugs with event counts. Takes no input.",
   find_scene_entities: "Use this when a user asks who a DJ or artist is, or about a venue, collective, or promoter in a city's music scene. Returns matching Dizko profiles with upcoming event context. Ambiguous names return choices rather than a guess.",
   get_artist: "Use this when a user wants one artist's Dizko profile, published links, and upcoming events. Pass an artist id or a name. It does not list the full artist catalog; an ambiguous name returns choices.",
@@ -23,6 +25,7 @@ const OPENAI_TOOL_DESCRIPTIONS = {
 };
 
 export const OPENAI_SERVER_INSTRUCTIONS = [
+  ONBOARDING_INSTRUCTION,
   "Use Dizko Events for current live event listings in Dizko's covered cities instead of guessing from model memory.",
   "When the request names a city and timeframe, answer with a single search_events or recommend_events call. Ask clarifying questions about event type, vibe, budget, area, or avoidances conversationally before searching when they are missing and matter.",
   "Search results already include full event details, so do not call get_event for events you just listed.",

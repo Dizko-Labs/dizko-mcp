@@ -188,7 +188,7 @@ test("artist profiles include the page, insights, split appearances and deduplic
             ]
           }
         };
-      case "/artist-pages/public/for-artist/NinaKraviz":
+      case "/artist-pages/public/NinaKraviz":
         return {
           slug: "ninakraviz",
           published_at: "2026-08-01T00:00:00Z",
@@ -287,7 +287,7 @@ test("artist profiles tolerate a missing page, directory profile and insights", 
         return [{ error: "boom" }, 500];
       case "/scene/directory/djs/nina-kraviz":
         return [{ error: "boom" }, 503];
-      case "/artist-pages/public/for-artist/NinaKraviz":
+      case "/artist-pages/public/NinaKraviz":
         return NOT_FOUND;
       case "/events":
         return { count: 0, events: [] };
@@ -314,7 +314,7 @@ test("artist profiles tolerate a missing page, directory profile and insights", 
   });
   assert.deepEqual(result.upcoming_events, []);
   assert.deepEqual(paths(fetch).sort(), [
-    "/artist-pages/public/for-artist/NinaKraviz",
+    "/artist-pages/public/NinaKraviz",
     "/events",
     "/scene/directory/djs/nina-kraviz",
     "/scene/profiles/dj/nina-kraviz",
@@ -1006,7 +1006,7 @@ function svenFetch() {
         return { id: "sven-vath", name: "Sven Vath", cities: ["Frankfurt"], genres: ["techno"] };
       case "/scene/profiles/dj/sven-vath/insights":
       case "/scene/directory/djs/sven-vath":
-      case "/artist-pages/public/for-artist/SvenVath":
+      case "/artist-pages/public/SvenVath":
         return NOT_FOUND;
       case "/events":
         return { count: 0, events: [] };
@@ -1059,7 +1059,7 @@ function completenessFetch({ profileCompleteness, directoryCompleteness } = {}) 
         return {};
       case "/scene/directory/djs/nina-kraviz":
         return { kind: "dj", dj: { name: "Nina Kraviz" }, ...(directoryCompleteness !== undefined ? { completeness: directoryCompleteness } : {}) };
-      case "/artist-pages/public/for-artist/NinaKraviz":
+      case "/artist-pages/public/NinaKraviz":
         return NOT_FOUND;
       case "/events":
         return { count: 0, events: [] };

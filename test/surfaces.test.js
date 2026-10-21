@@ -12,6 +12,7 @@ const OPENAI_TOOLS = [
   "get_artist_page",
   "get_city_pulse",
   "get_daily_roundup",
+  "get_dizko_onboarding",
   "get_event",
   "get_venue",
   "list_cities",
@@ -45,7 +46,7 @@ async function withServer(options, run) {
   }
 }
 
-test("openai surface lists only read-only, no-auth discovery tools", () => {
+test("openai surface lists only read-only, no-auth discovery and onboarding tools", () => {
   const listed = surfaceTools("openai");
   assert.deepEqual(listed.map((tool) => tool.name).sort(), OPENAI_TOOLS);
   for (const tool of listed) {
@@ -80,6 +81,13 @@ test("/openai/mcp serves the reviewed subset and rejects hidden tools", async ()
 
     const fullList = await rpc(port, "/mcp", { method: "tools/list" });
     assert.equal(fullList.result.tools.length, tools.length);
+
+    const onboarding = await rpc(port, "/openai/mcp", {
+      method: "tools/call",
+      params: { name: "get_dizko_onboarding", arguments: { audience: "everyone" } }
+    });
+    assert.equal(onboarding.result.isError, false);
+    assert.equal(onboarding.result.structuredContent.status, "discovery");
 
     const hidden = await rpc(port, "/openai/mcp", {
       method: "tools/call",
