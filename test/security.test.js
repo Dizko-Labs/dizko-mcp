@@ -534,6 +534,14 @@ test("a configured origin allowlist rejects other origins at the server, not jus
   const rejected = await probeOrigin(createHttpMcpServer(options), "https://evil.example");
   assert.equal(rejected.status, 403, "a non-allowlisted browser origin must be refused, not merely un-CORSed");
 
+  // Browser extensions cannot be DNS-rebound, so their origins are accepted
+  // without being listed; a web page pretending to be one is still a page.
+  const extension = await probeOrigin(createHttpMcpServer(options), "chrome-extension://iflfcmhibefjhgdcfkanapkjdpmelihd");
+  assert.equal(extension.status, 200);
+  assert.equal(extension.allowOrigin, "chrome-extension://iflfcmhibefjhgdcfkanapkjdpmelihd");
+  const lookalike = await probeOrigin(createHttpMcpServer(options), "https://chrome-extension.evil.example");
+  assert.equal(lookalike.status, 403);
+
   // Non-browser clients send no Origin at all and must keep working.
   const headless = await probeOrigin(createHttpMcpServer(options), null);
   assert.equal(headless.status, 200);
@@ -556,6 +564,8 @@ test("the default public configuration still serves every origin", async () => {
 
   assert.equal(originAllowed({ headers: { origin: "https://any.example" } }, { allowedOrigins: ["*"] }), true);
   assert.equal(originAllowed({ headers: {} }, { allowedOrigins: [] }), true);
+  // An emptied list is a lockdown, and that includes extensions.
+  assert.equal(originAllowed({ headers: { origin: "chrome-extension://abc" } }, { allowedOrigins: [] }), false);
 });
 
 // Second-pass findings ----------------------------------------------------
