@@ -127,7 +127,7 @@ test("HTTP MCP server exposes health and tools/list", async () => {
     assert.match(response.headers.get("content-security-policy"), /default-src 'none'/);
     assert.equal(body.id, 1);
     assert.ok(body.result.tools.some((tool) => tool.name === "search_events"));
-    assert.equal(body.result.tools.length, 31, "the Muse contract surface: all 31 tools are listed");
+    assert.equal(body.result.tools.length, 32, "the Muse contract surface: all 32 tools are listed");
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -49,6 +49,7 @@ export function getConfig(env = process.env) {
     webBaseUrl,
     mcpUrl,
     appDownloadUrl,
+    dizkoIdInstallUrl: env.DIZKO_ID_INSTALL_URL || "",
     apiTimeoutMs: positiveNumber(env.DIZKO_API_TIMEOUT_MS || env.EVENTCHAT_API_TIMEOUT_MS, 8000),
     apiRetries: nonNegativeNumber(env.DIZKO_API_RETRIES || env.EVENTCHAT_API_RETRIES, 2),
     apiRetryBaseDelayMs: positiveNumber(env.DIZKO_API_RETRY_BASE_DELAY_MS || env.EVENTCHAT_API_RETRY_BASE_DELAY_MS, 250),

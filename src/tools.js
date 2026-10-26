@@ -13,6 +13,7 @@ import { baselineSearchInput, buildNoResults, hasNarrowingFilters } from "./rela
 import { dailyRoundup, resolveRoundupDay } from "./roundup.js";
 import { dedupeListings, getArtistEvents } from "./artistEvents.js";
 import { getArtistPage } from "./artistPage.js";
+import { openMixInDizkoId } from "./dizkoId.js";
 import { getDizkoOnboarding } from "./onboarding.js";
 import { WELCOME_QUESTION, SOUNDCLOUD_QUESTION, ONBOARDING_INSTRUCTION } from "./onboardingInstructions.js";
 import { cityPulse } from "./cityPulse.js";
@@ -568,6 +569,13 @@ const rawTools = [
       },
       required: ["event_id"]
     }
+  },
+  {
+    name: "open_mix_in_dizko_id",
+    title: "Open Mix in Dizko ID",
+    description: "Use this when a user wants the tracks in a DJ mix identified or bought. Checks a SoundCloud mix link and returns the hand-off to Dizko ID, the Chrome extension that finds the tracks and fills their Beatport or Bandcamp cart. This tool identifies nothing.",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    inputSchema: { type: "object", properties: { mix_url: { type: "string", minLength: 1, description: "SoundCloud mix link." } }, required: ["mix_url"] }
   }
 
 ];
@@ -604,7 +612,8 @@ const TOOL_STATUS = {
   bin_event: ["Hiding event", "Event hidden"],
   save_event: ["Saving event", "Event saved"],
   add_to_dizko_plan: ["Adding to your plan", "Added to your plan"],
-  create_event_calendar_file: ["Creating calendar file", "Calendar file ready"]
+  create_event_calendar_file: ["Creating calendar file", "Calendar file ready"],
+  open_mix_in_dizko_id: ["Checking the mix", "Mix ready for Dizko ID"]
 };
 
 // Every tool schema gets a string and array cap before it is published or
@@ -1233,6 +1242,19 @@ const handlers = {
       embeds: (result.embeds || []).map((embed) => ({ ...embed, deep_link: withMcpAttribution(`${pageUrl}?mix=${encodeURIComponent(embed.id)}`) })),
       page_url: withMcpAttribution(pageUrl),
       assistant_instruction: "Link the artist's Dizko page (page_url). For a specific mix, link that embed's deep_link exactly as given."
+    });
+  },
+  async open_mix_in_dizko_id(input, context) {
+    const result = await openMixInDizkoId(input, { ...context.options, config: context.config });
+    if (!result.supported) {
+      return toolJson({
+        ...result,
+        assistant_instruction: "Tell the user why Dizko ID cannot take this link, in one line. Do not guess the tracklist."
+      });
+    }
+    return toolJson({
+      ...result,
+      assistant_instruction: "Nothing has been identified yet: never list or guess tracks. Give the mix title when present, link open_url, and walk through steps briefly, linking extension.install_url for the install step. Say it needs Chrome on a computer. If the user also wants the DJ's dates, call get_artist with mix.uploader unless it is a channel such as Boiler Room or NTS."
     });
   },
   async find_scene_entities(input, context) {

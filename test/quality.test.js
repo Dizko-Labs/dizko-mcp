@@ -522,9 +522,9 @@ test("annotations: the ChatGPT surface is 14 read-only tools; overwrites are des
 // 7. Tool count
 // ---------------------------------------------------------------------------
 
-test("the connector exposes exactly 31 tools", () => {
-  assert.equal(tools.length, 31);
-  assert.equal(new Set(tools.map((tool) => tool.name)).size, 31);
+test("the connector exposes exactly 32 tools", () => {
+  assert.equal(tools.length, 32);
+  assert.equal(new Set(tools.map((tool) => tool.name)).size, 32);
 });
 
 test("the honesty wording keeps tools/list inside the submission byte budget", () => {
