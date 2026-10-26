@@ -13,7 +13,7 @@ const MODERN_META = {
   "io.modelcontextprotocol/clientInfo": { name: "test", version: "0" }
 };
 
-// The 31 public tools in the exact order tools/list serves them. This is the
+// The 32 public tools in the exact order tools/list serves them. This is the
 // Muse connector contract surface: names and order match main.
 const PUBLIC_TOOL_NAMES = [
   "get_dizko_onboarding",
@@ -46,7 +46,8 @@ const PUBLIC_TOOL_NAMES = [
   "bin_event",
   "save_event",
   "add_to_dizko_plan",
-  "create_event_calendar_file"
+  "create_event_calendar_file",
+  "open_mix_in_dizko_id"
 ];
 
 const TEST_CONFIG = { apiBaseUrl: "https://api.example.test", userAgent: "test" };
@@ -941,7 +942,7 @@ test("MCP stdio serves newline-delimited JSON-RPC on the 2026-07-28 revision", a
   const list = await nextMessage(lines);
   assert.equal(list.result.resultType, "complete");
   assert.ok(list.result.tools.some((tool) => tool.name === "search_events"));
-  assert.equal(list.result.tools.length, 31);
+  assert.equal(list.result.tools.length, 32);
 
   input.write(`${JSON.stringify({
     jsonrpc: "2.0",
