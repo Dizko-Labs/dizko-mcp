@@ -512,9 +512,22 @@ function createRateLimiter(settings) {
 // ranges this list exists for. That makes the exemption only as trustworthy
 // as EVENTCHAT_MCP_TRUSTED_PROXIES: a server with no proxy in front must set
 // it to 0.
+//
+// An entry matches one whole address or a run of whole groups, never part of
+// a number: "10.1" and "10.1." both cover 10.1.x.x and neither covers
+// 10.100.x.x. An entry holding anything but address characters is ignored
+// rather than guessed at, because a wrong guess here lifts the limiter.
 export function isExempt(address, prefixes) {
   if (!Array.isArray(prefixes) || !prefixes.length || !address) return false;
-  return prefixes.some((prefix) => prefix && String(address).startsWith(prefix));
+  // A dual-stack socket reports an IPv4 caller as ::ffff:a.b.c.d.
+  const ip = String(address).trim().toLowerCase().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, "");
+  return prefixes.some((prefix) => {
+    if (typeof prefix !== "string" || !/^[0-9a-f.:]+$/i.test(prefix) || !/[0-9a-f]/i.test(prefix)) return false;
+    const entry = prefix.toLowerCase();
+    if (ip === entry) return true;
+    if (/[.:]$/.test(entry)) return ip.startsWith(entry);
+    return ip.startsWith(entry + (entry.includes(":") ? ":" : "."));
+  });
 }
 
 function rateLimitHeadersFor(rateLimit) {
