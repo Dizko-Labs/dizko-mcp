@@ -261,11 +261,27 @@ test("the rate-limit client key comes from the proxy, not from the caller", () =
   assert.equal(clientIp(request(null, "198.51.100.7"), 1), "198.51.100.7");
   assert.equal(clientIp(request("   ", "198.51.100.7"), 1), "198.51.100.7");
 
-  // isExempt is a plain prefix check; which address it is handed (the one
-  // clientIp settled on) is pinned by the HTTP exemption test.
+  // Which address isExempt is handed (the one clientIp settled on) is pinned
+  // by the HTTP exemption test.
   assert.equal(isExempt("10.0.0.7", ["10.0.0."]), true);
   assert.equal(isExempt("203.0.113.9", ["10.0.0."]), false);
   assert.equal(isExempt(undefined, ["10.0.0."]), false);
+
+  // An entry covers whole groups only: "10.1" is the 10.1 network, with or
+  // without its trailing dot, and never 10.100 to 10.199.
+  assert.equal(isExempt("10.1.2.3", ["10.1"]), true);
+  assert.equal(isExempt("10.1.2.3", ["10.1."]), true);
+  assert.equal(isExempt("10.100.2.3", ["10.1"]), false);
+  assert.equal(isExempt("10.12.2.3", ["10.1"]), false);
+  assert.equal(isExempt("203.0.113.9", ["203.0.113.9"]), true);
+  assert.equal(isExempt("203.0.113.90", ["203.0.113.9"]), false);
+  // IPv4 seen through a dual-stack socket, and IPv6 in either letter case.
+  assert.equal(isExempt("::ffff:10.0.0.7", ["10.0.0."]), true);
+  assert.equal(isExempt("2001:DB8:1::5", ["2001:db8:1"]), true);
+  assert.equal(isExempt("2001:db8:10::5", ["2001:db8:1"]), false);
+  // An entry that is not an address is ignored, not matched loosely.
+  assert.equal(isExempt("10.0.0.7", ["", ".", "*", "10.0.0.0/8", null]), false);
+  assert.equal(isExempt("unknown", ["unknown", "u"]), false);
 });
 
 test("a confirmation must name the quantity, not merely contain its digits", () => {
