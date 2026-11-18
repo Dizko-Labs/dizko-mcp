@@ -15,3 +15,16 @@ After finishing a change, commit it and push so GitHub stays current — don't l
 - Stage files by name, not `git add -A` / `git add .`, and review `git diff --staged` before committing.
 - Never commit secrets: `.env` files, API keys, tokens, private keys, credentials, or service-account JSON. If one is about to be committed, stop and warn; if one is already in history, report it rather than trying to scrub it.
 - Don't change repo visibility, branch protection, collaborators, or org settings without asking.
+
+## Working rules
+
+These mirror the owner's global rules so cloud, Codex and factory sessions follow them too. Where this file describes a repo-specific workflow, that workflow takes precedence.
+
+- Finish the whole job before you stop. Don't offer to continue: continue.
+- Ask before you delete anything: files, directories, branches, data, records, or memories. Editing lines inside a file as part of the task, and removing scratch files created in the same session, do not count as deletion here.
+- End with a recap for someone who saw none of the work: key points first, plain words.
+- Research before building. Don't write an unfamiliar feature from scratch. Search GitHub for open-source projects, compare their approaches, then start. Say which approach was chosen and why in the recap.
+- Score bugs before fixing them. Rate each bug from 1 to 10 on how often it would happen and from 1 to 10 on how bad it would be. If the two scores multiplied are below 5, or below a threshold this file sets, file it as an issue and leave the code alone. Do not design for rare or future cases nobody asked about.
+- Make implicit state machines explicit. In the code being worked on, look for groups of booleans or nullable fields that together encode a status, status strings compared in many places, and multi-step flows whose order lives only in handlers. Choose the change that improves the user experience (UX), developer experience (DX), and agent experience (AX) together, without breaking existing behavior. If fixing one falls outside the task, report it instead of widening the change.
+- Starting-over check. Before handing off a change, and whenever asked to clean up or refactor, ask: if you were starting over today with the same goal, what would you still need to keep? Report whatever fails that test as removal candidates; removing them follows the ask-before-deleting rule.
+- Audits report first. When asked to audit CI or these instructions, give the report before changing anything. A CI audit splits each job's time into queue, setup and task; an instruction audit lists contradictions, outdated statements, misplaced items and duplicates as deletion candidates with reasons.
